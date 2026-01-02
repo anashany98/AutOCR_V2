@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Ajustes - AutOCR{% endblock %}
+
+{% block content %}
+<div class="row mb-4 animate-fade-in">
+    <div class="col-12">
+        <h1 class="h3 fw-bold">Configuración del Sistema</h1>
+        <p class="text-muted small">Personalice el comportamiento del motor de procesamiento.</p>
+    </div>
+</div>
+
+<div class="row g-4 animate-slide-up">
+    <!-- Left Column: Core & Input Sources -->
+    <div class="col-lg-6">
+        <!-- Directories -->
+        <div class="card h-100 border-0 mb-4">
+            <div class="card-header bg-transparent border-0 pt-4 px-4">
+                <h6 class="mb-0 fw-bold text-uppercase text-primary small"><i class="fas fa-folder me-2"></i>
+                    Directorios</h6>
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    <input type="hidden" name="action" value="directories">
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Entrada</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" name="input_folder"
+                            value="{{ config.input_folder }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Salida (Procesados)</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary"
+                            name="processed_folder" value="{{ config.processed_folder }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Errores</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" name="failed_folder"
+                            value="{{ config.failed_folder }}">
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary w-100 mt-2">Guardar Rutas</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Hot Folders -->
+        <div class="card border-0 mb-4">
+            <div class="card-header bg-transparent border-0 pt-4 px-4">
+                <h6 class="mb-0 fw-bold text-uppercase text-warning small"><i class="fas fa-satellite-dish me-2"></i>
+                    Monitorización (Hot Folder)</h6>
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    <input type="hidden" name="action" value="hot_folder">
+                    <div class="form-check form-switch mb-3 d-flex align-items-center justify-content-center p-3 rounded bg-dark bg-opacity-50 border border-secondary border-opacity-25"
+                        style="min-height: 80px;">
+                        <input class="form-check-input ms-0 me-3" type="checkbox" id="hot_enabled" name="hot_enabled" {%
+                            if config.hot_enabled %}checked{% endif %}
+                            style="width: 3.2em; height: 1.6em; cursor: pointer;">
+                        <label class="form-check-label fw-bold mt-1" for="hot_enabled">Activar Monitorización</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Ruta a vigilar</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" name="hot_path"
+                            value="{{ config.hot_path }}" placeholder="C:\Ruta\A\Carpeta">
+                    </div>
+                    <button type="submit" class="btn btn-outline-warning w-100 mt-2">Guardar Configuración</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- OCR Pipeline (Moved to Left for Balance) -->
+        <div class="card border-0">
+            <div class="card-header bg-transparent border-0 pt-4 px-4">
+                <h6 class="mb-0 fw-bold text-uppercase text-success small"><i class="fas fa-cogs me-2"></i> Pipeline OCR
+                </h6>
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    <input type="hidden" name="action" value="pipeline">
+                    <div class="form-check form-switch mb-4 p-3 rounded bg-dark bg-opacity-50 d-flex align-items-center justify-content-center"
+                        style="min-height: 80px;">
+                        <input class="form-check-input ms-0 me-3" type="checkbox" id="gpu_enabled" name="gpu_enabled" {%
+                            if config.gpu_enabled %}checked{% endif %}
+                            style="width: 3.2em; height: 1.6em; cursor: pointer;">
+                        <label class="form-check-label fw-bold mt-1" for="gpu_enabled">
+                            Aceleración GPU
+                            <br><small class="text-muted fw-normal" style="font-size: 0.75rem;">Requiere CUDA
+                                compatible.</small>
+                        </label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Motor Principal (Estrategia)</label>
+                        <select class="form-select bg-dark text-light border-secondary" name="primary_engine">
+                            <option value="auto" {% if config.primary_engine=='auto' %}selected{% endif %}>✨ Auto
+                                (Inteligente)</option>
+                            <option value="paddleocr" {% if config.primary_engine=='paddleocr' %}selected{% endif %}>
+                                PaddleOCR (Estructuras)</option>
+                            <option value="easyocr" {% if config.primary_engine=='easyocr' %}selected{% endif %}>EasyOCR
+                                (Texto simple)</option>
+                            <option value="surya" {% if config.primary_engine=='surya' %}selected{% endif %}>Surya
+                                (Experimental)</option>
+                        </select>
+                        <div class="form-text text-muted small">
+                            "Auto" elige el mejor motor según si detecta tablas o texto.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Idiomas activos</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" name="languages"
+                            value="{{ config.languages }}">
+                    </div>
+                    <button type="submit" class="btn btn-outline-success w-100">Actualizar Motor</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Import & Specialized AI -->
+    <div class="col-lg-6">
+        <!-- Email Import (Moved to Right for Balance) -->
+        <div class="card mb-4 border-0">
+            <div class="card-header bg-transparent border-0 pt-4 px-4">
+                <h6 class="mb-0 fw-bold text-uppercase text-info small"><i class="fas fa-envelope me-2"></i> Importación
+                    Email</h6>
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    <input type="hidden" name="action" value="email_import">
+                    <div class="form-check form-switch mb-3 d-flex align-items-center justify-content-center p-3 rounded bg-dark bg-opacity-50 border border-secondary border-opacity-25"
+                        style="min-height: 80px;">
+                        <input class="form-check-input ms-0 me-3" type="checkbox" id="email_enabled"
+                            name="email_enabled" {% if config.email_enabled %}checked{% endif %}
+                            style="width: 3.2em; height: 1.6em; cursor: pointer;">
+                        <label class="form-check-label fw-bold mt-1" for="email_enabled">Activar Importador</label>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label class="form-label small text-muted">Servidor IMAP</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary"
+                                    name="email_host" value="{{ config.email_host }}" placeholder="imap.gmail.com">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label small text-muted">Puerto</label>
+                                <input type="number" class="form-control bg-dark text-light border-secondary"
+                                    name="email_port" value="{{ config.email_port }}" placeholder="993">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Usuario</label>
+                        <input type="email" class="form-control bg-dark text-light border-secondary" name="email_user"
+                            value="{{ config.email_user }}" placeholder="tu@email.com">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Contraseña (App Password)</label>
+                        <input type="password" class="form-control bg-dark text-light border-secondary"
+                            name="email_password" value="{{ config.email_password }}" placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="btn btn-outline-info w-100 mt-2">Guardar Email</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Vision Index -->
+        <div class="card border-0 mb-4">
+            <div class="card-body p-4 d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="fw-bold mb-1">Búsqueda Visual</h6>
+                    <small class="text-muted d-block">Estado: <span
+                            class="{{ 'text-success' if config.vision_enabled else 'text-muted' }}">{{ 'ACTIVO' if
+                            config.vision_enabled else 'INACTIVO' }}</span></small>
+                </div>
+                <form method="post">
+                    <input type="hidden" name="action" value="rebuild_index">
+                    <button type="submit" class="btn btn-sm btn-secondary" {% if not config.vision_enabled %}disabled{%
+                        endif %}>
+                        <i class="fas fa-sync me-1"></i> Reindexar
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- AI Model Training -->
+        <div class="card border-0">
+            <div class="card-header bg-transparent border-0 pt-4 px-4">
+                <h6 class="mb-0 fw-bold text-uppercase text-info small"><i class="fas fa-brain me-2"></i>
+                    Inteligencia Artificial</h6>
+            </div>
+            <div class="card-body p-4">
+                <p class="small text-muted mb-3">Entrene un modelo personalizado basado en sus documentos verificados
+                    para mejorar la clasificación automática.</p>
+                <div class="d-flex gap-2">
+                    <button id="train-btn" class="btn btn-outline-info w-100">
+                        <i class="fas fa-graduation-cap me-2"></i> Re-entrenar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('train-btn').addEventListener('click', async function () {
+        const btn = this;
+        if (!confirm('¿Desea re-entrenar el modelo de clasificación con los datos actuales?')) return;
+
+        btn.disabled = true;
+        const oldHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Entrenando...';
+
+        try {
+            const res = await fetch('/api/train', { method: 'POST' });
+            const data = await res.json();
+
+            if (res.ok) {
+                alert('Éxito: ' + data.message);
+            } else {
+                alert('Error: ' + data.message);
+            }
+        } catch (e) {
+            alert('Error de conexión');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = oldHtml;
+        }
+    });
+</script>
+{% endblock %}

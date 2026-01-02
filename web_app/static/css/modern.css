@@ -1,0 +1,203 @@
+:root {
+    /* Color Palette */
+    --primary-hue: 240;
+    --primary-color: hsl(var(--primary-hue), 80%, 65%);
+    --primary-glow: hsl(var(--primary-hue), 80%, 65%, 0.4);
+
+    --bg-dark: #0f1115;
+    --bg-card: #161b22;
+    --bg-sidebar: #0d0f12;
+
+    --text-main: #e6e6e6;
+    --text-muted: #8b949e;
+
+    --accent-success: #2ea043;
+    --accent-danger: #da3633;
+    --accent-warning: #d29922;
+
+    /* Effects */
+    --glass-bg: rgba(22, 27, 34, 0.7);
+    --glass-border: 1px solid rgba(240, 246, 252, 0.1);
+    --glass-blur: blur(12px);
+
+    --radius-lg: 16px;
+    --radius-md: 8px;
+
+    --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow-x: hidden;
+}
+
+/* Glassmorphism Cards */
+.card,
+.navbar {
+    background: var(--glass-bg) !important;
+    backdrop-filter: var(--glass-blur);
+    border: var(--glass-border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+    background: transparent;
+    border-bottom: var(--glass-border);
+}
+
+/* Sidebar Layout */
+.layout-wrapper {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    border-right: var(--glass-border);
+    border-radius: 0;
+    padding: 2rem 1rem;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-bg) !important;
+    backdrop-filter: var(--glass-blur);
+    /* Z-index fix for overlapping content */
+    z-index: 1000;
+    position: relative;
+}
+
+/* Mobile Sidebar behavior */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 80px;
+        padding: 2rem 0.5rem;
+    }
+
+    .sidebar-brand span,
+    .nav-link span,
+    .nav-link .text-muted {
+        display: none;
+    }
+
+    .nav-link {
+        text-align: center;
+        padding: 0.75rem 0;
+    }
+
+    .nav-link i {
+        margin-right: 0;
+        font-size: 1.2rem;
+    }
+
+    .main-content {
+        padding: 1rem;
+    }
+}
+
+.sidebar-brand {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 3rem;
+    padding-left: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.nav-link {
+    color: var(--text-muted) !important;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    margin-bottom: 0.5rem;
+    transition: var(--transition);
+    border: 1px solid transparent;
+    white-space: nowrap;
+    /* Prevent breaking */
+    overflow: hidden;
+}
+
+.nav-link:hover,
+.nav-link.active {
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--text-main) !important;
+    border-color: rgba(88, 166, 255, 0.2);
+    box-shadow: 0 0 15px var(--primary-glow);
+}
+
+.nav-link i {
+    width: 24px;
+    margin-right: 10px;
+}
+
+.main-content {
+    flex-grow: 1;
+    padding: 2rem 3rem;
+    /* Ensure content doesn't underflow sidebar */
+    min-width: 0;
+}
+
+/* Fix for Search Input */
+#search {
+    min-width: 300px;
+}
+
+/* Fix for Filter Button truncation */
+.btn-primary.px-4 {
+    min-width: 100px;
+}
+
+/* Modern Typography & Components */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-weight: 600;
+    letter-spacing: -0.5px;
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    border: none;
+    box-shadow: 0 4px 15px var(--primary-glow);
+    font-weight: 600;
+    padding: 0.6rem 1.2rem;
+    transition: var(--transition);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--primary-glow);
+}
+
+.table {
+    color: var(--text-main);
+}
+
+.table-striped>tbody>tr:nth-of-type(odd)>* {
+    color: var(--text-main);
+    box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.03);
+}
+
+/* Stats Cards */
+.stat-card {
+    transition: var(--transition);
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    background: linear-gradient(45deg, var(--primary-color), #fff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}

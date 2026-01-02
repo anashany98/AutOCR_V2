@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block title %}Documentos - AutOCR{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
+    <div>
+        <h1 class="h3 fw-bold mb-1">Explorador de Documentos</h1>
+        <p class="text-muted small mb-0">Gestione y organice sus archivos digitalizados.</p>
+    </div>
+    <a href="{{ url_for('upload') }}" class="btn btn-primary d-flex align-items-center gap-2 text-nowrap">
+        <i class="fas fa-plus"></i>
+        <span>Subir Nuevo</span>
+    </a>
+    <button onclick="mergeDocuments()" class="btn btn-warning d-flex align-items-center gap-2 text-nowrap ms-2">
+        <i class="fas fa-paperclip"></i>
+        <span>Grapar</span>
+    </button>
+</div>
+
+<!-- Filters Card -->
+<div class="card border-0 mb-4 animate-slide-up">
+    <div class="card-body p-4">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="status" class="form-label text-uppercase text-muted fw-bold"
+                    style="font-size: 0.75rem;">Estado</label>
+                <select class="form-select bg-dark text-light border-secondary" id="status" name="status">
+                    <option value="">Todos los estados</option>
+                    <option value="OK" {{ 'selected' if status_filter=='OK' else '' }}>✅ Completado</option>
+                    <option value="FAILED" {{ 'selected' if status_filter=='FAILED' else '' }}>❌ Fallido</option>
+                    <!-- <option value="DUPLICATE" {{ 'selected' if status_filter == 'DUPLICATE' else '' }}>⚠️ Duplicado</option> -->
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="type" class="form-label text-uppercase text-muted fw-bold" style="font-size: 0.75rem;">Tipo
+                    Documental</label>
+                <select class="form-select bg-dark text-light border-secondary" id="type" name="type">
+                    <option value="">Todos los tipos</option>
+                    <option value="Invoice" {{ 'selected' if type_filter=='Invoice' else '' }}>Factura</option>
+                    <option value="Contract" {{ 'selected' if type_filter=='Contract' else '' }}>Contrato</option>
+                    <option value="Receipt" {{ 'selected' if type_filter=='Receipt' else '' }}>Recibo</option>
+                    <option value="Report" {{ 'selected' if type_filter=='Report' else '' }}>Informe</option>
+                    <option value="Letter" {{ 'selected' if type_filter=='Letter' else '' }}>Carta</option>
+                    <option value="Imagen" {{ 'selected' if type_filter=='Imagen' else '' }}>Imagen / Mueble</option>
+                    <option value="Unknown" {{ 'selected' if type_filter=='Unknown' else '' }}>Desconocido</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="search" class="form-label text-uppercase text-muted fw-bold"
+                    style="font-size: 0.75rem;">Búsqueda Inteligente</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-dark border-secondary text-muted"><i
+                            class="fas fa-search"></i></span>
+                    <input type="text" class="form-control bg-dark text-light border-secondary" id="search"
+                        name="search" value="{{ search }}" placeholder="Buscar por nombre, contenido o etiquetas...">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary px-4">Filtrar</button>
+                    <a href="{{ url_for('documents') }}" class="btn btn-outline-secondary px-3" title="Limpiar">
+                        <i class="fas fa-undo"></i>
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Documents List -->
+<div class="card border-0 animate-slide-up" style="animation-delay: 0.1s;">
+    <div class="card-body p-0">
+        {% if documents %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="background: transparent;">
+                <thead class="bg-light bg-opacity-10">
+                    <tr>
+                        <th class="ps-4 py-3 bg-transparent"><input type="checkbox" class="form-check-input"
+                                onclick="toggleAll(this)"></th>
+                        <th class="ps-2 py-3 text-uppercase text-muted small fw-bold">Archivo</th>
+                        <th class="py-3 text-uppercase text-muted small fw-bold">Tipo</th>
+                        <th class="py-3 text-uppercase text-muted small fw-bold">Estado</th>
+                        <th class="py-3 text-uppercase text-muted small fw-bold">Fecha</th>
+                        <th class="py-3 text-end pe-4 text-uppercase text-muted small fw-bold">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in documents %}
+                    <tr>
+                        <td class="ps-4"><input type="checkbox" class="form-check-input doc-selector"
+                                value="{{ doc[0] }}"></td>
+                        <td class="ps-2">
+                            <div class="d-flex align-items-center">
+                                <div class="icon-square bg-secondary bg-opacity-10 text-muted rounded-3 p-2 me-3">
+                                    <i class="fas fa-file-alt"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-0 fw-bold text-light">{{ doc[1] }}</h6>
+                                    {% if doc[8] %}
+                                    <small class="text-muted">{{ doc[8] }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% set badge_color = 'secondary' %}
+                            {% if doc[3] == 'Invoice' %}{% set badge_color = 'primary' %}{% endif %}
+                            {% if doc[3] == 'Receipt' %}{% set badge_color = 'success' %}{% endif %}
+                            {% if doc[3] == 'Contract' %}{% set badge_color = 'info' %}{% endif %}
+                            <span
+                                class="badge bg-{{ badge_color }} bg-opacity-25 text-light border border-{{ badge_color }} border-opacity-25 px-3 py-2 rounded-pill">
+                                {{ doc[3] if doc[3] and doc[3].strip() != '' else 'Desconocido' }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if doc[4] == 'OK' %}
+                            <span class="text-success small fw-bold"><i class="fas fa-check-circle me-1"></i> OK</span>
+                            {% elif doc[4] == 'FAILED' %}
+                            <span class="text-danger small fw-bold"><i class="fas fa-times-circle me-1"></i>
+                                Fallido</span>
+                            {% else %}
+                            <span class="text-warning small fw-bold">{{ doc[4] }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small">
+                            {{ doc[5][:16].replace('T', ' ') if doc[5] else '-' }}
+                        </td>
+                        <td class="text-end pe-4 text-nowrap">
+                            <a href="{{ url_for('document_detail', doc_id=doc[0]) }}"
+                                class="btn btn-sm btn-outline-light rounded-pill px-3">
+                                Revisar
+                            </a>
+                            {% if doc[1].lower().endswith('.pdf') %}
+                            <button onclick="promptSplit('{{ doc[0] }}')"
+                                class="btn btn-sm btn-outline-warning ms-1 rounded-pill px-2" title="Dividir PDF">
+                                <i class="fas fa-cut"></i>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Modern Pagination -->
+        {% if total_pages > 1 %}
+        <div class="d-flex justify-content-center py-4 border-top border-secondary border-opacity-10">
+            <nav aria-label="Pagination">
+                <ul class="pagination mb-0 gap-1">
+                    <li class="page-item {{ 'disabled' if page == 1 }}">
+                        <a class="page-link rounded-2"
+                            href="{{ url_for('documents', page=page-1, status=status_filter, type=type_filter, search=search) }}">
+                            <i class="fas fa-chevron-left"></i>
+                        </a>
+                    </li>
+                    {% for p in range(max(1, page-2), min(total_pages+1, page+3)) %}
+                    <li class="page-item {{ 'active' if p == page }}">
+                        <a class="page-link rounded-2"
+                            href="{{ url_for('documents', page=p, status=status_filter, type=type_filter, search=search) }}">{{
+                            p }}</a>
+                    </li>
+                    {% endfor %}
+                    <li class="page-item {{ 'disabled' if page == total_pages }}">
+                        <a class="page-link rounded-2"
+                            href="{{ url_for('documents', page=page+1, status=status_filter, type=type_filter, search=search) }}">
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="text-center py-5">
+            <div class="mb-3 opacity-25">
+                <i class="fas fa-folder-open fa-4x"></i>
+            </div>
+            <h5 class="text-muted fw-normal">No se encontraron documentos</h5>
+            <p class="small text-muted mb-4 opacity-75">Intente con otros filtros o suba un nuevo archivo.</p>
+            <a href="{{ url_for('upload') }}" class="btn btn-primary px-4">
+                Subir Documento
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function toggleAll(source) {
+        checkboxes = document.querySelectorAll('.doc-selector');
+        for (var i = 0; i < checkboxes.length; i++) {
+            checkboxes[i].checked = source.checked;
+        }
+    }
+
+    function mergeDocuments() {
+        let selected = [];
+        document.querySelectorAll('.doc-selector:checked').forEach(e => selected.push(e.value));
+
+        if (selected.length < 2) {
+            alert("Seleccione al menos 2 documentos para grapar.");
+            return;
+        }
+
+        if (!confirm(`¿Grapar ${selected.length} documentos en uno nuevo?`)) return;
+
+        fetch('/merge_documents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ doc_ids: selected })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert("Error: " + data.message);
+                }
+            });
+    }
+
+    function promptSplit(docId) {
+        let range = prompt("Ingrese el rango de páginas a extraer (ej. 1-2 o 1,3):");
+        if (!range) return;
+
+        fetch('/split_document', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ doc_id: docId, pages: range })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert("Error: " + data.message);
+                }
+            });
+    }
+</script>
+{% endblock %}

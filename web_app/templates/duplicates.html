@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Detectar Duplicados - AutOCR{% endblock %}
+
+{% block content %}
+<div class="row mb-4 animate-fade-in">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="display-5 fw-bold mb-0">Gemelos Digitales 👯</h1>
+            <p class="text-muted">Documentos visualmente idénticos encontrados por la IA.</p>
+        </div>
+        <button onclick="scanDuplicates()" class="btn btn-primary" id="scan-btn">
+            <i class="fas fa-search me-2"></i> Escanear Ahora
+        </button>
+    </div>
+</div>
+
+<div id="loading" class="text-center py-5" style="display: none;">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <p>Comparando huellas visuales...</p>
+</div>
+
+<div id="results-container" class="row g-4">
+    <!-- Results injected here -->
+    <div class="col-12 text-center text-muted py-5" id="empty-state">
+        <i class="fas fa-check-circle fa-3x mb-3 text-success"></i>
+        <p>Pulsa "Escanear" para buscar duplicados.</p>
+    </div>
+</div>
+
+<!-- Template for a Duplicate Group -->
+<template id="group-template">
+    <div class="col-12 fade-in-up">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-warning bg-opacity-10 border-0 d-flex align-items-center gap-2">
+                <i class="fas fa-exclamation-triangle text-warning"></i>
+                <span class="fw-bold">Posible Duplicado detectado</span>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <!-- Primary -->
+                    <div class="col-md-5 text-center">
+                        <div class="position-relative mb-2">
+                            <span class="badge bg-success position-absolute top-0 start-0 m-2">Original</span>
+                            <img src="" class="img-fluid rounded shadow-sm primary-img" style="max-height: 200px;">
+                        </div>
+                        <h6 class="primary-name text-truncate"></h6>
+                        <small class="text-muted primary-date"></small>
+                    </div>
+
+                    <div class="col-md-2 text-center text-muted">
+                        <i class="fas fa-equals fa-2x"></i>
+                        <br>
+                        <small>Idénticos</small>
+                    </div>
+
+                    <!-- Duplicate -->
+                    <div class="col-md-5 text-center bg-light rounded p-3">
+                        <div class="position-relative mb-2">
+                            <span class="badge bg-danger position-absolute top-0 start-0 m-2">Copia</span>
+                            <img src="" class="img-fluid rounded shadow-sm dupe-img" style="max-height: 200px;">
+                        </div>
+                        <h6 class="dupe-name text-truncate"></h6>
+                        <small class="text-muted dupe-date"></small>
+                        <button class="btn btn-outline-danger btn-sm mt-2 w-100 delete-btn">
+                            <i class="fas fa-trash me-2"></i> Borrar Copia
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function scanDuplicates() {
+        const btn = document.getElementById('scan-btn');
+        const loading = document.getElementById('loading');
+        const container = document.getElementById('results-container');
+        const empty = document.getElementById('empty-state');
+
+        btn.disabled = true;
+        loading.style.display = 'block';
+        empty.style.display = 'none';
+        container.innerHTML = ''; // Clear previous
+
+        try {
+            const res = await fetch('/api/duplicates/scan');
+            const data = await res.json();
+
+            if (data.length === 0) {
+                container.innerHTML = `
+                <div class="col-12 text-center text-muted py-5">
+                    <i class="fas fa-check-double fa-3x mb-3 text-success"></i>
+                    <p>¡Limpio! No se encontraron duplicados visuales.</p>
+                </div>`;
+            } else {
+                const tmpl = document.getElementById('group-template');
+
+                data.forEach(group => {
+                    const primary = group.primary;
+                    // Currently only handling 1 duplicate per group for simplicity in UI demo
+                    // Ideally loop through group.duplicates
+                    group.duplicates.forEach(dupe => {
+                        const clone = tmpl.content.cloneNode(true);
+
+                        // Fill Primary
+                        clone.querySelector('.primary-img').src = `/vision/preview/${primary.token}`;
+                        // Note: accessing token might tricky if not pre-generated.
+                        // We might need an ID-based preview URL.
+                        // Let's assume API returns valid preview URLs or we construct them 
+                        // "/document/<id>/preview"? Current app uses Tokens.
+                        // Let's assume API sends "preview_url".
+                        clone.querySelector('.primary-img').src = primary.preview_url;
+                        clone.querySelector('.primary-name').textContent = primary.filename;
+                        clone.querySelector('.primary-date').textContent = primary.date || '';
+
+                        // Fill Dupe
+                        clone.querySelector('.dupe-img').src = dupe.preview_url;
+                        clone.querySelector('.dupe-name').textContent = dupe.filename;
+                        clone.querySelector('.dupe-date').textContent = dupe.date || '';
+
+                        clone.querySelector('.delete-btn').onclick = () => deleteDoc(dupe.id, clone.querySelector('.card'));
+
+                        container.appendChild(clone);
+                    });
+                });
+            }
+
+        } catch (e) {
+            alert("Error al escanear: " + e.message);
+            console.error(e);
+        } finally {
+            loading.style.display = 'none';
+            btn.disabled = false;
+        }
+    }
+
+    async function deleteDoc(id, cardElement) {
+        if (!confirm("¿Seguro que quieres borrar esta copia permanentemente?")) return;
+
+        try {
+            // Find Flask route for delete. Currently /documents uses a form.
+            // We'll create a simple API for this or reuse.
+            // app.py usually has POST /delete_document or similar?
+            // Let's create proper API route or check app.py
+            const res = await fetch(`/api/document/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                cardElement.remove();
+            } else {
+                alert("No se pudo borrar.");
+            }
+        } catch (e) {
+            alert("Error de conexión");
+        }
+    }
+</script>
+{% endblock %}

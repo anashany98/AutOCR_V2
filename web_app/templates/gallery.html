@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block title %}Galería Visual - AutOCR{% endblock %}
+
+{% block content %}
+<div class="row mb-4 animate-fade-in">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="h3 fw-bold">Almacén Digital</h1>
+            <p class="text-muted small">Exploración visual y búsqueda semántica.</p>
+        </div>
+        <div>
+            <a href="{{ url_for('upload') }}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i> Nuevo
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Search Bar -->
+<div class="row mb-5 animate-slide-up">
+    <div class="col-md-8 mx-auto">
+        <div class="input-group input-group-lg shadow-sm">
+            <span class="input-group-text bg-dark border-secondary text-muted">
+                <i class="fas fa-search"></i>
+            </span>
+            <input type="text" id="semantic-search" class="form-control bg-dark text-light border-secondary"
+                placeholder="Describe lo que buscas... (ej: 'Sillón rojo cómodo', 'mesa de madera oscura')">
+            <button class="btn btn-primary" type="button" id="btn-search">Buscar</button>
+        </div>
+        <div class="form-text text-center mt-2 text-muted">
+            <i class="fas fa-bolt text-warning me-1"></i> Búsqueda impulsada por IA (CLIP). Puedes buscar por colores,
+            materiales o sensaciones.
+        </div>
+    </div>
+</div>
+
+<!-- Results Grid -->
+<div class="row g-4 animate-slide-up" id="gallery-grid">
+    <!-- Items will be injected here via JS -->
+    <div class="col-12 text-center text-muted py-5" id="initial-state">
+        <i class="fas fa-images fa-3x mb-3"></i>
+        <p>Cargando galería...</p>
+    </div>
+</div>
+
+<!-- Selection Floating Bar -->
+<div id="selection-bar"
+    class="position-fixed bottom-0 start-50 translate-middle-x mb-4 p-3 bg-primary rounded-pill shadow-lg d-flex align-items-center gap-3 animate-slide-up"
+    style="display: none; z-index: 1000; min-width: 300px;">
+    <span class="text-white fw-bold ps-2"><span id="selection-count">0</span> seleccionados</span>
+    <div class="vr bg-white opacity-25"></div>
+    <button class="btn btn-sm btn-light rounded-pill fw-bold" onclick="createMoodboard()">
+        <i class="fas fa-magic me-2"></i> Crear Moodboard
+    </button>
+    <button class="btn btn-sm btn-outline-light rounded-circle border-0" onclick="clearSelection()" title="Cancelar">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
+
+<!-- Result Modal -->
+<div class="modal fade" id="moodboardModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Tu Moodboard</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center p-0 bg-secondary bg-opacity-10">
+                <img id="moodboard-result" src="" class="img-fluid" alt="Moodboard">
+            </div>
+            <div class="modal-footer border-secondary">
+                <a id="download-btn" href="#" download class="btn btn-primary">
+                    <i class="fas fa-download me-2"></i> Descargar
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Template -->
+<template id="card-template">
+    <div class="col-md-6 col-lg-4 col-xl-3 gallery-item">
+        <div class="card h-100 border-0 shadow-sm hover-lift bg-dark bg-opacity-50 position-relative group-select">
+
+            <!-- Selection Checkbox Overlay -->
+            <div class="position-absolute top-0 start-0 p-2 z-2">
+                <div class="form-check">
+                    <input class="form-check-input border-2 shadow-sm" type="checkbox"
+                        style="width: 1.5em; height: 1.5em; cursor: pointer;">
+                </div>
+            </div>
+
+            <div class="position-relative">
+                <img src="" class="card-img-top object-fit-cover" alt="Document" style="height: 250px;">
+                <div class="position-absolute top-0 end-0 p-2">
+                    <span class="badge bg-primary score-badge" style="display: none;">Score: 0.00</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <h6 class="card-title text-truncate mb-1 filename">Filename</h6>
+                <div class="tags-container mb-2">
+                    <!-- Tags -->
+                </div>
+                <small class="text-muted d-block mb-3 date">Date</small>
+
+                <!-- Palette Extractor -->
+                <div class="palette-container d-flex gap-1 mb-2">
+                    <!-- Color dots injected here -->
+                </div>
+
+                <div class="d-flex gap-2">
+                    <a href="#" class="btn btn-sm btn-outline-light flex-grow-1 view-btn">Ver</a>
+                    <button class="btn btn-sm btn-outline-primary similar-btn" title="Buscar Similares">
+                        <i class="fas fa-clone"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        loadGallery();
+
+        document.getElementById('btn-search').addEventListener('click', performSearch);
+        document.getElementById('semantic-search').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+    });
+
+    async function loadGallery() {
+        try {
+            const res = await fetch('/api/visual_search?q='); // Empty query gets recent docs via Visual Search API
+            const docs = await res.json();
+            renderGrid(docs);
+        } catch (e) {
+            console.error(e);
+            document.getElementById('gallery-grid').innerHTML = '<p class="text-danger text-center">Error cargando galería.</p>';
+        }
+    }
+
+    async function performSearch() {
+        const query = document.getElementById('semantic-search').value.trim();
+        const grid = document.getElementById('gallery-grid');
+
+        grid.innerHTML = '<div class="col-12 text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">Analizando conceptos...</p></div>';
+
+        try {
+            let url = query ? `/api/visual_search?q=${encodeURIComponent(query)}` : '/api/search?q=';
+
+            const res = await fetch(url);
+            const results = await res.json();
+            renderGrid(results, !!query);
+        } catch (e) {
+            console.error(e);
+            grid.innerHTML = '<p class="text-danger text-center">Error en la búsqueda.</p>';
+        }
+    }
+
+    async function searchSimilar(docId) {
+        const grid = document.getElementById('gallery-grid');
+        grid.innerHTML = '<div class="col-12 text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">Buscando parecidos visuales...</p></div>';
+
+        try {
+            const res = await fetch(`/api/search/similar/${docId}`);
+            const results = await res.json();
+            renderGrid(results, true);
+
+            // Add a "Clear Search" indicator
+            const title = document.querySelector('h1.h3');
+            title.innerHTML = `Similares a <span class="text-primary">#${docId}</span> <button class="btn btn-sm btn-link text-muted" onclick="loadGallery()">Limpiar</button>`;
+        } catch (e) {
+            console.error(e);
+            grid.innerHTML = '<p class="text-danger text-center">Error en la búsqueda de similares.</p>';
+        }
+    }
+
+    function renderGrid(items, isSearch = false) {
+        const grid = document.getElementById('gallery-grid');
+        grid.innerHTML = '';
+
+        if (items.length === 0) {
+            grid.innerHTML = '<div class="col-12 text-center text-muted py-5"><p>No se encontraron resultados.</p></div>';
+            return;
+        }
+
+        const template = document.getElementById('card-template');
+
+        items.forEach(item => {
+            const clone = template.content.cloneNode(true);
+
+            // Image (Thumbnail or Doc Page 1)
+            const imgPath = `/view_document_file/${item.id}`;
+
+            clone.querySelector('img').src = imgPath;
+            clone.querySelector('.filename').textContent = item.filename || item.path.split(/[\\/]/).pop();
+            clone.querySelector('.date').textContent = item.date || '';
+            clone.querySelector('.view-btn').href = `/document/${item.id}`;
+
+            // Palette
+            const paletteWrap = clone.querySelector('.palette-container');
+            if (item.tags && Array.isArray(item.tags)) {
+                item.tags.forEach(tag => {
+                    if (tag.startsWith('color:')) {
+                        const colorHex = tag.replace('color:', '');
+                        const dot = document.createElement('div');
+                        dot.className = 'rounded-circle shadow-sm';
+                        dot.style.width = '14px';
+                        dot.style.height = '14px';
+                        dot.style.backgroundColor = colorHex;
+                        dot.title = colorHex;
+                        paletteWrap.appendChild(dot);
+                    }
+                });
+            }
+
+            // Similar Search Button
+            clone.querySelector('.similar-btn').onclick = () => searchSimilar(item.id);
+
+            // Search Score
+            if (isSearch && item.score) {
+                const badge = clone.querySelector('.score-badge');
+                badge.style.display = 'inline-block';
+                badge.textContent = `${Math.round(item.score * 100)}% Match`;
+                if (item.score > 0.28) badge.classList.replace('bg-primary', 'bg-success');
+                else if (item.score < 0.22) badge.classList.replace('bg-primary', 'bg-warning');
+            }
+
+            // Selection Logic
+            const checkbox = clone.querySelector('.form-check-input');
+            const card = clone.querySelector('.card');
+
+            // Toggle selection on card click (optional, maybe implies viewing)
+            // Let's keep it to checkbox for now to avoid conflict with view button
+            checkbox.addEventListener('change', (e) => {
+                const id = item.id;
+                if (e.target.checked) {
+                    selectedIds.add(id);
+                    card.classList.add('border-primary', 'border-2');
+                } else {
+                    selectedIds.delete(id);
+                    card.classList.remove('border-primary', 'border-2');
+                }
+                updateSelectionUI();
+            });
+
+            // Tags (Mockup or real if available in item)
+            // Ideally backend returns tags. Assuming tags are in item.tags or snippet?
+            // For visual search results, we might not have full metadata unless we join DB.
+            // Simplified for now.
+
+            grid.appendChild(clone);
+        });
+    }
+
+    // Moodboard Logic
+    const selectedIds = new Set();
+
+    function updateSelectionUI() {
+        const bar = document.getElementById('selection-bar');
+        const countSpan = document.getElementById('selection-count');
+        const count = selectedIds.size;
+
+        countSpan.textContent = count;
+        if (count > 0) {
+            bar.style.display = 'flex';
+        } else {
+            bar.style.display = 'none';
+        }
+    }
+
+    function clearSelection() {
+        selectedIds.clear();
+        document.querySelectorAll('.form-check-input').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.card').classList.remove('border-primary', 'border-2');
+        });
+        updateSelectionUI();
+    }
+
+    async function createMoodboard() {
+        if (selectedIds.size === 0) return;
+
+        const title = prompt("Título del Moodboard (ej: Salón Verano):", "Mi Proyecto");
+        if (!title) return;
+
+        const btn = document.querySelector('#selection-bar button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/create_moodboard', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ids: Array.from(selectedIds),
+                    title: title
+                })
+            });
+
+            if (!res.ok) throw new Error('Error generando');
+
+            const data = await res.json();
+
+            // Show result
+            const modal = new bootstrap.Modal(document.getElementById('moodboardModal'));
+            document.getElementById('moodboard-result').src = data.url;
+            document.getElementById('download-btn').href = data.url;
+            modal.show();
+
+            clearSelection();
+
+        } catch (e) {
+            alert("Error: " + e.message);
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

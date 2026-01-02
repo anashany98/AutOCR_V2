@@ -1,0 +1,51 @@
+version: "3.9"  # Compose Spec 2025 compatible
+
+x-common-env: &common-env
+  FLASK_ENV: production
+  PYTHONUNBUFFERED: "1"
+  NVIDIA_VISIBLE_DEVICES: all
+  NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+services:
+  autocr_v2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - type=local,src=.build_cache
+      cache_to:
+        - type=local,dest=.build_cache,mode=max
+    image: autocr_v2_gpu:latest
+    container_name: autocr_v2
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    environment: *common-env
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 30s
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+      labels:
+        - "com.autocr.role=ocr-gpu-service"
+        - "com.autocr.version=2025.10"
+    healthcheck:
+      test: ["CMD", "python3", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

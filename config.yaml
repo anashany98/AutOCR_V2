@@ -1,0 +1,181 @@
+postbatch:
+  input_folder: input
+  processed_folder: processed
+  failed_folder: errors
+  reports_folder: reports
+  file_types:
+  - .pdf
+  - .tif
+  - .tiff
+  - .jpg
+  - .jpeg
+  - .png
+  - .bmp
+  - .gif
+  - .docx
+  - .xlsx
+  - .xlsm
+  - .csv
+  - .txt
+  - .json
+  - .eml
+  - .webp
+  - .jfif
+  - .avif
+  ocr_enabled: true
+  classification_enabled: true
+  delete_original: false
+  batch_summary_report: true
+  max_workers: 4
+  inactivity_trigger_minutes: 0
+  project_grouping:
+    enabled: true
+    patterns:
+    - PRJ-[A-Z0-9]+
+    - H-\d{4}
+    - PROYECTO\s+[A-Z0-9]+
+  vendor_aliases:
+    enabled: true
+    mappings:
+      Amazon:
+      - Amzn
+      - Amazon Mkt
+      - AWS
+      Leroy Merlin:
+      - Leroy
+      - L. Merlin
+      - LeroyMerlin
+      IKEA:
+      - Ikea
+      - IKEA Ibérica
+  smart_renaming:
+    enabled: true
+    format: '{date}_{type}_{project}_{vendor}_{filename}'
+  email_importer:
+    enabled: false
+    host: imap.gmail.com
+    port: 993
+    user: your_email@gmail.com
+    password: your_app_password
+    folders:
+    - INBOX
+    check_interval: 60
+    allowed_extensions:
+    - .pdf
+    - .jpg
+    - .jpeg
+    - .png
+    - .tiff
+    - .tif
+    - .webp
+    - .jfif
+    - .avif
+  hot_folder:
+    enabled: false
+    path: C:\Users\Usuari\Desktop\HotFolder
+    extensions:
+    - .pdf
+    - .jpg
+    - .jpeg
+    - .png
+app:
+  db_path: data/digitalizerai.db
+  use_sql_server: false
+  sql_server_dsn: Driver={SQL Server};Server=localhost;Database=DigitalizerAI;Trusted_Connection=yes;
+  log_level: INFO
+ocr_pipeline:
+  engines:
+  - name: paddleocr
+    enabled: true
+    gpu: true
+    use_gpu: true
+    lang: spa
+    layout: true
+    tables: true
+    model_variant: ppocrv4
+    model_profile: latin
+    model_storage_dir: models/paddle
+    autodownload_models: true
+  - name: easyocr
+    enabled: true
+    gpu: false
+    langs:
+    - spa
+    - eng
+  fusion:
+    strategy: levenshtein
+    min_confidence: 0.8
+    min_similarity: 0.82
+    priority:
+    - paddleocr
+    - easyocr
+  
+  llm:
+    enabled: true
+    provider: "lm_studio"  # Options: lm_studio, ollama, openai
+    base_url: "http://localhost:1234/v1"
+    model: "local-model"   # Model name (often ignored by local servers but required by API)
+    timeout: 60
+
+  vision:
+    enabled: true
+    index_path: data/vision_index.faiss
+    embeddings_dir: data/vision_embeddings
+    model: clip-ViT-B-32
+    gallery_dir: data/vision_gallery
+    auto_tagging:
+      enabled: true
+      candidates:
+      - Sofá
+      - Sillón
+      - Silla
+      - Mesa de Comedor
+      - Mesa de Centro
+      - Cama
+      - Armario
+      - Lámpara
+      - Alfombra
+      - Madera Roble (Oak)
+      - Madera Nogal (Walnut)
+      - Madera Pino
+      - Madera Caoba
+      - Madera Clara
+      - Madera Oscura
+      - Tela Terciopelo
+      - Tela Lino
+      - Tela Algodón
+      - Tela Seda
+      - Cuero
+      - Cuero Sintético
+      - Color Beige
+      - Color Gris
+      - Color Blanco
+      - Color Negro
+      - Color Azul Marino
+      - Color Verde Esmeralda
+      - Color Mostaza
+      - Color Terracota
+      - Color Pastel
+      - Estilo Moderno
+      - Estilo Industrial
+      - Estilo Rústico
+      - Estilo Nórdico
+      - Estilo Clásico
+      - Estilo Minimalista
+  output:
+    formats:
+    - markdown
+    - json
+    save_markdown_in_db: true
+  primary_engine: auto
+database:
+  engine: sqlite
+  sqlite:
+    path: data/digitalizerai.db
+  postgresql:
+    host: localhost
+    port: 5432
+    user: postgres
+    password: password
+    dbname: autocr
+    use_pgvector: false

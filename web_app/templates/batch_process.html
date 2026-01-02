@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Procesamiento Batch - AutOCR{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header">
+                <h4><i class="fas fa-cog"></i> Procesamiento Batch</h4>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="mb-3">
+                        <label for="target_folder" class="form-label">
+                            📁 Carpeta a procesar
+                        </label>
+                        <input type="text" class="form-control" id="target_folder" name="target_folder"
+                               placeholder="C:\Users\Usuario\Documents\Scans" required>
+                        <div class="form-text">
+                            Ruta completa de la carpeta que contiene los archivos a procesar.
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success btn-lg">
+                            <i class="fas fa-play"></i> Iniciar Procesamiento Batch
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle"></i> Información del Procesamiento Batch</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <h6><i class="fas fa-exclamation-triangle"></i> Importante:</h6>
+                    <ul class="mb-0">
+                        <li>Asegúrate de que la carpeta especificada existe y contiene archivos</li>
+                        <li>El procesamiento puede tardar varios minutos dependiendo del número de archivos</li>
+                        <li>Los archivos procesados se moverán automáticamente a las carpetas correspondientes</li>
+                        <li>No cierres esta ventana mientras el procesamiento esté en marcha</li>
+                        <li>Equivalente a ejecutar: <code>python postbatch_processor.py --input-folder "TU_CARPETA"</code></li>
+                    </ul>
+                </div>
+
+                <p>El procesamiento batch realiza automáticamente:</p>
+                <ul>
+                    <li><strong>Detección de archivos:</strong> Busca PDFs, TIFFs, JPGs en la carpeta especificada</li>
+                    <li><strong>OCR completo:</strong> Extrae texto de todas las páginas de cada documento</li>
+                    <li><strong>Clasificación inteligente:</strong> Determina automáticamente el tipo de documento</li>
+                    <li><strong>Base de datos:</strong> Almacena toda la información para consultas futuras</li>
+                    <li><strong>Reportes:</strong> Genera informes CSV y PDF con estadísticas</li>
+                    <li><strong>Organización:</strong> Mueve archivos a carpetas processed/failed según resultado</li>
+                </ul>
+
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-terminal"></i> Equivalente en Línea de Comandos:</h6>
+                    <p>Esta función web es equivalente a ejecutar en terminal:</p>
+                    <code class="d-block p-2 bg-light">python postbatch_processor.py --input-folder "D:\Tu\Carpeta\Escaneos"</code>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <h6>Formatos soportados:</h6>
+                        <ul>
+                            <li>PDF (incluyendo multi-página)</li>
+                            <li>TIFF/TIF (multi-frame)</li>
+                            <li>JPG/JPEG</li>
+                            <li>PNG</li>
+                            <li>BMP</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Tipos de documento detectados:</h6>
+                        <ul>
+                            <li>Facturas (Invoice)</li>
+                            <li>Contratos (Contract)</li>
+                            <li>Recibos (Receipt)</li>
+                            <li>Informes (Report)</li>
+                            <li>Cartas (Letter)</li>
+                            <li>Desconocidos (Unknown)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="fas fa-clock"></i> Historial de Procesamientos</h5>
+            </div>
+            <div class="card-body">
+                {% if metrics %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>OK</th>
+                                    <th>Fallidos</th>
+                                    <th>Tiempo Promedio</th>
+                                    <th>Fiabilidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for metric in metrics %}
+                                    <tr>
+                                        <td>{{ metric[0][:19] }}</td>
+                                        <td><span class="badge bg-success">{{ metric[1] }}</span></td>
+                                        <td><span class="badge bg-danger">{{ metric[2] }}</span></td>
+                                        <td>{{ "%.2f"|format(metric[3]) }}s</td>
+                                        <td>{{ "%.1f"|format(metric[4]) }}%</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No hay historial de procesamientos batch.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

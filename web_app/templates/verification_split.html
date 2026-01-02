@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Verificar Documento - AutoOCR</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+    <style>
+        .split-container {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .left-panel {
+            flex: 1;
+            background: #1e1e1e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-right: 1px solid #333;
+        }
+
+        .right-panel {
+            width: 450px;
+            padding: 2rem;
+            background: #121212;
+            overflow-y: auto;
+        }
+
+        .preview-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.8rem;
+            background: #1e1e1e;
+            border: 1px solid #333;
+            color: #fff;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+
+        .form-input:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+
+        .low-confidence {
+            border-color: #dc3545 !important;
+            background-color: rgba(220, 53, 69, 0.1);
+        }
+
+        .low-confidence:focus {
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+        }
+
+        .actions {
+            margin-top: 2rem;
+            display: flex;
+            gap: 1rem;
+        }
+
+        .btn-verify {
+            flex: 1;
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-cancel {
+            background: transparent;
+            color: #aaa;
+            border: 1px solid #333;
+            padding: 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .confidence-badge {
+            display: inline-block;
+            font-size: 0.8rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: #333;
+            margin-left: 0.5rem;
+        }
+    </style>
+</head>
+
+<body style="margin:0; background:#000; color:#fff; font-family: 'Inter', sans-serif;">
+
+    <div class="split-container">
+        <!-- Left: Document Preview -->
+        <div class="left-panel">
+            {% if document.type == 'pdf' or document.filename.lower().endswith('.pdf') %}
+            <embed src="{{ url_for('static', filename='uploads/' ~ document.filename) }}" class="preview-frame"
+                type="application/pdf">
+            {% else %}
+            <img src="{{ url_for('static', filename='uploads/' ~ document.filename) }}"
+                style="max-width:100%; max-height:100%; object-fit:contain;">
+            {% endif %}
+        </div>
+
+        <!-- Right: Data Form -->
+        <div class="right-panel">
+            <h2 style="margin-top:0;">Verificación Manual</h2>
+            ID: #{{ document.id }} | {{ document.filename }}
+            </p>
+
+            <button type="button" class="btn btn-sm btn-outline-danger mb-4 w-100" id="next-issue-btn"
+                style="display:none;">
+                <i class="fas fa-exclamation-triangle me-2"></i> Saltar a Siguiente Campo Dudoso
+            </button>
+
+            <form id="verificationForm">
+                <div class="form-group">
+                    <label class="form-label">
+                        Fecha del Documento
+                        {% if document.date_conf and document.date_conf < 0.8 %} <span class="badge bg-danger ms-2">
+                            Revisar ({{ (document.date_conf * 100)|int }}%)</span>
+                            {% endif %}
+                    </label>
+                    <input type="date"
+                        class="form-input {% if document.date_conf and document.date_conf < 0.8 %}low-confidence{% endif %}"
+                        name="date" value="{{ document.data.date }}">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        Total (€)
+                        {% if document.total_conf and document.total_conf < 0.8 %} <span class="badge bg-danger ms-2">
+                            Revisar ({{ (document.total_conf * 100)|int }}%)</span>
+                            {% endif %}
+                    </label>
+                    <input type="number" step="0.01"
+                        class="form-input {% if document.total_conf and document.total_conf < 0.8 %}low-confidence{% endif %}"
+                        name="total" value="{{ document.data.total }}">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        Proveedor Identificado
+                        {% if document.supplier_conf and document.supplier_conf < 0.8 %} <span
+                            class="badge bg-danger ms-2">Revisar ({{ (document.supplier_conf * 100)|int }}%)</span>
+                            {% endif %}
+                    </label>
+                    <input type="text"
+                        class="form-input {% if document.supplier_conf and document.supplier_conf < 0.8 %}low-confidence{% endif %}"
+                        name="supplier" value="{{ document.data.supplier }}">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Tipo de Documento</label>
+                    <select class="form-input" name="type">
+                        <option value="invoice" {% if document.type=='invoice' %}selected{% endif %}>Factura</option>
+                        <option value="receipt" {% if document.type=='receipt' %}selected{% endif %}>Ticket</option>
+                        <option value="budget" {% if document.type=='budget' %}selected{% endif %}>Presupuesto</option>
+                        <option value="other" {% if document.type=='other' %}selected{% endif %}>Otro</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Etiquetas (Separadas por comas)</label>
+                    <input type="text" class="form-input" name="tags" value="{{ document.tags|join(', ') }}">
+                </div>
+
+                <div class="actions">
+                    <a href="{{ url_for('document_detail', doc_id=document.id) }}" class="btn-cancel">Cancelar</a>
+                    <button type="submit" class="btn-verify">✅ Confirmar y Guardar</button>
+                </div>
+                <div id="statusMsg" style="margin-top:1rem; text-align:center;"></div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('verificationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('.btn-verify');
+            const msg = document.getElementById('statusMsg');
+
+            btn.disabled = true;
+            btn.innerText = "Guardando...";
+            msg.innerText = "";
+            msg.style.color = "#aaa";
+
+            const formData = new FormData(e.target);
+            const data = {
+                filename: "{{ document.filename }}", // Keep original filename
+                date: formData.get('date') || null,
+                total: parseFloat(formData.get('total')) || 0.0,
+                supplier: formData.get('supplier'),
+                type: formData.get('type'),
+                tags: formData.get('tags').split(',').map(t => t.trim()).filter(t => t)
+            };
+
+            // Focus logic
+            const lowConfInputs = document.querySelectorAll('.low-confidence');
+            const nextIssueBtn = document.getElementById('next-issue-btn');
+
+            if (lowConfInputs.length > 0) {
+                nextIssueBtn.style.display = 'block';
+                let currentIssueIndex = -1;
+
+                nextIssueBtn.addEventListener('click', () => {
+                    currentIssueIndex = (currentIssueIndex + 1) % lowConfInputs.length;
+                    lowConfInputs[currentIssueIndex].focus();
+                    lowConfInputs[currentIssueIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+            }
+
+            try {
+                const response = await fetch("/api/document/{{ document.id }}/update", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    msg.innerText = "¡Guardado correctamente!";
+                    msg.style.color = "#28a745";
+                    setTimeout(() => {
+                        window.location.href = "{{ url_for('document_detail', doc_id=document.id) }}";
+                    }, 1000);
+                } else {
+                    msg.innerText = "Error: " + (result.error || "Datos inválidos");
+                    msg.style.color = "#dc3545";
+                    console.error(result.details);
+                    btn.disabled = false;
+                    btn.innerText = "✅ Confirmar y Guardar";
+                }
+            } catch (err) {
+                msg.innerText = "Error de conexión";
+                msg.style.color = "#dc3545";
+                btn.disabled = false;
+                btn.innerText = "✅ Confirmar y Guardar";
+            }
+        });
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Buscador Visual - AutOCR{% endblock %}
+
+{% block content %}
+<div class="row mb-4 animate-fade-in">
+    <div class="col-12">
+        <h1 class="display-5 fw-bold mb-0">Buscador Visual</h1>
+        <p class="text-muted">Encuentra documentos y activos describiendo su contenido o aspecto.</p>
+    </div>
+</div>
+
+<div class="row mb-5 animate-fade-in">
+    <div class="col-lg-8 mx-auto">
+        <form method="POST" class="position-relative">
+            <div class="input-group input-group-lg shadow-sm rounded-pill overflow-hidden border-0">
+                <span class="input-group-text bg-dark border-0 ps-4 text-muted">
+                    <i class="fas fa-search"></i>
+                </span>
+                <input type="text" name="query" class="form-control bg-dark border-0 text-white"
+                    placeholder="Describe lo que buscas (ej. 'silla terciopelo azul', 'factura ikea')..."
+                    style="box-shadow: none;" value="{{ query if query else '' }}" autofocus>
+                <button class="btn btn-primary px-4" type="submit">Buscar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if query %}
+<div class="row mb-3 animate-fade-in">
+    <div class="col-12">
+        <h5 class="fw-bold">Resultados para "<span class="text-primary">{{ query }}</span>"</h5>
+    </div>
+</div>
+{% endif %}
+
+<div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-4 animate-fade-in">
+    {% if results %}
+    {% for result in results %}
+    <div class="col">
+        <div class="card h-100 border-0 shadow-sm hover-up">
+            <div class="card-img-top bg-secondary bg-opacity-10 position-relative overflow-hidden"
+                style="height: 200px;">
+                <!-- Serve image through a dedicated route or static if possible. 
+                         Using a placeholder logic for now, handled in app.py to serve file -->
+                <img src="{{ url_for('serve_file', filename=result.relative_path) }}"
+                    class="w-100 h-100 object-fit-cover" alt="Resultado"
+                    onerror="this.src='/static/img/placeholder.png'">
+                <div class="position-absolute top-0 end-0 p-2">
+                    <span class="badge bg-dark bg-opacity-75 backdrop-blur">
+                        {{ "%.0f"|format(result.score * 100) }}% Similitud
+                    </span>
+                </div>
+            </div>
+            <div class="card-body">
+                <h6 class="card-title text-truncate" title="{{ result.filename }}">{{ result.filename }}</h6>
+                <p class="card-text small text-muted">
+                    <i class="fas fa-folder me-1"></i> {{ result.folder }}
+                </p>
+            </div>
+            <div class="card-footer bg-transparent border-0 pt-0">
+                <a href="{{ url_for('serve_file', filename=result.relative_path) }}" target="_blank"
+                    class="btn btn-sm btn-outline-light w-100 stretched-link">Ver Documento</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% elif query %}
+    <div class="col-12 text-center py-5">
+        <div class="text-muted opacity-50">
+            <i class="fas fa-camera-retro fa-3x mb-3"></i>
+            <h4>No se encontraron coincidencias</h4>
+            <p>Intenta describir el objeto o documento de otra forma.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

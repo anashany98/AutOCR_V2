@@ -1,0 +1,42 @@
+postbatch:
+  input_folder: "data/scans_inbox"
+  processed_folder: "data/scans_processed"
+  failed_folder: "data/scans_failed"
+  reports_folder: "data/reports"
+  file_types: [".jpg"]
+  ocr_enabled: false
+  classification_enabled: true
+  delete_original: false
+  batch_summary_report: true
+  inactivity_trigger_minutes: 0
+
+app:
+  db_path: "data/digitalizerai.db"
+  use_sql_server: false
+  log_level: "DEBUG"
+ocr_pipeline:
+  engines:
+  - name: "paddleocr"
+    enabled: true
+    gpu: false
+    lang: "eng+spa"
+    layout: true
+    tables: false
+  - name: "easyocr"
+    enabled: true
+    gpu: false
+    langs: ["eng+spa"]
+  vision:
+    enabled: false
+    index_path: "data/vision_index.faiss"
+    embeddings_dir: "data/vision_embeddings"
+    model: "clip-ViT-B-32"
+    gallery_dir: "data/vision_gallery"
+  fusion:
+    strategy: "confidence_vote"
+    min_confidence: 0.60
+    confidence_margin: 0.05
+    priority: ["paddleocr", "easyocr"]
+  output:
+    formats: ["markdown", "json"]
+    save_markdown_in_db: true

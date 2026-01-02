@@ -1,0 +1,331 @@
+2025-12-31 12:41:30 [INFO] AutOCR web app initialised.
+2025-12-31 12:44:14 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 12:44:14 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 12:44:15 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpc3xzuwdt.tar'
+2025-12-31 12:44:17 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 12:44:19 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 12:47:02 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 12:47:02 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 12:47:03 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmppxcub4a5.tar'
+2025-12-31 12:47:03 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 12:47:06 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:07:18 [INFO] AutOCR web app initialised.
+2025-12-31 13:07:23 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:07:23 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:07:24 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp_h69ez4y.tar'
+2025-12-31 13:07:26 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:07:28 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:07:38 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:07:38 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:07:39 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp4k98iab5.tar'
+2025-12-31 13:07:39 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:07:43 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:08:06 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:08:06 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:08:07 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpfhad431_.tar'
+2025-12-31 13:08:07 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:08:08 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:08:08 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:08:09 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpd89ouu4a.tar'
+2025-12-31 13:08:09 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:08:13 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:08:13 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:08:58 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:08:58 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:08:59 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpb5dos10s.tar'
+2025-12-31 13:08:59 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:09:03 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:11:28 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:11:28 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:11:28 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp8kz71_eq.tar'
+2025-12-31 13:11:28 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:11:31 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:11:38 [INFO] AutOCR web app initialised.
+2025-12-31 13:11:45 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:11:45 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:11:46 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp7pa603ag.tar'
+2025-12-31 13:11:46 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:11:49 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:12:11 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:12:11 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:12:12 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpwrxa6ij9.tar'
+2025-12-31 13:12:12 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:12:15 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:13:27 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:13:27 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:13:28 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpl4pq2uhh.tar'
+2025-12-31 13:13:28 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:13:31 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:14:51 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:14:51 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:14:52 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpj49pcc0q.tar'
+2025-12-31 13:14:52 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:14:55 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:15:10 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:15:10 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:15:11 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpgt27m375.tar'
+2025-12-31 13:15:11 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:15:14 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:16:49 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:16:49 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:16:50 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:16:50 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:16:50 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpl3_yxbh2.tar'
+2025-12-31 13:16:50 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:16:50 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp2t8osw80.tar'
+2025-12-31 13:16:50 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:16:51 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:16:51 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:16:52 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpfcgf0572.tar'
+2025-12-31 13:16:52 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:16:54 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:16:54 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:16:54 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:16:54 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:16:54 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:16:54 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:16:54 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:16:55 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:16:55 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:16:55 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpp6g7xc7w.tar'
+2025-12-31 13:16:55 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:16:55 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpdmk4_9f4.tar'
+2025-12-31 13:16:55 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:16:55 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpe0mw4our.tar'
+2025-12-31 13:16:55 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:17:00 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:17:00 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:17:00 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:17:05 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:17:05 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:17:06 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp_6ndooc5.tar'
+2025-12-31 13:17:06 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:17:07 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:21:04 [INFO] AutOCR web app initialised.
+2025-12-31 13:21:23 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:21:23 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:21:24 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpshh26ezn.tar'
+2025-12-31 13:21:26 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:21:28 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:21:28 [INFO] AutOCR web app initialised.
+2025-12-31 13:55:40 [INFO] AutOCR web app initialised.
+2025-12-31 13:58:44 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:58:44 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:58:45 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpwfwce8z5.tar'
+2025-12-31 13:58:45 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:58:47 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:59:38 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 13:59:38 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 13:59:39 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpbuednqwm.tar'
+2025-12-31 13:59:39 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 13:59:40 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 13:59:40 [INFO] No images found in C:\Users\Usuari\Desktop\Proyectos\AutoOCR_2.5\data\vision_gallery; clearing index.
+2025-12-31 14:02:35 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 14:02:35 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 14:02:36 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpb6shict4.tar'
+2025-12-31 14:02:36 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 14:02:38 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 14:06:57 [INFO] AutOCR web app initialised.
+2025-12-31 14:08:10 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2025-12-31 14:08:10 [INFO] CUDA not available; EasyOCR will run on CPU.
+2025-12-31 14:08:11 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpbiaq52wf.tar'
+2025-12-31 14:08:11 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2025-12-31 14:08:12 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2025-12-31 14:10:08 [INFO] AutOCR web app initialised.
+2026-01-02 07:59:45 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 07:59:45 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 07:59:47 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmptdsbg0r2.tar'
+2026-01-02 07:59:49 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 07:59:51 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:00:18 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:00:18 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:00:19 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp__nblhmu.tar'
+2026-01-02 08:00:19 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:00:21 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:00:21 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:00:21 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:00:22 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:00:22 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:00:22 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpd1cab3rs.tar'
+2026-01-02 08:00:22 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:00:23 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp911gkxcw.tar'
+2026-01-02 08:00:23 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:00:25 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:00:25 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:00:27 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:00:27 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:00:28 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpswrr8jkl.tar'
+2026-01-02 08:00:28 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:00:28 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:00:28 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:00:29 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmppagobfh2.tar'
+2026-01-02 08:00:29 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:00:29 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:00:29 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:00:30 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:00:30 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:00:30 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:00:30 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:00:30 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp8whohrab.tar'
+2026-01-02 08:00:30 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:00:30 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmptfrc1y4b.tar'
+2026-01-02 08:00:30 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:00:31 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpxbt10azl.tar'
+2026-01-02 08:00:31 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:00:34 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:00:36 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:00:36 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:00:36 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:00:36 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:02:22 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:02:22 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:02:23 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp0vw5ez3o.tar'
+2026-01-02 08:02:23 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:02:25 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:02:59 [INFO] AutOCR web app initialised.
+2026-01-02 08:04:09 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:04:09 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:04:10 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp3purfk9t.tar'
+2026-01-02 08:04:10 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:04:10 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:04:10 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:04:11 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpq5hra84s.tar'
+2026-01-02 08:04:11 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:04:13 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:04:13 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:05:41 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:05:41 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:05:42 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:05:42 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:05:42 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpg9h7h97x.tar'
+2026-01-02 08:05:42 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:05:42 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:05:42 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:05:42 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpzprm9m3n.tar'
+2026-01-02 08:05:42 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:05:43 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:05:43 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:05:43 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp7hqzd7j8.tar'
+2026-01-02 08:05:43 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:05:43 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmps_rsp24n.tar'
+2026-01-02 08:05:43 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:05:47 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:05:47 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:05:48 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:05:48 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:08:11 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:08:11 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:08:12 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:08:12 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:08:12 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmph3b0iu4f.tar'
+2026-01-02 08:08:12 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:08:12 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpuk2t9s2t.tar'
+2026-01-02 08:08:12 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:08:17 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:08:17 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:08:31 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:08:31 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:08:32 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpwbjsqqv9.tar'
+2026-01-02 08:08:32 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:08:35 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:08:38 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:08:38 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:08:38 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpqjyki51q.tar'
+2026-01-02 08:08:38 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:08:41 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:12:38 [INFO] AutOCR web app initialised.
+2026-01-02 08:13:27 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:13:27 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:13:28 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmp8skyft6l.tar'
+2026-01-02 08:13:31 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:13:33 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:15:47 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:15:47 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:15:48 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpa1byr28x.tar'
+2026-01-02 08:15:48 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:15:50 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:15:50 [ERROR] Processing failed for dummy.pdf: Unable to get page count.
+Syntax Warning: May not be a PDF file (continuing anyway)
+Syntax Error: Couldn't find trailer dictionary
+Syntax Error: Couldn't find trailer dictionary
+Syntax Error: Couldn't read xref table
+Traceback (most recent call last):
+  File "C:\Users\Usuari\AppData\Local\Programs\Python\Python312\Lib\site-packages\pdf2image\pdf2image.py", line 602, in pdfinfo_from_path
+    raise ValueError
+ValueError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Usuari\Desktop\Proyectos\AutoOCR_2.5\postbatch_processor.py", line 429, in process_single_file
+    pages = load_document_pages(file_path)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuari\Desktop\Proyectos\AutoOCR_2.5\postbatch_processor.py", line 123, in load_document_pages
+    pages = convert_from_path(file_path)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuari\AppData\Local\Programs\Python\Python312\Lib\site-packages\pdf2image\pdf2image.py", line 127, in convert_from_path
+    page_count = pdfinfo_from_path(
+                 ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuari\AppData\Local\Programs\Python\Python312\Lib\site-packages\pdf2image\pdf2image.py", line 611, in pdfinfo_from_path
+    raise PDFPageCountError(
+pdf2image.exceptions.PDFPageCountError: Unable to get page count.
+Syntax Warning: May not be a PDF file (continuing anyway)
+Syntax Error: Couldn't find trailer dictionary
+Syntax Error: Couldn't find trailer dictionary
+Syntax Error: Couldn't read xref table
+
+2026-01-02 08:16:06 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:16:06 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:16:07 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpfsp3c1vb.tar'
+2026-01-02 08:16:07 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:16:08 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:16:08 [ERROR] Processing failed for valid_dummy.pdf: Unable to get page count.
+Syntax Warning: No valid XRef size in trailer
+Syntax Error: Catalog dictionary does not contain a valid "Pages" entry
+Command Line Error: Wrong page range given: the first page (1) can not be after the last page (0).
+Traceback (most recent call last):
+  File "C:\Users\Usuari\AppData\Local\Programs\Python\Python312\Lib\site-packages\pdf2image\pdf2image.py", line 602, in pdfinfo_from_path
+    raise ValueError
+ValueError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Usuari\Desktop\Proyectos\AutoOCR_2.5\postbatch_processor.py", line 429, in process_single_file
+    pages = load_document_pages(file_path)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuari\Desktop\Proyectos\AutoOCR_2.5\postbatch_processor.py", line 123, in load_document_pages
+    pages = convert_from_path(file_path)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuari\AppData\Local\Programs\Python\Python312\Lib\site-packages\pdf2image\pdf2image.py", line 127, in convert_from_path
+    page_count = pdfinfo_from_path(
+                 ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuari\AppData\Local\Programs\Python\Python312\Lib\site-packages\pdf2image\pdf2image.py", line 611, in pdfinfo_from_path
+    raise PDFPageCountError(
+pdf2image.exceptions.PDFPageCountError: Unable to get page count.
+Syntax Warning: No valid XRef size in trailer
+Syntax Error: Catalog dictionary does not contain a valid "Pages" entry
+Command Line Error: Wrong page range given: the first page (1) can not be after the last page (0).
+
+2026-01-02 08:20:47 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:20:47 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:20:48 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpo_4b8alm.tar'
+2026-01-02 08:20:48 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:20:50 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:22:08 [INFO] AutOCR web app initialised.
+2026-01-02 08:22:24 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:22:24 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:22:25 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpbum_ng7a.tar'
+2026-01-02 08:22:25 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:22:27 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:22:43 [INFO] AutOCR web app initialised.
+2026-01-02 08:23:06 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:23:06 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:23:07 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpbjv1w2j7.tar'
+2026-01-02 08:23:07 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:23:10 [INFO] EasyOCR initialised (langs=es,en, gpu=False).
+2026-01-02 08:26:11 [INFO] CUDA not available; PaddleOCR will run on CPU.
+2026-01-02 08:26:11 [INFO] CUDA not available; EasyOCR will run on CPU.
+2026-01-02 08:26:11 [WARNING] Automatic PP-OCRv4 model setup failed: [WinError 32] El proceso no tiene acceso al archivo porque está siendo utilizado por otro proceso: 'C:\\Users\\Usuari\\AppData\\Local\\Temp\\tmpa2t6d2qy.tar'
+2026-01-02 08:26:11 [INFO] PaddleOCR initialised (lang=es, gpu=False).
+2026-01-02 08:26:13 [INFO] EasyOCR initialised (langs=es,en, gpu=False).

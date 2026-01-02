@@ -1,0 +1,43 @@
+FROM python:3.10-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    python3-dev \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    libgtk-3-0 \
+    libpango-1.0-0 \
+    libatk1.0-0 \
+    libcairo-gobject2 \
+    libgdk-pixbuf-2.0-0 \
+    libjpeg-dev \
+    libopenblas-dev \
+    poppler-utils \
+    libgl1 \
+    tesseract-ocr \
+    tesseract-ocr-spa \
+    tesseract-ocr-eng \
+    libssl-dev \
+    libffi-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-cpu.txt .
+
+RUN python -m pip install --upgrade pip setuptools wheel \
+ && python -m pip install --no-cache-dir -r requirements-cpu.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["python", "run_web.py"]

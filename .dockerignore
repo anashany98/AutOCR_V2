@@ -1,0 +1,96 @@
+# ============================================
+# 🧠 AutOCR_V2 — Docker Ignore File (2025)
+# Optimized for GPU build performance
+# ============================================
+
+# --- Python cache ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.pickle
+*.egg-info/
+*.egg
+*.so
+build/
+dist/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+opt/
+
+# --- Editor / IDE files ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# --- Git / Repo metadata ---
+.git/
+.gitignore
+.gitattributes
+.DS_Store
+
+# --- Logs / Debug ---
+*.log
+logs/
+*.tmp
+*.bak
+*.swp
+*.old
+*.orig
+
+# --- Local / Temporary data ---
+tmp/
+temp/
+cache/
+__temp__/
+__backup__/
+.backups/
+data/raw/
+data/tmp/
+data/temp/
+data/cache/
+data/*.zip
+data/*.rar
+
+# --- System files / OS metadata ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Docker / Compose cache ---
+.build_cache/
+docker-compose.override.yml
+
+# --- Tests / Samples (not needed inside container) ---
+tests/
+samples/
+scripts/dev/
+tools/experiments/
+
+# --- Sensitive files ---
+.env
+.env.*
+.env.local
+*.key
+*.pem
+*.crt
+*.der
+*.enc
+
+# --- Documentation ---
+README_WEB.md
+README.dev.md
+*.pdf
+*.docx
+*.xlsx
+
+# --- Others you may adjust later ---
+__archive__/
+old_versions/
+C*/Users*/Usuari*/Desktop*/  # Evita rutas con caracteres corruptos

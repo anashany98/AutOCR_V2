@@ -1,0 +1,729 @@
+{% extends "base.html" %}
+
+{% block title %}Editor - {{ document.filename }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4 animate-fade-in">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="{{ url_for('documents') }}"
+                            class="text-muted text-decoration-none">Documentos</a></li>
+                    <li class="breadcrumb-item active text-light" aria-current="page">{{ document.filename }}</li>
+                </ol>
+            </nav>
+            <h1 class="h4 fw-bold mb-0">Revisión y Edición</h1>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-outline-danger" onclick="deleteDocument({{ document.id }})">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+            {% if document.workflow_state != 'verified' %}
+            <a href="{{ url_for('verify_document', doc_id=document.id) }}" class="btn btn-success">
+                <i class="fas fa-edit me-2"></i> Verificar (UI)
+            </a>
+            {% endif %}
+            <button class="btn btn-primary" onclick="saveChanges()">
+                <i class="fas fa-save me-2"></i> Guardar
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 h-100 animate-slide-up">
+    <!-- Left Column: Preview -->
+    <div class="col-lg-6">
+        <div class="card h-100 border-0" style="min-height: 70vh;">
+            <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold text-uppercase text-muted small">Vista Previa</h6>
+                <div class="btn-group">
+                    <a href="{{ url_for('view_document_file', doc_id=document.id) }}" target="_blank"
+                        class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-external-link-alt"></i>
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal"
+                        data-bs-target="#enhanceModal">
+                        <i class="fas fa-magic me-1"></i> Reparar
+                    </button>
+                </div>
+            </div>
+            <div
+                class="card-body p-0 d-flex align-items-center justify-content-center bg-dark bg-opacity-50 rounded-bottom">
+                {% if document.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.jfif', '.avif'))
+                %}
+                <img src="{{ url_for('view_document_file', doc_id=document.id) }}" class="img-fluid"
+                    style="max-height: 65vh; object-fit: contain;" alt="Document Preview">
+                {% elif document.filename.lower().endswith('.pdf') %}
+                <embed src="{{ url_for('view_document_file', doc_id=document.id) }}" type="application/pdf" width="100%"
+                    height="100%" style="min-height: 65vh;">
+                {% else %}
+                <div class="text-center text-muted p-5">
+                    <i class="fas fa-file-alt fa-4x mb-3 opacity-50"></i>
+                    <p>Vista previa no disponible para este formato.</p>
+                    <a href="{{ url_for('view_document_file', doc_id=document.id) }}"
+                        class="btn btn-outline-primary btn-sm mt-2">Descargar Archivo</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Editor -->
+    <div class="col-lg-6">
+        <div class="card h-100 border-0">
+            <div class="card-header bg-transparent border-0">
+                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                    {% if document.type == 'Imagen' %}
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#visual-ai"
+                            type="button">Inteligencia Visual</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#visual-similar"
+                            type="button">Similares</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#metadata"
+                            type="button">Metadatos</button>
+                    </li>
+                    {% if document.text %}
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edit-ocr" type="button">Extracto
+                            OCR</button>
+                    </li>
+                    {% endif %}
+                    {% else %}
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#edit-ocr"
+                            type="button">Extracto OCR</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edit-md"
+                            type="button">Markdown</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#metadata"
+                            type="button">Metadatos</button>
+                    </li>
+                    {% if document.type == 'Imagen' or (document.tags and document.tags|length > 0) %}
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#visual-ai"
+                            type="button">Inteligencia Visual</button>
+                    </li>
+                    {% endif %}
+                    {% if document.type != 'Imagen' and document.structured_data %}
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#structured-data"
+                            type="button">Datos Estructurados</button>
+                    </li>
+                    {% endif %}
+                    {% endif %}
+                </ul>
+            </div>
+            <div class="card-body">
+                <form id="editor-form">
+                    <div class="tab-content h-100">
+                        <!-- OCR Tab -->
+                        <div class="tab-pane fade {{ 'show active' if document.type != 'Imagen' }} h-100" id="edit-ocr">
+                            <textarea class="form-control bg-dark text-light border-secondary font-monospace"
+                                id="ocr_text" name="ocr_text"
+                                style="height: 60vh; resize: none;">{{ document.text }}</textarea>
+                        </div>
+
+                        <!-- Markdown Tab -->
+                        <div class="tab-pane fade h-100" id="edit-md">
+                            <textarea class="form-control bg-dark text-light border-secondary font-monospace"
+                                id="markdown_text" name="markdown_text"
+                                style="height: 60vh; resize: none;">{{ document.markdown }}</textarea>
+                        </div>
+
+                        <!-- Metadata Tab -->
+                        <div class="tab-pane fade" id="metadata">
+                            <div class="mb-3">
+                                <label class="form-label text-muted small fw-bold">Nombre del Archivo</label>
+                                <input type="text" class="form-control bg-dark text-light border-secondary"
+                                    value="{{ document.filename }}" readonly>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted small fw-bold">Tipo Documental</label>
+                                    <select class="form-select bg-dark text-light border-secondary" name="doc_type">
+                                        <option value="Invoice" {{ 'selected' if document.type=='Invoice' }}>factura
+                                        </option>
+                                        <option value="Receipt" {{ 'selected' if document.type=='Receipt' }}>Recibo
+                                        </option>
+                                        <option value="Contract" {{ 'selected' if document.type=='Contract' }}>Contrato
+                                        </option>
+                                        <option value="Report" {{ 'selected' if document.type=='Report' }}>Informe
+                                        </option>
+                                        <option value="Imagen" {{ 'selected' if document.type=='Imagen' }}>Imagen /
+                                            Mueble
+                                        </option>
+                                        <option value="Unknown" {{ 'selected' if document.type=='Unknown' }}>Desconocido
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted small fw-bold">Estado Workflow</label>
+                                    <div class="d-flex align-items-center gap-2">
+                                        {% if document.workflow_state == 'verified' %}
+                                        <span
+                                            class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-3 py-2 w-100">
+                                            <i class="fas fa-check-circle me-1"></i> Verificado
+                                        </span>
+                                        {% elif document.workflow_state == 'pending' %}
+                                        <span
+                                            class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 px-3 py-2 w-100">
+                                            <i class="fas fa-exclamation-triangle me-1"></i> Pendiente
+                                        </span>
+                                        {% else %}
+                                        <span
+                                            class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-3 py-2 w-100">
+                                            <i class="fas fa-plus-circle me-1"></i> Nuevo
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row g-3 mt-2">
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted small fw-bold">Estado Procesamiento</label>
+                                    <select class="form-select bg-dark text-light border-secondary" name="status">
+                                        <option value="OK" {{ 'selected' if document.status=='OK' }}>OK</option>
+                                        <option value="FAILED" {{ 'selected' if document.status=='FAILED' }}>Fallido
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <h6 class="text-muted small fw-bold mb-3">Información Técnica</h6>
+                                <p class="small text-muted mb-1"><i class="fas fa-clock me-2"></i> Procesado: {{
+                                    document.datetime }}</p>
+                                <p class="small text-muted mb-1"><i class="fas fa-stopwatch me-2"></i> Duración: {{
+                                    "%.2f"|format(document.duration or 0) }}s</p>
+                                <p class="small text-muted mb-1"><i class="fas fa-percentage me-2"></i> Confianza Ocr:
+                                    {{
+                                    "%.2f"|format(document.confidence or 0) }}</p>
+                            </div>
+                        </div>
+
+                        <!-- Visual AI Tab -->
+                        <div class="tab-pane fade {{ 'show active' if document.type == 'Imagen' }}" id="visual-ai">
+                            <div class="mb-4">
+                                <h6 class="text-muted small fw-bold text-uppercase mb-3">Objetos y Atributos Detectados
+                                </h6>
+                                <div class="d-flex flex-wrap gap-2">
+                                    {% set has_tags = false %}
+                                    {% for tag in document.tags %}
+                                    {% if not tag.startswith('color:') and not tag.startswith('👉') %}
+                                    <span
+                                        class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-2">
+                                        <i class="fas fa-tag me-1"></i> {{ tag }}
+                                    </span>
+                                    {% set has_tags = true %}
+                                    {% endif %}
+                                    {% endfor %}
+                                    {% if not has_tags %}
+                                    <div
+                                        class="d-flex flex-column align-items-center justify-content-center py-4 bg-dark bg-opacity-25 rounded-3 border border-secondary border-dashed w-100">
+                                        <i class="fas fa-cube text-muted mb-2 opacity-50" style="font-size: 2rem;"></i>
+                                        <p class="text-muted small mb-0">No se han detectado objetos específicos</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <h6 class="text-muted small fw-bold text-uppercase mb-3">Paleta de Colores Dominantes
+                                </h6>
+                                <div class="d-flex gap-3 align-items-center">
+                                    {% set has_colors = false %}
+                                    {% for tag in document.tags %}
+                                    {% if tag.startswith('color:') %}
+                                    {% set color_hex = tag.replace('color:', '') %}
+                                    <div class="text-center">
+                                        <div style="width: 50px; height: 50px; background-color: {{ color_hex }};"
+                                            class="rounded-circle border border-secondary shadow-sm mb-1"
+                                            title="{{ color_hex }}"></div>
+                                        <code class="small text-muted" style="font-size: 0.7rem;">{{ color_hex }}</code>
+                                    </div>
+                                    {% set has_colors = true %}
+                                    {% endif %}
+                                    {% endfor %}
+                                    {% if not has_colors %}
+                                    <div
+                                        class="d-flex flex-column align-items-center justify-content-center py-4 bg-dark bg-opacity-25 rounded-3 border border-secondary border-dashed w-100">
+                                        <i class="fas fa-palette text-muted mb-2 opacity-50"
+                                            style="font-size: 2rem;"></i>
+                                        <p class="text-muted small mb-0">Paleta no disponible</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <div>
+                                <h6 class="text-muted small fw-bold text-uppercase mb-3">Sugerencias de Decoración</h6>
+                                <div class="list-group list-group-flush bg-transparent">
+                                    {% set has_advice = false %}
+                                    {% for tag in document.tags %}
+                                    {% if tag.startswith('👉') %}
+                                    <div class="list-group-item bg-transparent border-secondary text-light ps-0">
+                                        <i class="fas fa-lightbulb text-warning me-2"></i> {{ tag.replace('👉 ', '') }}
+                                    </div>
+                                    {% set has_advice = true %}
+                                    {% endif %}
+                                    {% endfor %}
+                                    {% if not has_advice %}
+                                    <div
+                                        class="d-flex flex-column align-items-center justify-content-center py-4 bg-dark bg-opacity-25 rounded-3 border border-secondary border-dashed w-100">
+                                        <i class="fas fa-lightbulb text-muted mb-2 opacity-50"
+                                            style="font-size: 2rem;"></i>
+                                        <p class="text-muted small mb-0">Sin sugerencias de decoración</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Visual Similar Tab -->
+                        <div class="tab-pane fade" id="visual-similar">
+                            <h6 class="text-muted small fw-bold text-uppercase mb-3">Documentos Similares (Búsqueda
+                                Visual)</h6>
+                            <div id="similar-list" class="row row-cols-1 row-cols-md-2 g-3">
+                                <div class="col-12 text-center py-5">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Cargando...</span>
+                                    </div>
+                                    <p class="text-muted mt-2 small">Buscando coincidencias visuales...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Structured Data Tab -->
+                        {% if document.structured_data %}
+                        <div class="tab-pane fade" id="structured-data">
+                            <!-- Anomaly Alerts -->
+                            {% if document.structured_data.anomalies and document.structured_data.anomalies|length > 0
+                            %}
+                            <div class="alert alert-warning alert-dismissible fade show mb-4" role="alert">
+                                <h6 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Anomalías
+                                    Detectadas</h6>
+                                <ul class="mb-0 small">
+                                    {% for anomaly in document.structured_data.anomalies %}
+                                    <li>
+                                        {{ anomaly|replace('_', ' ')|title }}
+                                        <button type="button" class="btn-close btn-close-sm ms-2"
+                                            onclick="dismissAnomaly('{{ anomaly }}')"
+                                            data-anomaly="{{ anomaly }}"></button>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+
+                            <!-- Extracted Fields -->
+                            <h6 class="text-muted small fw-bold text-uppercase mb-3">Campos Extraídos</h6>
+                            <div class="row g-3">
+                                {% if document.structured_data.fields %}
+                                {% if 'date' in document.structured_data.fields %}
+                                <div class="col-md-4">
+                                    <div class="card bg-dark border-secondary">
+                                        <div class="card-body">
+                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                <h6 class="card-subtitle text-muted small mb-0">
+                                                    <i class="fas fa-calendar me-2"></i>Fecha
+                                                </h6>
+                                                {% set conf = document.structured_data.fields.date.confidence %}
+                                                <span
+                                                    class="badge {% if conf >= 0.8 %}bg-success{% elif conf >= 0.5 %}bg-warning{% else %}bg-danger{% endif %} bg-opacity-25">
+                                                    {{ (conf * 100)|int }}%
+                                                </span>
+                                            </div>
+                                            <p class="card-text fs-5 mb-1">
+                                                {{ document.structured_data.fields.date.value }}
+                                            </p>
+                                            <small class="text-muted">
+                                                Raw: <code>{{ document.structured_data.fields.date.raw }}</code>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                {% if 'total' in document.structured_data.fields %}
+                                <div class="col-md-4">
+                                    <div class="card bg-dark border-secondary">
+                                        <div class="card-body">
+                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                <h6 class="card-subtitle text-muted small mb-0">
+                                                    <i class="fas fa-euro-sign me-2"></i>Total
+                                                </h6>
+                                                {% set conf = document.structured_data.fields.total.confidence %}
+                                                <span
+                                                    class="badge {% if conf >= 0.8 %}bg-success{% elif conf >= 0.5 %}bg-warning{% else %}bg-danger{% endif %} bg-opacity-25">
+                                                    {{ (conf * 100)|int }}%
+                                                </span>
+                                            </div>
+                                            <p class="card-text fs-5 mb-1">
+                                                {{ document.structured_data.fields.total.value }}
+                                                {{ document.structured_data.fields.total.currency }}
+                                            </p>
+                                            <small class="text-muted">
+                                                Raw: <code>{{ document.structured_data.fields.total.raw }}</code>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                {% if 'vendor' in document.structured_data.fields %}
+                                <div class="col-md-4">
+                                    <div class="card bg-dark border-secondary">
+                                        <div class="card-body">
+                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                <h6 class="card-subtitle text-muted small mb-0">
+                                                    <i class="fas fa-building me-2"></i>Proveedor
+                                                </h6>
+                                                {% set conf = document.structured_data.fields.vendor.confidence %}
+                                                <span
+                                                    class="badge {% if conf >= 0.8 %}bg-success{% elif conf >= 0.5 %}bg-warning{% else %}bg-danger{% endif %} bg-opacity-25">
+                                                    {{ (conf * 100)|int }}%
+                                                </span>
+                                            </div>
+                                            <p class="card-text fs-5 mb-1">
+                                                {{ document.structured_data.fields.vendor.value }}
+                                            </p>
+                                            <small class="text-muted">
+                                                Raw: <code>{{ document.structured_data.fields.vendor.raw }}</code>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+                                {% else %}
+                                <div class="col-12">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        No se extrajeron campos estructurados de este documento.
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Provider Search (if vendor exists but has low confidence) -->
+                            {% if document.structured_data.fields and 'vendor' in document.structured_data.fields %}
+                            {% if document.structured_data.fields.vendor.confidence < 0.8 %} <div class="mt-4">
+                                <h6 class="text-muted small fw-bold text-uppercase mb-3">
+                                    <i class="fas fa-search me-2"></i>Buscar Proveedor
+                                </h6>
+                                <div class="input-group">
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                        id="provider-search" placeholder="Buscar en base de datos de proveedores..."
+                                        onkeyup="searchProviders(this.value)">
+                                    <button class="btn btn-outline-secondary" type="button">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                                <div id="provider-results" class="mt-2"></div>
+                        </div>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                    {% endif %}
+            </div>
+            </form>
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+    async function deleteDocument(docId) {
+        if (!confirm('¿Está seguro de eliminar este documento? Esta acción no se puede deshacer.')) return;
+        try {
+            const res = await fetch(`/api/document/${docId}/delete`, { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                window.location.href = "{{ url_for('documents') }}";
+            } else {
+                alert('Error al eliminar: ' + data.message);
+            }
+        } catch (e) {
+            alert('Error de conexión');
+        }
+    }
+
+    async function verifyDocument(docId) {
+        try {
+            const res = await fetch(`/api/document/${docId}/verify`, { method: 'POST' });
+            if (res.ok) {
+                location.reload();
+            } else {
+                const data = await res.json();
+                alert('Error al verificar: ' + data.error);
+            }
+        } catch (e) {
+            alert('Error de conexión');
+        }
+    }
+
+    async function loadSimilar() {
+        const container = document.getElementById('similar-list');
+        try {
+            const res = await fetch(`/api/search/similar/{{ document.id }}`);
+            const results = await res.json();
+
+            if (!results.length) {
+                container.innerHTML = '<div class="col-12 text-center py-4 text-muted small">No se encontraron documentos visualmente similares.</div>';
+                return;
+            }
+
+            container.innerHTML = results.map(doc => `
+                <div class="col">
+                    <div class="card bg-dark border-secondary h-100 overflow-hidden">
+                        <a href="/document/${doc.id}" class="text-decoration-none">
+                            <img src="/${doc.path}" class="card-img-top" style="height: 120px; object-fit: cover;" onerror="this.src='/static/img/placeholder.png'">
+                            <div class="card-body p-2">
+                                <p class="card-title text-truncate text-light small mb-1">${doc.filename}</p>
+                                <span class="badge bg-secondary" style="font-size: 0.6rem;">Similaridad: ${(doc.score * 100).toFixed(1)}%</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            container.innerHTML = '<div class="col-12 text-center py-4 text-danger small">Error al cargar similares.</div>';
+        }
+    }
+
+    // Load similar items if the tab is shown
+    document.querySelector('button[data-bs-target="#visual-similar"]').addEventListener('shown.bs.tab', () => {
+        loadSimilar();
+    });
+
+    // Auto-load if it's an image and initially shown (handled by bootstrap tabs if we set active, 
+    // but better to trigger if active class is present manually just in case)
+    if (document.querySelector('button[data-bs-target="#visual-similar"]').classList.contains('active')) {
+        loadSimilar();
+    }
+
+    async function saveChanges() {
+        const ocrText = document.getElementById('ocr_text').value;
+        const mdText = document.getElementById('markdown_text').value;
+        const type = document.querySelector('select[name="doc_type"]').value;
+        const status = document.querySelector('select[name="status"]').value;
+
+        try {
+            const response = await fetch(`/api/document/{{ document.id }}/update`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: ocrText,
+                    markdown: mdText,
+                    type: type,
+                    status: status
+                })
+            });
+
+            if (response.ok) {
+                // Show toast
+                const alert = document.createElement('div');
+                alert.className = 'alert alert-success position-fixed top-0 end-0 m-4';
+                alert.style.zIndex = 1050;
+                alert.innerHTML = '<i class="fas fa-check-circle me-2"></i> Cambios guardados correctamente';
+                document.body.appendChild(alert);
+                setTimeout(() => alert.remove(), 3000);
+            } else {
+                alert('Error al guardar los cambios');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error de conexión al guardar');
+        }
+    }
+    }
+
+    async function dismissAnomaly(anomaly) {
+        try {
+            const res = await fetch(`/api/document/{{ document.id }}/dismiss-anomaly`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ anomaly: anomaly })
+            });
+            if (res.ok) {
+                // Remove the anomaly from UI
+                const anomalyElement = event.target.closest('li');
+                if (anomalyElement) {
+                    anomalyElement.remove();
+                }
+                // If no more anomalies, remove the entire alert
+                const anomalyList = document.querySelector('.alert-warning ul');
+                if (anomalyList && anomalyList.children.length === 0) {
+                    document.querySelector('.alert-warning').remove();
+                }
+            } else {
+                alert('Error al descartar anomalía');
+            }
+        } catch (e) {
+            console.error('Error dismissing anomaly:', e);
+        }
+    }
+
+    let providerSearchTimeout;
+    async function searchProviders(query) {
+        clearTimeout(providerSearchTimeout);
+
+        if (!query || query.length < 2) {
+            document.getElementById('provider-results').innerHTML = '';
+            return;
+        }
+
+        providerSearchTimeout = setTimeout(async () => {
+            try {
+                const res = await fetch(`/api/providers/search?q=${encodeURIComponent(query)}`);
+                const providers = await res.json();
+
+                const resultsDiv = document.getElementById('provider-results');
+                if (!providers.length) {
+                    resultsDiv.innerHTML = '<div class="text-muted small">No se encontraron proveedores.</div>';
+                    return;
+                }
+
+                let html = '<div class="list-group">';
+                providers.forEach(provider => {
+                    html += `
+                        <button type="button" class="list-group-item list-group-item-action bg-dark text-light border-secondary" 
+                                onclick="selectProvider('${provider.id}', '${provider.name}')">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">${provider.name}</h6>
+                                <small class="badge bg-secondary">${provider.category}</small>
+                            </div>
+                            <small class="text-muted">${provider.vat}</small>
+                        </button>
+                    `;
+                });
+                html += '</div>';
+                resultsDiv.innerHTML = html;
+            } catch (e) {
+                console.error('Provider search error:', e);
+            }
+        }, 300); // Debounce
+    }
+
+    function selectProvider(providerId, providerName) {
+        // Update the vendor field display
+        const vendorValue = document.querySelector('.card-body:has(.fa-building) .card-text');
+        if (vendorValue) {
+            vendorValue.textContent = providerName;
+        }
+
+        // Close the search results
+        document.getElementById('provider-results').innerHTML = '';
+        document.getElementById('provider-search').value = '';
+
+        // Show success message
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-success position-fixed top-0 end-0 m-4';
+        alert.style.zIndex = 1050;
+        alert.innerHTML = `<i class="fas fa-check-circle me-2"></i> Proveedor "${providerName}" seleccionado. Guarda el documento para confirmar.`;
+        document.body.appendChild(alert);
+        setTimeout(() => alert.remove(), 3000);
+    }
+
+    // Image Enhancement Logic
+    async function applyEnhancement(mode) {
+        const btn = document.getElementById('btn-apply-enhance');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Procesando...';
+
+        const data = {
+            contrast: document.getElementById('contrastRange').value,
+            brightness: document.getElementById('brightnessRange').value,
+            sharpness: document.getElementById('sharpnessRange').value,
+            clahe: document.getElementById('claheCheck').checked
+        };
+
+        if (mode === 'auto') {
+            data.contrast = 1.2;
+            data.brightness = 1.1;
+            data.sharpness = 1.5;
+            data.clahe = true;
+            // Update UI
+            document.getElementById('contrastRange').value = 1.2;
+            document.getElementById('brightnessRange').value = 1.1;
+            document.getElementById('sharpnessRange').value = 1.5;
+            document.getElementById('claheCheck').checked = true;
+        }
+
+        try {
+            const res = await fetch(`/api/document/{{ document.id }}/enhance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+
+            if (res.ok) {
+                alert('Imagen mejorada. La página se recargará para mostrar el nuevo resultado.');
+                window.location.reload();
+            } else {
+                alert('Error: ' + result.error);
+            }
+        } catch (e) {
+            alert('Error de conexión');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = 'Aplicar Cambios';
+        }
+    }
+</script>
+
+<!-- Enhancement Modal -->
+<div class="modal fade" id="enhanceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="fas fa-magic me-2 text-warning"></i>Reparar Escaneo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-4 text-center">
+                    <button class="btn btn-warning w-100" onclick="applyEnhancement('auto')">
+                        <i class="fas fa-wand-magic-sparkles me-2"></i> Auto-Fix (Recomendado)
+                    </button>
+                    <small class="text-muted d-block mt-2">Aplica contraste adaptativo y nitidez
+                        automáticamente.</small>
+                </div>
+
+                <hr class="border-secondary">
+
+                <h6 class="mb-3">Ajuste Manual</h6>
+
+                <label class="form-label small">Contraste</label>
+                <input type="range" class="form-range" id="contrastRange" min="0.5" max="2.0" step="0.1" value="1.0">
+
+                <label class="form-label small mt-2">Brillo</label>
+                <input type="range" class="form-range" id="brightnessRange" min="0.5" max="2.0" step="0.1" value="1.0">
+
+                <label class="form-label small mt-2">Nitidez</label>
+                <input type="range" class="form-range" id="sharpnessRange" min="0.0" max="3.0" step="0.5" value="1.0">
+
+                <div class="form-check form-switch mt-3">
+                    <input class="form-check-input" type="checkbox" id="claheCheck">
+                    <label class="form-check-label" for="claheCheck">Corrección de Iluminación (CLAHE)</label>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-apply-enhance"
+                    onclick="applyEnhancement('manual')">
+                    Aplicar Cambios
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

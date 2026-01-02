@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Subir - AutOCR{% endblock %}
+
+{% block content %}
+<div class="row min-vh-75 align-items-center justify-content-center animate-fade-in">
+    <div class="col-lg-8">
+        <div class="text-center mb-5">
+            <h1 class="display-6 fw-bold">Subir Documentos</h1>
+            <p class="text-muted">Arrastre sus archivos aquí o haga clic para seleccionar.</p>
+        </div>
+
+        <div class="card border-0">
+            <div class="card-body p-5">
+                <form method="post" enctype="multipart/form-data" id="upload-form" onsubmit="showLoading()">
+                    <!-- Dual Inputs: One for Files, One for Camera -->
+                    <input type="file" id="file_input" name="files" multiple class="d-none"
+                        accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp" onchange="updateFileName(this)">
+
+                    <input type="file" id="camera_input" name="files" class="d-none" accept="image/*"
+                        capture="environment" onchange="updateFileName(this)">
+
+                    <div class="upload-zone position-relative text-center p-5 border-2 border-dashed rounded-3"
+                        style="border-style: dashed; border-color: var(--border-color); background: rgba(255,255,255,0.02); transition: all 0.3s;">
+
+                        <div class="mb-4">
+                            <div
+                                class="icon-square bg-primary bg-opacity-10 text-primary rounded-circle p-4 d-inline-block">
+                                <i class="fas fa-cloud-upload-alt fa-3x"></i>
+                            </div>
+                        </div>
+
+                        <h5 class="mb-2" id="drop-text">Seleccione documentos</h5>
+                        <p class="text-muted small mb-4" id="drop-subtext">PDF, Facturas, Tickets, Manuscritos</p>
+
+                        <!-- Mobile-Friendly Action Buttons -->
+                        <div class="d-flex justify-content-center gap-3 flex-wrap">
+                            <button type="button" class="btn btn-outline-primary px-4 py-2"
+                                onclick="document.getElementById('file_input').click()">
+                                <i class="fas fa-folder-open me-2"></i> Archivos
+                            </button>
+                            <button type="button" class="btn btn-primary px-4 py-2"
+                                onclick="document.getElementById('camera_input').click()">
+                                <i class="fas fa-camera me-2"></i> Usar Cámara
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="row mt-4 g-3">
+                        <div class="col-md-4">
+                            <div
+                                class="form-check form-switch p-3 rounded bg-dark bg-opacity-50 h-100 d-flex align-items-center justify-content-center">
+                                <input class="form-check-input ms-0 me-3" type="checkbox" id="ocr_enabled"
+                                    name="ocr_enabled" checked style="width: 3.2em; height: 1.6em; cursor: pointer;">
+                                <label class="form-check-label fw-bold mt-1" for="ocr_enabled">OCR (Texto)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div
+                                class="form-check form-switch p-3 rounded bg-dark bg-opacity-50 h-100 d-flex align-items-center justify-content-center">
+                                <input class="form-check-input ms-0 me-3" type="checkbox" id="handwriting_mode"
+                                    name="handwriting_mode" style="width: 3.2em; height: 1.6em; cursor: pointer;">
+                                <label class="form-check-label fw-bold mt-1" for="handwriting_mode">Manuscrito
+                                    ✍️</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div
+                                class="form-check form-switch p-3 rounded bg-dark bg-opacity-50 h-100 d-flex align-items-center justify-content-center">
+                                <input class="form-check-input ms-0 me-3" type="checkbox" id="classification_enabled"
+                                    name="classification_enabled" checked
+                                    style="width: 3.2em; height: 1.6em; cursor: pointer;">
+                                <label class="form-check-label fw-bold mt-1" for="classification_enabled">Auto
+                                    Clasificar</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-success btn-lg" id="submit-btn">
+                            <i class="fas fa-rocket me-2"></i> Procesar Ahora
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <small class="text-muted opacity-50">
+                <i class="fas fa-shield-alt me-1"></i>
+                Sus documentos se procesan localmente y de forma segura.
+            </small>
+        </div>
+    </div>
+</div>
+
+<style>
+    .upload-zone:hover {
+        background: rgba(88, 166, 255, 0.05) !important;
+        border-color: var(--primary-color) !important;
+    }
+</style>
+
+<script>
+    function updateFileName(input) {
+        const title = document.getElementById('drop-text');
+        const subtitle = document.getElementById('drop-subtext');
+
+        // Ensure only one input has files (clear the other)
+        const otherId = input.id === 'file_input' ? 'camera_input' : 'file_input';
+        document.getElementById(otherId).value = "";
+
+        if (input.files && input.files.length > 0) {
+            const count = input.files.length;
+            if (count === 1) {
+                title.textContent = input.files[0].name;
+                subtitle.textContent = "Listo para enviar";
+                title.classList.add('text-success');
+            } else {
+                title.textContent = `${count} archivos seleccionados`;
+                subtitle.textContent = "Listos para enviar";
+                title.classList.add('text-success');
+            }
+        } else {
+            title.textContent = "Seleccione documentos";
+            subtitle.textContent = "PDF, Facturas, Tickets, Manuscritos";
+            title.classList.remove('text-success');
+        }
+    }
+
+    function showLoading() {
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Procesando...';
+    }
+</script>
+{% endblock %}
