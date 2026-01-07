@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Verificar Documento - AutoOCR</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+    <link href="{{ url_for('static', filename='css/modern.css') }}" rel="stylesheet">
     <style>
         .split-container {
             display: flex;
@@ -114,10 +114,10 @@
         <!-- Left: Document Preview -->
         <div class="left-panel">
             {% if document.type == 'pdf' or document.filename.lower().endswith('.pdf') %}
-            <embed src="{{ url_for('static', filename='uploads/' ~ document.filename) }}" class="preview-frame"
+            <embed src="{{ url_for('static', filename='uploads/' ~ document.filename|basename) }}" class="preview-frame"
                 type="application/pdf">
             {% else %}
-            <img src="{{ url_for('static', filename='uploads/' ~ document.filename) }}"
+            <img src="{{ url_for('static', filename='uploads/' ~ document.filename|basename) }}"
                 style="max-width:100%; max-height:100%; object-fit:contain;">
             {% endif %}
         </div>
@@ -186,7 +186,7 @@
                 </div>
 
                 <div class="actions">
-                    <a href="{{ url_for('document_detail', doc_id=document.id) }}" class="btn-cancel">Cancelar</a>
+                    <a href="{{ url_for('main.document_detail', doc_id=document.id) }}" class="btn-cancel">Cancelar</a>
                     <button type="submit" class="btn-verify">✅ Confirmar y Guardar</button>
                 </div>
                 <div id="statusMsg" style="margin-top:1rem; text-align:center;"></div>
@@ -207,7 +207,7 @@
 
             const formData = new FormData(e.target);
             const data = {
-                filename: "{{ document.filename }}", // Keep original filename
+                filename: "{{ document.filename|basename }}", // Keep original filename
                 date: formData.get('date') || null,
                 total: parseFloat(formData.get('total')) || 0.0,
                 supplier: formData.get('supplier'),
@@ -245,7 +245,7 @@
                     msg.innerText = "¡Guardado correctamente!";
                     msg.style.color = "#28a745";
                     setTimeout(() => {
-                        window.location.href = "{{ url_for('document_detail', doc_id=document.id) }}";
+                        window.location.href = "{{ url_for('main.document_detail', doc_id=document.id) }}";
                     }, 1000);
                 } else {
                     msg.innerText = "Error: " + (result.error || "Datos inválidos");

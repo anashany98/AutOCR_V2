@@ -28,6 +28,11 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     openpyxl = None  # type: ignore
 
+try:
+    import extract_msg  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    extract_msg = None  # type: ignore
+
 from .ocr_manager import OCRManager
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".gif", ".webp", ".jfif", ".avif"}
@@ -36,6 +41,7 @@ TEXT_EXTENSIONS = {".txt", ".csv", ".json", ".md", ".log"}
 DOC_EXTENSIONS = {".docx"}
 EXCEL_EXTENSIONS = {".xlsx", ".xlsm"}
 EMAIL_EXTENSIONS = {".eml"}
+MSG_EXTENSIONS = {".msg"}
 
 
 class _HTMLToTextParser(HTMLParser):
@@ -140,6 +146,34 @@ def _extract_excel_text(path: Path) -> str:
     return "\n".join(parts)
 
 
+def _extract_msg_text(path: Path) -> str:
+    if extract_msg is None:
+        raise RuntimeError(
+            "extract-msg is required to extract MSG content but is not installed"
+        )
+
+    msg = extract_msg.Message(str(path))
+    parts: list[str] = []
+    
+    # Headers
+    if msg.subject:
+        parts.append(f"Subject: {msg.subject}")
+    if msg.sender:
+        parts.append(f"From: {msg.sender}")
+    if msg.to:
+        parts.append(f"To: {msg.to}")
+    if msg.date:
+        parts.append(f"Date: {msg.date}")
+    
+    # Body
+    if msg.body:
+        parts.append("\nBody:")
+        parts.append(msg.body)
+        
+    msg.close()
+    return "\n".join(part.strip() for part in parts if part and str(part).strip())
+
+
 def extract_content(
     file_path: str,
     ocr_engine: Optional[OCRManager] = None,
@@ -180,18 +214,21 @@ def extract_content(
             return _extract_email_text(path), None, 1.0, False
 
         if ext in DOC_EXTENSIONS:
-            return _extract_docx_text(path), None, 1.0
+            return _extract_docx_text(path), None, 1.0, False
 
         if ext in EXCEL_EXTENSIONS:
-            return _extract_excel_text(path), None, 1.0
+            return _extract_excel_text(path), None, 1.0, False
+
+        if ext in MSG_EXTENSIONS:
+            return _extract_msg_text(path), None, 1.0, False
 
         if ext == ".json":
             # Already handled by TEXT_EXTENSIONS, but keep explicit branch.
-            return _read_text_file(path, ("utf-8",)), None, 1.0
+            return _read_text_file(path, ("utf-8",)), None, 1.0, False
 
         # Unknown formats fall back to binary read and best-effort decoding.
         text = _read_text_file(path, ("utf-8", "latin-1", "cp1252"))
-        return text, None, 0.2
+        return text, None, 0.2, False
     except Exception as exc:
         if logger:
             logger.error(f"Failed to extract content from {path.name}: {exc}")

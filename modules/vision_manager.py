@@ -15,6 +15,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, TypedDict
+from collections import Counter
 
 import numpy as np
 from PIL import Image
@@ -78,6 +79,12 @@ class VisionManager:
     # Public API
     # ------------------------------------------------------------------ #
 
+
+    def ensure_loaded(self) -> None:
+        """Ensure model and index are loaded."""
+        self._ensure_model()
+        self._ensure_index()
+
     def embed_image(self, path: str) -> np.ndarray:
         """
         Compute a CLIP embedding for ``path``.
@@ -138,14 +145,37 @@ class VisionManager:
                 if score > 0.05: # Return mostly everything, filter later or let softmax handle it
                     results.append((candidates[index], score))
             
-            return results
             
+            return results
+
         except Exception as e:
             self.logger.error(f"Classification failed: {e}")
             return []
-            self.logger.error(f"Error embedding image {path}: {e}")
-            # Return zero vector to avoid crashing
-            return np.zeros(512, dtype="float32")  # Assuming ViT-B-32
+
+    def analyze_colors(self, image_path: str, num_colors: int = 5) -> list:
+        """Extract dominant colors from an image."""
+        try:
+            image = Image.open(image_path).convert('RGB')
+            # Resize for speed
+            image = image.resize((150, 150))
+            pixels = np.array(image).reshape(-1, 3)
+            
+            # Simple quantization (bucket by 32)
+            quantized = pixels // 32 * 32
+            pixels_tuple = [tuple(p) for p in quantized]
+            
+            counts = Counter(pixels_tuple)
+            common = counts.most_common(num_colors)
+            
+            hex_colors = []
+            for color, count in common:
+                hex_c = '#{:02x}{:02x}{:02x}'.format(color[0], color[1], color[2])
+                hex_colors.append({"hex": hex_c, "rgb": color, "count": count})
+                
+            return hex_colors
+        except Exception as e:
+            self.logger.error(f"Color analysis failed: {e}")
+            return []
 
     def embed_text(self, text: str) -> np.ndarray:
         """

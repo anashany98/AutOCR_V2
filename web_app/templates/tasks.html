@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Monitor de Tareas - AutOCR{% endblock %}
+
+{% block content %}
+<div class="row mb-4 animate-fade-in">
+    <div class="col-12">
+        <h1 class="h3 fw-bold"><i class="fas fa-tasks me-2"></i>Cola de Procesamiento</h1>
+        <p class="text-muted small">Monitor de tareas en segundo plano (Huey).</p>
+    </div>
+</div>
+
+<div class="row mb-4 animate-slide-up">
+    <div class="col-md-4">
+        <div class="card bg-primary bg-opacity-10 border-primary border-opacity-25 h-100">
+            <div class="card-body text-center">
+                <h6 class="text-uppercase text-primary fw-bold small mb-3">Pendientes</h6>
+                <div class="display-4 fw-bold text-light" id="pending-count">-</div>
+                <div class="small text-muted mt-2">Tareas esperando worker</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-info bg-opacity-10 border-info border-opacity-25 h-100">
+            <div class="card-body text-center">
+                <h6 class="text-uppercase text-info fw-bold small mb-3">Programadas</h6>
+                <div class="display-4 fw-bold text-light" id="scheduled-count">-</div>
+                <div class="small text-muted mt-2">Tareas diferidas / Retry</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-success bg-opacity-10 border-success border-opacity-25 h-100">
+            <div class="card-body text-center">
+                <h6 class="text-uppercase text-success fw-bold small mb-3">Worker Status</h6>
+                <div class="display-6 fw-bold text-light mt-2"><i class="fas fa-heartbeat text-success"></i></div>
+                <div class="small text-muted mt-3">Activo</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 animate-slide-up" style="animation-delay: 0.1s;">
+    <div
+        class="card-header bg-transparent border-secondary border-opacity-10 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-list-ul me-2"></i>Próximas Tareas</h5>
+        <button class="btn btn-sm btn-outline-light" onclick="fetchTasks()">
+            <i class="fas fa-sync-alt"></i> Actualizar
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-nowrap">
+                <thead class="bg-light bg-opacity-10">
+                    <tr>
+                        <th class="ps-4">ID Tarea</th>
+                        <th>Nombre</th>
+                        <th>Argumentos</th>
+                        <th>Progreso</th>
+                        <th>Estado Estimado</th>
+                    </tr>
+                </thead>
+                <tbody id="tasks-table-body">
+                    <tr>
+                        <td colspan="4" class="text-center py-4 text-muted">Cargando...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function fetchTasks() {
+        try {
+            const res = await fetch('/api/tasks');
+            const data = await res.json();
+
+            // Update Counters
+            document.getElementById('pending-count').textContent = data.pending_count;
+            document.getElementById('scheduled-count').textContent = data.scheduled_count;
+
+            // Update Table
+            const tbody = document.getElementById('tasks-table-body');
+            tbody.innerHTML = '';
+
+            if (data.pending_details && data.pending_details.length > 0) {
+                data.pending_details.forEach(task => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="ps-4 font-monospace small text-muted">${task.id.substring(0, 8)}...</td>
+                        <td class="fw-bold text-primary">${task.name}</td>
+                        <td class="small text-muted text-truncate" style="max-width: 300px;">${task.args}</td>
+                        <td>
+                            <div class="progress" style="height: 6px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 50%;"></div>
+                            </div>
+                            <small class="text-muted" style="font-size:0.7em;">Procesando...</small>
+                        </td>
+                        <td><span class="badge bg-secondary bg-opacity-25 text-light">En Cola</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } else {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center py-5 text-muted">
+                            <i class="fas fa-check-circle fa-2x mb-3 opacity-25"></i>
+                            <p class="mb-0">No hay tareas pendientes.</p>
+                        </td>
+                    </tr>
+                `;
+            }
+
+        } catch (e) {
+            console.error("Error fetching tasks", e);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchTasks();
+        setInterval(fetchTasks, 5000); // Auto refresh every 5s
+    });
+</script>
+{% endblock %}

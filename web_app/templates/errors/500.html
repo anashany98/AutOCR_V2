@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Error del Servidor - AutoOCR{% endblock %}
+{% block content %}
+<div class="container text-center py-5">
+    <div class="error-container p-5 rounded-4 shadow-lg bg-dark text-light"
+        style="background: linear-gradient(135deg, #2c3e50 0%, #000000 100%); border: 1px solid rgba(255,255,255,0.1);">
+        <h1 class="display-1 fw-bold text-danger mb-4">500</h1>
+        <h2 class="mb-4">Algo salió mal en nuestros servidores</h2>
+        <p class="lead mb-5 opacity-75">Estamos trabajando para solucionarlo. Por favor, inténtalo de nuevo en unos
+            minutos.</p>
+        <div class="d-flex justify-content-center gap-3">
+            <a href="javascript:location.reload()" class="btn btn-outline-light btn-lg px-4 rounded-pill">Reintentar</a>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-light rounded-pill">Volver al Dashboard</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

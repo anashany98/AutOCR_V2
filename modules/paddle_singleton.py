@@ -16,17 +16,20 @@ from typing import Dict
 from loguru import logger
 
 try:
-    from paddleocr import PPStructureV3  # type: ignore
+    from paddleocr import PaddleOCR  # type: ignore
 except ImportError as exc:  # pragma: no cover - optional dependency
-    PPStructureV3 = None  # type: ignore[assignment]
+    PaddleOCR = None  # type: ignore[assignment]
     logger.warning(
         "PaddleOCR import failed; PP-Structure features disabled. "
-        "Ensure paddleocr>=3.3 and paddlepaddle>=3.2 are installed. Details: %s",
+        "Ensure paddleocr is installed. Details: %s",
         exc,
     )
 
-_pp_instance = None
 
+import threading
+
+_pp_instance = None
+_pp_lock = threading.Lock()
 
 def _log_env_snapshot() -> None:
     """Emit the environment variables that influence Paddle runtime."""
@@ -64,48 +67,56 @@ def _log_paddle_runtime() -> None:
         logger.warning("Could not log Paddle runtime context: {}", exc)
 
 
-def get_paddle_ocr():
+def get_paddle_ocr(gpu_id: int = 0):
     """
     Return a process-wide PaddleOCR PP-Structure instance.
+    Thread-safe implementation.
     """
     global _pp_instance
 
     if _pp_instance is None:
-        if PPStructureV3 is None:  # pragma: no cover - defensive
+        if PaddleOCR is None:  # pragma: no cover - defensive
             return None
-        try:
-            # PPStructureV3 may have compatibility issues - try basic initialization first
-            logger.info("Attempting to initialize PPStructureV3...")
-            _log_platform_snapshot()
-            _log_env_snapshot()
-            _log_paddle_runtime()
+            
+        with _pp_lock:
+            # Double-check locking pattern
+            if _pp_instance is not None:
+                logger.debug("Reusing cached PPStructureV3 instance (acquired via lock).")
+                return _pp_instance
+                
+            try:
+                # PPStructureV3 may have compatibility issues - try basic initialization first
+                logger.info("Attempting to initialize PPStructureV3...")
+                _log_platform_snapshot()
+                _log_env_snapshot()
+                _log_paddle_runtime()
 
-            # Set environment variables that might help
-            os.environ.setdefault("PADDLEOCR_DISABLE_VLM", "1")  # Disable VLM components
-            os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")  # Ensure GPU 0 is visible
-            logger.info("Post-set env snapshot (may include defaults applied):")
-            _log_env_snapshot()
+                # Set environment variables that might help
+                os.environ.setdefault("PADDLEOCR_DISABLE_VLM", "1")  # Disable VLM components
+                # os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")  # REMOVED: Let Paddle handle it or set externally
+                logger.info("Post-set env snapshot (may include defaults applied):")
+                _log_env_snapshot()
 
-            _pp_instance = PPStructureV3()
-            logger.info("PaddleOCR (PPStructureV3) loaded successfully.")
-        except RuntimeError as exc:
-            message = str(exc)
-            if "PDX has already been initialized" in message:
-                logger.warning("PaddleOCR already initialised; using existing instance.")
-            else:  # pragma: no cover - pass through unexpected runtime errors
-                logger.error("Failed to initialize PPStructureV3: {}", exc)
+                # PPStructure is the correct class for layout/table analysis in newer PaddleOCR versions
+                from paddleocr import PPStructure
+                
+                logger.info("Initializing PPStructure...")
+                _pp_instance = PPStructure(gpu_id=gpu_id, use_gpu=True, show_log=False)
+                logger.info("PPStructure loaded successfully.")
+            except Exception as exc:
+                logger.error("Unexpected error initializing PPStructure: {}", exc)
                 logger.error("Exception type: {}", type(exc).__name__)
-                import traceback
-                logger.error("Full traceback:\n{}", traceback.format_exc())
-                logger.warning("PPStructureV3 failed, layout/table detection will fallback to naive methods")
-                return None
-        except Exception as exc:
-            logger.error("Unexpected error initializing PPStructureV3: {}", exc)
-            logger.error("Exception type: {}", type(exc).__name__)
-            import traceback
-            logger.error("Full traceback:\n{}", traceback.format_exc())
-            logger.warning("PPStructureV3 failed, layout/table detection will fallback to naive methods")
-            return None
+                # Fallback to CPU if GPU failed
+                try:
+                    from paddleocr import PPStructure
+                    logger.info("Retrying PPStructure on CPU...")
+                    _pp_instance = PPStructure(use_gpu=False, show_log=False)
+                    return _pp_instance
+                except Exception:
+                    import traceback
+                    logger.error("Full traceback:\n{}", traceback.format_exc())
+                    logger.warning("Structure engine failed.")
+                    return None
     else:
         logger.debug("Reusing cached PPStructureV3 instance.")
     return _pp_instance

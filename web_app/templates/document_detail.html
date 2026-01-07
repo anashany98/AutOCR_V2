@@ -8,7 +8,7 @@
         <div>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-1">
-                    <li class="breadcrumb-item"><a href="{{ url_for('documents') }}"
+                    <li class="breadcrumb-item"><a href="{{ url_for('main.documents') }}"
                             class="text-muted text-decoration-none">Documentos</a></li>
                     <li class="breadcrumb-item active text-light" aria-current="page">{{ document.filename }}</li>
                 </ol>
@@ -31,40 +31,91 @@
     </div>
 </div>
 
+{% if document.status == 'FAILED' %}
+<div class="alert alert-danger mb-4 animate-shake" role="alert">
+    <div class="d-flex align-items-center">
+        <div class="me-3">
+            <i class="fas fa-exclamation-circle fa-2x"></i>
+        </div>
+        <div>
+            <h6 class="alert-heading fw-bold mb-1">El procesamiento de este documento falló</h6>
+            <p class="mb-0 small">{{ document.error_message or 'Error desconocido durante el procesamiento.' }}</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row g-4 h-100 animate-slide-up">
     <!-- Left Column: Preview -->
     <div class="col-lg-6">
         <div class="card h-100 border-0" style="min-height: 70vh;">
             <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center">
-                <h6 class="mb-0 fw-bold text-uppercase text-muted small">Vista Previa</h6>
+                <h6 class="mb-0 fw-bold text-uppercase text-muted small">Vista Previa y Edición</h6>
                 <div class="btn-group">
-                    <a href="{{ url_for('view_document_file', doc_id=document.id) }}" target="_blank"
-                        class="btn btn-sm btn-outline-secondary">
+                    <button class="btn btn-sm btn-outline-secondary" id="zoom-out" title="Alejar"><i
+                            class="fas fa-search-minus"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="zoom-in" title="Acercar"><i
+                            class="fas fa-search-plus"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="toggle-compare"
+                        title="Comparar Original/Mejorado"><i class="fas fa-columns"></i></button>
+                    <div class="vr mx-1"></div>
+                    <button class="btn btn-sm btn-outline-primary" id="toggle-draw" title="Dibujar Regiones"
+                        onclick="toggleDrawingMode()">
+                        <i class="fas fa-draw-polygon"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success ms-1" id="save-template"
+                        title="Guardar como Plantilla" onclick="saveAsTemplate()">
+                        <i class="fas fa-save"></i>
+                    </button>
+                    <div class="dropdown d-inline-block ms-1">
+                        <button class="btn btn-sm btn-outline-info dropdown-toggle" type="button"
+                            id="loadTemplateDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Cargar Plantilla" onclick="loadTemplateList()">
+                            <i class="fas fa-file-import"></i>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="loadTemplateDropdown" id="template-list">
+                            <li>
+                                <h6 class="dropdown-header">Plantillas Disponibles</h6>
+                            </li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item disabled" href="#">Cargando...</a></li>
+                        </ul>
+                    </div>
+                    <a href="{{ url_for('main.view_document_file', doc_id=document.id) }}" target="_blank"
+                        class="btn btn-sm btn-outline-secondary ms-1">
                         <i class="fas fa-external-link-alt"></i>
                     </a>
-                    <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal"
-                        data-bs-target="#enhanceModal">
-                        <i class="fas fa-magic me-1"></i> Reparar
-                    </button>
                 </div>
             </div>
-            <div
-                class="card-body p-0 d-flex align-items-center justify-content-center bg-dark bg-opacity-50 rounded-bottom">
-                {% if document.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.jfif', '.avif'))
-                %}
-                <img src="{{ url_for('view_document_file', doc_id=document.id) }}" class="img-fluid"
-                    style="max-height: 65vh; object-fit: contain;" alt="Document Preview">
-                {% elif document.filename.lower().endswith('.pdf') %}
-                <embed src="{{ url_for('view_document_file', doc_id=document.id) }}" type="application/pdf" width="100%"
-                    height="100%" style="min-height: 65vh;">
-                {% else %}
-                <div class="text-center text-muted p-5">
-                    <i class="fas fa-file-alt fa-4x mb-3 opacity-50"></i>
-                    <p>Vista previa no disponible para este formato.</p>
-                    <a href="{{ url_for('view_document_file', doc_id=document.id) }}"
-                        class="btn btn-outline-primary btn-sm mt-2">Descargar Archivo</a>
+
+            <div class="card-body p-0 d-flex flex-column bg-dark bg-opacity-50 rounded-bottom position-relative overflow-hidden"
+                style="height: 70vh;">
+
+                <!-- PDF Toolbar (Hidden by default) -->
+                <div id="pdf-toolbar"
+                    class="bg-secondary bg-opacity-25 p-1 d-none justify-content-center align-items-center gap-2 border-bottom border-secondary">
+                    <button class="btn btn-sm btn-link text-light" id="prev-page"><i
+                            class="fas fa-chevron-left"></i></button>
+                    <span class="small text-muted">Pág <span id="page-num">1</span> de <span
+                            id="page-count">--</span></span>
+                    <button class="btn btn-sm btn-link text-light" id="next-page"><i
+                            class="fas fa-chevron-right"></i></button>
                 </div>
-                {% endif %}
+
+                <!-- Canvas Container -->
+                <div id="canvas-container"
+                    class="flex-grow-1 overflow-auto position-relative d-flex justify-content-center bg-dark">
+                    <canvas id="the-canvas" style="border: 1px solid rgba(255,255,255,0.1); max-width: 100%;"></canvas>
+                </div>
+
+                <!-- Loading Overlay -->
+                <div id="viewer-loading"
+                    class="position-absolute top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center bg-dark bg-opacity-75"
+                    style="z-index: 10;">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -497,14 +548,16 @@
     }
 
     // Load similar items if the tab is shown
-    document.querySelector('button[data-bs-target="#visual-similar"]').addEventListener('shown.bs.tab', () => {
-        loadSimilar();
-    });
+    const similarTab = document.querySelector('button[data-bs-target="#visual-similar"]');
+    if (similarTab) {
+        similarTab.addEventListener('shown.bs.tab', () => {
+            loadSimilar();
+        });
 
-    // Auto-load if it's an image and initially shown (handled by bootstrap tabs if we set active, 
-    // but better to trigger if active class is present manually just in case)
-    if (document.querySelector('button[data-bs-target="#visual-similar"]').classList.contains('active')) {
-        loadSimilar();
+        // Auto-load if it's an image and initially shown
+        if (similarTab.classList.contains('active')) {
+            loadSimilar();
+        }
     }
 
     async function saveChanges() {
@@ -523,7 +576,8 @@
                     text: ocrText,
                     markdown: mdText,
                     type: type,
-                    status: status
+                    status: status,
+                    corrections: fabricCanvas ? fabricCanvas.getObjects().filter(o => o.type !== 'image') : []
                 })
             });
 
@@ -542,7 +596,6 @@
             console.error('Error:', error);
             alert('Error de conexión al guardar');
         }
-    }
     }
 
     async function dismissAnomaly(anomaly) {
@@ -680,50 +733,381 @@
     }
 </script>
 
-<!-- Enhancement Modal -->
-<div class="modal fade" id="enhanceModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content bg-dark text-light border-secondary">
-            <div class="modal-header border-secondary">
-                <h5 class="modal-title"><i class="fas fa-magic me-2 text-warning"></i>Reparar Escaneo</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                    aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-4 text-center">
-                    <button class="btn btn-warning w-100" onclick="applyEnhancement('auto')">
-                        <i class="fas fa-wand-magic-sparkles me-2"></i> Auto-Fix (Recomendado)
-                    </button>
-                    <small class="text-muted d-block mt-2">Aplica contraste adaptativo y nitidez
-                        automáticamente.</small>
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+
+<script>
+    // Configuration
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const docBaseUrl = "{{ url_for('main.view_document_file', doc_id=document.id) }}";
+    let docUrl = docBaseUrl;
+    let currentVersion = 'current';
+
+    const isPdf = "{{ document.filename.lower().endswith('.pdf') }}" === "True";
+    const existingCorrections = {{ document.structured_data.corrections | tojson | safe if document.structured_data and document.structured_data.corrections else '[]' }};
+
+    let pdfDoc = null;
+    let pageNum = 1;
+    let pageRendering = false;
+    let pageNumPending = null;
+    let scale = 1.0;
+    let canvas = document.getElementById('the-canvas');
+    let ctx = canvas.getContext('2d');
+    let fabricCanvas = null;
+    let drawingMode = false;
+
+    function loadCorrections() {
+        if (!fabricCanvas || !existingCorrections.length) return;
+
+        // Filter corrections for current page if we support multi-page annotations
+        // For now, assume global corrections or single page image.
+        // If PDF, we might need page-specific logic, but let's start simple.
+
+        fabric.util.enlivenObjects(existingCorrections, function (objects) {
+            objects.forEach(function (o) {
+                o.selectable = true; // Allow selecting to delete/move
+                fabricCanvas.add(o);
+            });
+            fabricCanvas.renderAll();
+        });
+    }
+
+    // Initialize Viewer
+    async function initViewer() {
+        if (isPdf) {
+            document.getElementById('pdf-toolbar').classList.remove('d-none');
+            document.getElementById('pdf-toolbar').classList.add('d-flex');
+            try {
+                pdfDoc = await pdfjsLib.getDocument(docUrl).promise;
+                document.getElementById('page-count').textContent = pdfDoc.numPages;
+                renderPage(pageNum);
+            } catch (e) {
+                console.error('Error loading PDF:', e);
+                alert('Error al cargar PDF');
+            }
+        } else {
+            // It's an image
+            const img = new Image();
+            img.onload = function () {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                // Fit to container initially
+                const container = document.getElementById('canvas-container');
+                const ratio = Math.min(container.clientWidth / img.width, container.clientHeight / img.height);
+                // We will rely on CSS or Fabric for zoom. For now, draw simple.
+                // Better: Use Fabric directly for Image
+                initFabricWithImage(img);
+                document.getElementById('viewer-loading').classList.add('d-none');
+            };
+            img.src = docUrl;
+        }
+    }
+
+    function initFabricWithImage(imgElement) {
+        if (fabricCanvas) fabricCanvas.dispose();
+        fabricCanvas = new fabric.Canvas('the-canvas', {
+            width: imgElement.width,
+            height: imgElement.height
+        });
+
+        const fImg = new fabric.Image(imgElement);
+        fImg.selectable = false;
+        fabricCanvas.add(fImg);
+        fabricCanvas.setWidth(imgElement.width);
+        fabricCanvas.setHeight(imgElement.height);
+
+        // Fit view
+        zoomAscpect();
+        loadCorrections();
+    }
+
+    function zoomAscpect() {
+        const container = document.getElementById('canvas-container');
+        if (!fabricCanvas) return;
+        const ratio = Math.min((container.clientWidth - 20) / fabricCanvas.width, (container.clientHeight - 20) / fabricCanvas.height);
+        fabricCanvas.setZoom(ratio);
+        fabricCanvas.setWidth(fabricCanvas.width * ratio);
+        fabricCanvas.setHeight(fabricCanvas.height * ratio);
+
+        // Ensure corrections are loaded if not already
+        // But zoomAscpect is called on resize/zoom too. 
+        // We should call loadCorrections ONLY ONCE after init.
+        // Let's call it in initFabricWithImage and renderPage instead.
+    }
+
+    async function renderPage(num) {
+        pageRendering = true;
+
+        // Fetch page
+        const page = await pdfDoc.getPage(num);
+        const viewport = page.getViewport({ scale: scale * 1.5 }); // Higher res render
+
+        // If fabric exists, we need to handle it.
+        // For PDF, we render to canvas then create fabric object over it?
+        // Or render to hidden canvas and use as background for Fabric.
+
+        // Simplified PDF render for now to standard canvas, then initialize fabric
+        // We need a temporary canvas to render PDF
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCanvas.height = viewport.height;
+        tempCanvas.width = viewport.width;
+
+        const renderContext = {
+            canvasContext: tempCtx,
+            viewport: viewport
+        };
+
+        await page.render(renderContext).promise;
+
+        // Now init fabric with this image
+        const imgParams = {
+            width: viewport.width,
+            height: viewport.height,
+            selectable: false
+        };
+
+        if (fabricCanvas) fabricCanvas.dispose();
+        fabricCanvas = new fabric.Canvas('the-canvas', {
+            width: viewport.width,
+            height: viewport.height
+        });
+
+        // Create fabric image from temp canvas url
+        fabric.Image.fromURL(tempCanvas.toDataURL(), function (img) {
+            img.selectable = false;
+            fabricCanvas.add(img);
+            fabricCanvas.sendToBack(img);
+
+            // Adjust zoom to fit container
+            zoomAscpect();
+            loadCorrections();
+
+            document.getElementById('viewer-loading').classList.add('d-none');
+            pageRendering = false;
+            if (pageNumPending !== null) {
+                renderPage(pageNumPending);
+                pageNumPending = null;
+            }
+        });
+
+        document.getElementById('page-num').textContent = num;
+    }
+
+    function queueRenderPage(num) {
+        if (pageRendering) {
+            pageNumPending = num;
+        } else {
+            renderPage(num);
+        }
+    }
+
+    function onPrevPage() {
+        if (pageNum <= 1) return;
+        pageNum--;
+        queueRenderPage(pageNum);
+    }
+
+    function onNextPage() {
+        if (pageNum >= pdfDoc.numPages) return;
+        pageNum++;
+        queueRenderPage(pageNum);
+    }
+
+    // Zoom Controls
+    document.getElementById('zoom-in').addEventListener('click', () => {
+        if (fabricCanvas) {
+            let zoom = fabricCanvas.getZoom();
+            zoom *= 1.1;
+            fabricCanvas.setZoom(zoom);
+            fabricCanvas.setWidth(fabricCanvas.getWidth() * 1.1);
+            fabricCanvas.setHeight(fabricCanvas.getHeight() * 1.1);
+        }
+    });
+
+    document.getElementById('zoom-out').addEventListener('click', () => {
+        if (fabricCanvas) {
+            let zoom = fabricCanvas.getZoom();
+            zoom /= 1.1;
+            fabricCanvas.setZoom(zoom);
+            fabricCanvas.setWidth(fabricCanvas.getWidth() / 1.1);
+            fabricCanvas.setHeight(fabricCanvas.getHeight() / 1.1);
+        }
+    });
+
+    // PDF Navigation
+    document.getElementById('prev-page').addEventListener('click', onPrevPage);
+    document.getElementById('next-page').addEventListener('click', onNextPage);
+
+    document.getElementById('toggle-compare').addEventListener('click', () => {
+        currentVersion = currentVersion === 'current' ? 'original' : 'current';
+        docUrl = docBaseUrl + (currentVersion === 'original' ? '?version=original' : '');
+
+        // Show feedback
+        const btn = document.getElementById('toggle-compare');
+        if (currentVersion === 'original') {
+            btn.classList.add('btn-warning');
+            btn.classList.remove('btn-outline-secondary');
+            alert('Mostrando ORIGINAL (Solo lectura)');
+            // Disable drawing?
+        } else {
+            btn.classList.remove('btn-warning');
+            btn.classList.add('btn-outline-secondary');
+            alert('Mostrando MEJORADO');
+        }
+
+        initViewer();
+    });
+
+    // Drawing Mode
+    window.toggleDrawingMode = function () {
+        drawingMode = !drawingMode;
+        if (!fabricCanvas) return;
+
+        if (drawingMode) {
+            fabricCanvas.isDrawingMode = true;
+            fabricCanvas.freeDrawingBrush.width = 3;
+            fabricCanvas.freeDrawingBrush.color = "rgba(255, 0, 0, 0.5)"; // Red highlight
+            document.getElementById('toggle-draw').classList.add('active');
+        } else {
+            fabricCanvas.isDrawingMode = false;
+            document.getElementById('toggle-draw').classList.remove('active');
+        }
+    };
+
+    // Handle Window Resize
+    window.addEventListener('resize', () => {
+        if (fabricCanvas) zoomAscpect();
+    });
+
+    // Template Management
+    async function saveAsTemplate() {
+        if (!fabricCanvas) return;
+        const objects = fabricCanvas.getObjects().filter(o => o.type !== 'image');
+        if (!objects.length) {
+            alert('Dibuja al menos una zona antes de guardar.');
+            return;
+        }
+
+        const name = prompt("Nombre de la plantilla:");
+        if (!name) return;
+
+        try {
+            const res = await fetch('/api/templates/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    description: "Creada desde el editor visual",
+                    zones: objects
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('Plantilla guardada correctamente.');
+            } else {
+                alert('Error al guardar: ' + data.error);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error al conectar con el servidor.');
+        }
+    }
+
+    async function loadTemplateList() {
+        const list = document.getElementById('template-list');
+        try {
+            const res = await fetch('/api/templates');
+            const templates = await res.json();
+
+            let html = '<li><h6 class="dropdown-header">Plantillas Disponibles</h6></li><li><hr class="dropdown-divider"></li>';
+            if (templates.length === 0) {
+                html += '<li><a class="dropdown-item disabled" href="#">No hay plantillas</a></li>';
+            } else {
+                templates.forEach(t => {
+                    // Store zones in data attribute or use ID to fetch? 
+                    // Storing in data attribute might be large.
+                    // Let's escape it carefully or use simple ID and find in array.
+                    // But here we need to pass zones to applyTemplate.
+                    // Let's use a global map or just embedded JSON.
+                    const zonesStr = t.zones_json.replace(/"/g, '&quot;');
+                    html += `<li><a class="dropdown-item" href="#" onclick='applyTemplate(${JSON.stringify(t.zones_json)})'>${t.name}</a></li>`;
+                });
+            }
+            list.innerHTML = html;
+        } catch (e) {
+            list.innerHTML = '<li><a class="dropdown-item disabled" href="#">Error al cargar</a></li>';
+        }
+    }
+
+    window.applyTemplate = function (zones) {
+        if (!fabricCanvas) return;
+        // Parse if string
+        if (typeof zones === 'string') {
+            try { zones = JSON.parse(zones); } catch (e) { console.error(e); return; }
+        }
+
+        if (confirm("¿Aplicar plantilla? Esto agregará las zonas a las existentes.")) {
+            fabric.util.enlivenObjects(zones, function (objects) {
+                objects.forEach(function (o) {
+                    o.selectable = true;
+                    fabricCanvas.add(o);
+                });
+                fabricCanvas.renderAll();
+            });
+        }
+    };
+
+    // Initial load
+    initViewer();
+
+
+    <!-- Enhancement Modal -->
+    <div class="modal fade" id="enhanceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-light border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title"><i class="fas fa-magic me-2 text-warning"></i>Reparar Escaneo</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
                 </div>
+                <div class="modal-body">
+                    <div class="mb-4 text-center">
+                        <button class="btn btn-warning w-100" onclick="applyEnhancement('auto')">
+                            <i class="fas fa-wand-magic-sparkles me-2"></i> Auto-Fix (Recomendado)
+                        </button>
+                        <small class="text-muted d-block mt-2">Aplica contraste adaptativo y nitidez
+                            automáticamente.</small>
+                    </div>
 
-                <hr class="border-secondary">
+                    <hr class="border-secondary">
 
-                <h6 class="mb-3">Ajuste Manual</h6>
+                        <h6 class="mb-3">Ajuste Manual</h6>
 
-                <label class="form-label small">Contraste</label>
-                <input type="range" class="form-range" id="contrastRange" min="0.5" max="2.0" step="0.1" value="1.0">
+                        <label class="form-label small">Contraste</label>
+                        <input type="range" class="form-range" id="contrastRange" min="0.5" max="2.0" step="0.1" value="1.0">
 
-                <label class="form-label small mt-2">Brillo</label>
-                <input type="range" class="form-range" id="brightnessRange" min="0.5" max="2.0" step="0.1" value="1.0">
+                            <label class="form-label small mt-2">Brillo</label>
+                            <input type="range" class="form-range" id="brightnessRange" min="0.5" max="2.0" step="0.1" value="1.0">
 
-                <label class="form-label small mt-2">Nitidez</label>
-                <input type="range" class="form-range" id="sharpnessRange" min="0.0" max="3.0" step="0.5" value="1.0">
+                                <label class="form-label small mt-2">Nitidez</label>
+                                <input type="range" class="form-range" id="sharpnessRange" min="0.0" max="3.0" step="0.5" value="1.0">
 
-                <div class="form-check form-switch mt-3">
-                    <input class="form-check-input" type="checkbox" id="claheCheck">
-                    <label class="form-check-label" for="claheCheck">Corrección de Iluminación (CLAHE)</label>
+                                    <div class="form-check form-switch mt-3">
+                                        <input class="form-check-input" type="checkbox" id="claheCheck">
+                                            <label class="form-check-label" for="claheCheck">Corrección de Iluminación (CLAHE)</label>
+                                    </div>
+                                </div>
+                                <div class="modal-footer border-secondary">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                    <button type="button" class="btn btn-primary" id="btn-apply-enhance"
+                                        onclick="applyEnhancement('manual')">
+                                        Aplicar Cambios
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                 </div>
-            </div>
-            <div class="modal-footer border-secondary">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btn-apply-enhance"
-                    onclick="applyEnhancement('manual')">
-                    Aplicar Cambios
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
+                {% endblock %}

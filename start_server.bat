@@ -18,6 +18,15 @@ IF %ERRORLEVEL% NEQ 0 (
     EXIT /B 1
 )
 
+:: Check for virtual environment and activate if found
+IF EXIST "venv311\Scripts\activate.bat" (
+    ECHO [INFO] Activating virtual environment: venv311
+    CALL venv311\Scripts\activate.bat
+) ELSE IF EXIST "venv\Scripts\activate.bat" (
+    ECHO [INFO] Activating virtual environment: venv
+    CALL venv\Scripts\activate.bat
+)
+
 :: Run the production server
 python serve.py
 

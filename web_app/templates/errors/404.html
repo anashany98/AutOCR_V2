@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Página no encontrada - AutoOCR{% endblock %}
+{% block content %}
+<div class="container text-center py-5">
+    <div class="error-container p-5 rounded-4 shadow-lg bg-dark text-light"
+        style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border: 1px solid rgba(255,255,255,0.1);">
+        <h1 class="display-1 fw-bold text-gradient mb-4"
+            style="background: linear-gradient(45deg, #ff416c, #ff4b2b); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+            404</h1>
+        <h2 class="mb-4">¡Ups! Parece que te has perdido</h2>
+        <p class="lead mb-5 opacity-75">El documento o la página que buscas no existe o ha sido movido.</p>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary btn-lg px-5 rounded-pill shadow-sm"
+            style="background: linear-gradient(45deg, #4facfe 0%, #00f2fe 100%); border: none;">
+            Volver al Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}

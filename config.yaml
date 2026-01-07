@@ -26,7 +26,7 @@ postbatch:
   classification_enabled: true
   delete_original: false
   batch_summary_report: true
-  max_workers: 4
+  max_workers: 1
   inactivity_trigger_minutes: 0
   project_grouping:
     enabled: true
@@ -98,7 +98,7 @@ ocr_pipeline:
     autodownload_models: true
   - name: easyocr
     enabled: true
-    gpu: false
+    gpu: true
     langs:
     - spa
     - eng
@@ -109,13 +109,26 @@ ocr_pipeline:
     priority:
     - paddleocr
     - easyocr
+    
+  poppler_path: "tools/poppler/poppler-25.07.0/Library/bin"
   
-  llm:
-    enabled: true
-    provider: "lm_studio"  # Options: lm_studio, ollama, openai
-    base_url: "http://localhost:1234/v1"
-    model: "local-model"   # Model name (often ignored by local servers but required by API)
-    timeout: 60
+llm:
+  enabled: true
+  provider: "lm_studio"  # Configurado para LM Studio
+  base_url: "http://127.0.0.1:1234/v1"
+  model: "llama-3.2-1b-instruct"
+  timeout: 60
+
+  routing:
+    enabled: false
+    # Model for general conversation
+    general_chat:
+      base_url: "http://127.0.0.1:1235/v1"
+      model: "mistral-small-24b"
+    # Model for document analysis (RAG)
+    document_chat:
+      base_url: "http://127.0.0.1:1234/v1"
+      model: "llama-3.1-70b"
 
   vision:
     enabled: true
@@ -169,13 +182,13 @@ ocr_pipeline:
     save_markdown_in_db: true
   primary_engine: auto
 database:
-  engine: sqlite
+  engine: postgresql  # Cambiado de sqlite a postgresql
   sqlite:
     path: data/digitalizerai.db
   postgresql:
-    host: localhost
+    host: localhost  # Cambiar por tu host (ej: 127.0.0.1 o IP del servidor)
     port: 5432
-    user: postgres
-    password: password
-    dbname: autocr
+    user: postgres   # Cambiar por tu usuario de postgres
+    password: 123 # Cambiar por tu contraseña
+    dbname: autocr   # Cambiar por el nombre de tu base de datos
     use_pgvector: false

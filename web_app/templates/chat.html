@@ -12,6 +12,12 @@
         <button id="rebuild-btn" class="btn btn-sm btn-outline-secondary">
             <i class="fas fa-sync me-1"></i> Reindexar
         </button>
+        <div class="ms-3">
+            <span id="llm-status-badge"
+                class="badge bg-secondary bg-opacity-50 text-light border border-secondary shadow-sm">
+                <i class="fas fa-circle-notch fa-spin me-1"></i> Conectando...
+            </span>
+        </div>
     </div>
 </div>
 
@@ -23,16 +29,29 @@
                 <div class="text-center text-muted mt-5">
                     <i class="fas fa-search fa-3x mb-3 opacity-25"></i>
                     <p>Escriba su consulta para buscar en los documentos procesados.</p>
-                    <small>Ej: "Facturas de electricidad de 2024" o "Contrato de alquiler"</small>
+                    <small>Ej: "Presupuestos del Hotel ...." o "Buscame la imagen de un sofa rosa"</small>
                 </div>
             </div>
 
             <!-- Input Area -->
             <div class="card-footer bg-transparent border-top border-secondary border-opacity-25 p-4">
-                <form id="chat-form" class="d-flex gap-2">
+                <div id="image-preview-container" class="mb-2 d-none">
+                    <div class="position-relative d-inline-block">
+                        <img id="image-preview" src="" class="img-thumbnail" style="max-height: 100px;">
+                        <button type="button" id="remove-image-btn"
+                            class="btn btn-sm btn-danger position-absolute top-0 start-100 translate-middle rounded-circle">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <form id="chat-form" class="d-flex gap-2 align-items-center">
+                    <label for="image-input" class="btn btn-outline-secondary mb-0">
+                        <i class="fas fa-camera"></i>
+                        <input type="file" id="image-input" accept="image/*" class="d-none">
+                    </label>
                     <input type="text" id="user-input" class="form-control bg-dark text-light border-secondary"
-                        placeholder="Escriba su pregunta..." autocomplete="off">
-                    <button type="submit" class="btn btn-info px-4">
+                        placeholder="Escriba su pregunta o suba una imagen..." autocomplete="off">
+                    <button type="submit" id="send-btn" class="btn btn-info px-4">
                         <i class="fas fa-paper-plane"></i>
                     </button>
                 </form>
@@ -47,10 +66,56 @@
     document.addEventListener('DOMContentLoaded', () => {
         const form = document.getElementById('chat-form');
         const input = document.getElementById('user-input');
+        const imageInput = document.getElementById('image-input');
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        const imagePreview = document.getElementById('image-preview');
+        const removeImageBtn = document.getElementById('remove-image-btn');
         const history = document.getElementById('chat-history');
         const rebuildBtn = document.getElementById('rebuild-btn');
 
-        function appendMessage(role, content, isHtml = false) {
+        let selectedFile = null;
+
+        // --- Session Management ---
+        function getSessionId() {
+            let sid = localStorage.getItem('chat_session_id');
+            if (!sid) {
+                // Generate UUIDv4
+                sid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+                localStorage.setItem('chat_session_id', sid);
+            }
+            return sid;
+        }
+        const sessionId = getSessionId();
+        // --------------------------
+
+        imageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFile = file;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.src = e.target.result;
+                    imagePreviewContainer.classList.remove('d-none');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        removeImageBtn.addEventListener('click', () => {
+            selectedFile = null;
+            imageInput.value = '';
+            imagePreviewContainer.classList.add('d-none');
+            imagePreview.src = '';
+        });
+
+        function appendMessage(role, content, isHtml = false, imageUrl = null) {
+            // Remove 'no messages' placeholder if exists
+            const placeholder = history.querySelector('.text-center.text-muted');
+            if (placeholder) placeholder.remove();
+
             const div = document.createElement('div');
             div.className = `d-flex mb-4 ${role === 'user' ? 'justify-content-end' : 'justify-content-start'}`;
 
@@ -58,36 +123,77 @@
             bubble.className = `p-3 rounded-3 ${role === 'user' ? 'bg-primary text-white' : 'bg-secondary bg-opacity-25 text-light'}`;
             bubble.style.maxWidth = '80%';
 
-            if (isHtml) {
-                bubble.innerHTML = content;
-            } else {
-                bubble.textContent = content;
+            if (imageUrl) {
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.className = 'img-fluid rounded mb-2 d-block';
+                img.style.maxHeight = '200px';
+                bubble.appendChild(img);
             }
+
+            const contentDiv = document.createElement('div');
+            if (isHtml) {
+                contentDiv.innerHTML = content;
+            } else {
+                contentDiv.textContent = content;
+                // Simple formatting for plain text newlines
+                contentDiv.style.whiteSpace = 'pre-wrap';
+            }
+            bubble.appendChild(contentDiv);
 
             div.appendChild(bubble);
             history.appendChild(div);
             history.scrollTop = history.scrollHeight;
         }
 
+        // Load History
+        async function loadHistory() {
+            try {
+                const res = await fetch(`/api/chat/history?session_id=${sessionId}`);
+                const data = await res.json();
+                if (data.history && data.history.length > 0) {
+                    // Clear placeholder
+                    history.innerHTML = '';
+                    data.history.forEach(msg => {
+                        // Assuming msg structure: {role: 'user'|'assistant', content: '...', timestamp: '...'}
+                        // Heuristic to detect HTML content (e.g. tool output or formatting)
+                        const isHtml = msg.role === 'assistant' || msg.content.includes('<');
+                        appendMessage(msg.role, msg.content, isHtml);
+                    });
+                    // Scroll to bottom after loading
+                    setTimeout(() => history.scrollTop = history.scrollHeight, 100);
+                }
+            } catch (err) {
+                console.error("Failed to load history:", err);
+            }
+        }
+        loadHistory();
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const query = input.value.trim();
-            if (!query) return;
+            if (!query && !selectedFile) return;
 
-            // Clear welcome message if present
-            if (history.querySelector('.text-center')) {
-                history.innerHTML = '';
+            const currentImage = selectedFile ? imagePreview.src : null;
+            appendMessage('user', query || "Búsqueda por imagen", false, currentImage);
+
+            const formData = new FormData();
+            formData.append('query', query);
+            formData.append('session_id', sessionId); // Send Session ID
+            if (selectedFile) {
+                formData.append('image', selectedFile);
             }
 
-            appendMessage('user', query);
+            // Reset input
             input.value = '';
             input.disabled = true;
+            removeImageBtn.click();
+            imageInput.disabled = true;
 
             try {
                 const res = await fetch('/api/chat', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query })
+                    body: formData
                 });
                 const data = await res.json();
 
@@ -109,11 +215,10 @@
                     data.results.forEach(item => {
                         const score = (item.score || 0).toFixed(2);
                         const filename = item.filename || "Desconocido";
-                        const docId = item.doc_id || item.id; // Handle both formats
+                        const docId = item.doc_id || item.id;
                         const text = item.text || item.snippet || "";
-
-                        // Create a link to the document
                         const link = `/document/${docId}`;
+
                         html += `
                         <div class="mb-2 p-2 rounded bg-dark border border-secondary border-opacity-25">
                             <div class="d-flex justify-content-between small text-info mb-1">
@@ -125,7 +230,7 @@
                         </div>
                     `;
                     });
-                    appendMessage('bot', html, true);
+                    appendMessage('bot', html, true); // Append as part of bot message or separate? Usually separate is clearer but appending to bot "role" works visually.
                 } else if (!data.answer) {
                     appendMessage('bot', 'No encontré información relevante en los documentos.');
                 }
@@ -135,20 +240,73 @@
                 console.error(err);
             } finally {
                 input.disabled = false;
+                imageInput.disabled = false;
                 input.focus();
             }
         });
 
         rebuildBtn.addEventListener('click', async () => {
-            if (!confirm('Esto puede tardar unos minutos. ¿Desea reindexar todos los documentos?')) return;
+            if (!confirm('¿Reindexar base de conocimiento?\nEsto procesará todos los documentos para que el "Cerebro" pueda leerlos.')) return;
+
+            const originalText = rebuildBtn.innerHTML;
+            rebuildBtn.disabled = true;
+            rebuildBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Iniciando...';
+
             try {
                 const res = await fetch('/api/rag/rebuild', { method: 'POST' });
                 const data = await res.json();
-                alert(data.message);
+
+                // Show elaborate success message
+                rebuildBtn.innerHTML = '<i class="fas fa-check me-1"></i> Iniciado';
+                rebuildBtn.classList.remove('btn-outline-secondary');
+                rebuildBtn.classList.add('btn-success');
+
+                alert(`✅ ${data.message}\n\nEl proceso corre en segundo plano. El cerebro está "leyendo" los documentos.\nPuedes seguir usando el chat, pero tardará unos minutos en saberlo todo.`);
+
             } catch (err) {
-                alert('Error al iniciar reindexado');
+                console.error(err);
+                alert('❌ Error al iniciar reindexado. Revisa la consola.');
+                rebuildBtn.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i> Error';
+                rebuildBtn.classList.add('btn-danger');
+            } finally {
+                setTimeout(() => {
+                    rebuildBtn.disabled = false;
+                    rebuildBtn.innerHTML = originalText;
+                    rebuildBtn.classList.remove('btn-success', 'btn-danger');
+                    rebuildBtn.classList.add('btn-outline-secondary');
+                }, 5000);
             }
         });
+
+        // LLM Status Polling
+        async function checkLLMStatus() {
+            const badge = document.getElementById('llm-status-badge');
+            if (!badge) return;
+
+            try {
+                const res = await fetch('/api/status/llm');
+                const data = await res.json();
+
+                if (data.status === 'online') {
+                    badge.className = 'badge bg-success text-white shadow-sm animate-pulse';
+                    badge.innerHTML = '<i class="fas fa-brain me-1"></i> Cerebro: Online';
+                } else if (data.status === 'disabled') {
+                    badge.className = 'badge bg-secondary text-white-50';
+                    badge.innerHTML = '<i class="fas fa-power-off me-1"></i> Cerebro: Apagado';
+                } else {
+                    badge.className = 'badge bg-danger text-white shadow-sm';
+                    badge.innerHTML = '<i class="fas fa-plug me-1"></i> Cerebro: Desconectado';
+                    badge.title = 'Asegúrate de que LM Studio está abierto en el puerto 1234';
+                }
+            } catch (err) {
+                badge.className = 'badge bg-danger text-white shadow-sm';
+                badge.innerHTML = '<i class="fas fa-plug me-1"></i> Error de Conexión';
+            }
+        }
+
+        // Check immediately and then every 10s
+        checkLLMStatus();
+        setInterval(checkLLMStatus, 10000);
     });
 </script>
 {% endblock %}

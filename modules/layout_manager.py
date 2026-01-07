@@ -49,6 +49,8 @@ _NORMALISED_LABELS = {
     "list": "text",
     "figure_caption": "figure",
     "equation": "other",
+    "seal": "seal",
+    "signature": "signature",
 }
 
 @dataclass

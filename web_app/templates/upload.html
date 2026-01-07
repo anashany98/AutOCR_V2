@@ -12,6 +12,30 @@
 
         <div class="card border-0">
             <div class="card-body p-5">
+                <!-- Loading Overlay -->
+                <div id="loadingOverlay"
+                    class="d-none position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+                    style="z-index: 9999; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);">
+                    <div class="text-center text-white" style="max-width: 400px; width: 90%;">
+                        <div class="mb-4">
+                            <i class="fas fa-cog fa-spin fa-3x text-primary shadow-glow"></i>
+                        </div>
+                        <h4 class="fw-bold mb-3">Procesando Documentos...</h4>
+                        <p class="text-white-50 mb-4">Estamos analizando sus archivos con IA. Esto puede tomar unos
+                            momentos dependiendo de la GPU.</p>
+
+                        <div class="progress" style="height: 10px; background: rgba(255,255,255,0.1);">
+                            <div id="progressBar"
+                                class="progress-bar progress-bar-striped progress-bar-animated bg-gradient-primary"
+                                role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2 small text-white-50">
+                            <span id="progressText">Iniciando...</span>
+                            <span id="progressPercent">0%</span>
+                        </div>
+                    </div>
+                </div>
+
                 <form method="post" enctype="multipart/form-data" id="upload-form" onsubmit="showLoading()">
                     <!-- Dual Inputs: One for Files, One for Camera -->
                     <input type="file" id="file_input" name="files" multiple class="d-none"
@@ -129,10 +153,37 @@
     }
 
     function showLoading() {
-        const btn = document.getElementById('submit-btn');
-        btn.disabled = true;
-        btn.originalHTML = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Procesando...';
+        const overlay = document.getElementById('loadingOverlay');
+        const bar = document.getElementById('progressBar');
+        const text = document.getElementById('progressText');
+        const percent = document.getElementById('progressPercent');
+
+        // Show Overlay
+        overlay.classList.remove('d-none');
+        overlay.classList.add('animate-fade-in');
+
+        // Reset
+        let width = 0;
+
+        // Simulated progress
+        const interval = setInterval(() => {
+            if (width >= 95) {
+                // Slower at the end
+                if (width < 99) width += 0.1;
+            } else if (width >= 70) {
+                width += 0.5; // Medium speed
+                text.textContent = "Extrayendo texto y tablas...";
+            } else if (width >= 30) {
+                width += 1.5; // Normal speed
+                text.textContent = "Analizando estructura...";
+            } else {
+                width += 2.5; // Fast start
+                text.textContent = "Subiendo archivos...";
+            }
+
+            bar.style.width = width + '%';
+            percent.textContent = Math.round(width) + '%';
+        }, 100);
     }
 </script>
 {% endblock %}

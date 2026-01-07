@@ -90,9 +90,18 @@ def move_file(
             base_folder = dest_folder
 
     ensure_directories(base_folder)
-    dest_path = os.path.join(base_folder, filename)
-    if delete_original:
-        shutil.move(src_path, dest_path)
-    else:
-        shutil.copy2(src_path, dest_path)
+    dest_path = os.path.normpath(os.path.join(base_folder, filename))
+    src_path = os.path.normpath(src_path)
+    
+    if src_path == dest_path:
+        return dest_path
+
+    try:
+        if delete_original:
+            shutil.move(src_path, dest_path)
+        else:
+            shutil.copy2(src_path, dest_path)
+    except shutil.SameFileError:
+        pass
+        
     return dest_path

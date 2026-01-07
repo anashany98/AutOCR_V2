@@ -5,10 +5,16 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
     <div>
-        <h1 class="h3 fw-bold mb-1">Explorador de Documentos</h1>
-        <p class="text-muted small mb-0">Gestione y organice sus archivos digitalizados.</p>
+        <h1 class="h3 fw-bold mb-1">{{ title or 'Explorador de Documentos' }}</h1>
+        <p class="text-muted small mb-0">
+            {% if is_verification_list %}
+            Documentos que requieren revisión manual debido a baja confianza en el OCR.
+            {% else %}
+            Gestione y organice sus archivos digitalizados.
+            {% endif %}
+        </p>
     </div>
-    <a href="{{ url_for('upload') }}" class="btn btn-primary d-flex align-items-center gap-2 text-nowrap">
+    <a href="{{ url_for('main.upload') }}" class="btn btn-primary d-flex align-items-center gap-2 text-nowrap">
         <i class="fas fa-plus"></i>
         <span>Subir Nuevo</span>
     </a>
@@ -59,7 +65,7 @@
             <div class="col-md-2">
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary px-4">Filtrar</button>
-                    <a href="{{ url_for('documents') }}" class="btn btn-outline-secondary px-3" title="Limpiar">
+                    <a href="{{ url_for('main.documents') }}" class="btn btn-outline-secondary px-3" title="Limpiar">
                         <i class="fas fa-undo"></i>
                     </a>
                 </div>
@@ -76,11 +82,16 @@
             <table class="table table-hover align-middle mb-0" style="background: transparent;">
                 <thead class="bg-light bg-opacity-10">
                     <tr>
-                        <th class="ps-4 py-3 bg-transparent"><input type="checkbox" class="form-check-input"
-                                onclick="toggleAll(this)"></th>
+                        <th class="ps-4 py-3 bg-transparent">
+                            <input type="checkbox" class="form-check-input" id="selectAll">
+                        </th>
                         <th class="ps-2 py-3 text-uppercase text-muted small fw-bold">Archivo</th>
                         <th class="py-3 text-uppercase text-muted small fw-bold">Tipo</th>
+                        {% if is_verification_list %}
+                        <th class="py-3 text-uppercase text-muted small fw-bold">Confianza</th>
+                        {% else %}
                         <th class="py-3 text-uppercase text-muted small fw-bold">Estado</th>
+                        {% endif %}
                         <th class="py-3 text-uppercase text-muted small fw-bold">Fecha</th>
                         <th class="py-3 text-end pe-4 text-uppercase text-muted small fw-bold">Acciones</th>
                     </tr>
@@ -88,7 +99,7 @@
                 <tbody>
                     {% for doc in documents %}
                     <tr>
-                        <td class="ps-4"><input type="checkbox" class="form-check-input doc-selector"
+                        <td class="ps-4"><input type="checkbox" class="form-check-input doc-checkbox"
                                 value="{{ doc[0] }}"></td>
                         <td class="ps-2">
                             <div class="d-flex align-items-center">
@@ -110,26 +121,37 @@
                             {% if doc[3] == 'Contract' %}{% set badge_color = 'info' %}{% endif %}
                             <span
                                 class="badge bg-{{ badge_color }} bg-opacity-25 text-light border border-{{ badge_color }} border-opacity-25 px-3 py-2 rounded-pill">
-                                {{ doc[3] if doc[3] and doc[3].strip() != '' else 'Desconocido' }}
+                                {{ doc[3]|string if doc[3] and (doc[3]|string).strip() != '' else 'Desconocido' }}
                             </span>
                         </td>
                         <td>
+                            {% if is_verification_list %}
+                            {% set conf = (doc[3] * 100)|int if doc[3] else 0 %}
+                            <div class="progress" style="height: 6px; width: 100px;">
+                                <div class="progress-bar {% if conf < 70 %}bg-danger{% elif conf < 85 %}bg-warning{% else %}bg-success{% endif %}"
+                                    role="progressbar" style="width: {{ conf }}%;"></div>
+                            </div>
+                            <small class="text-muted">{{ conf }}%</small>
+                            {% else %}
                             {% if doc[4] == 'OK' %}
                             <span class="text-success small fw-bold"><i class="fas fa-check-circle me-1"></i> OK</span>
                             {% elif doc[4] == 'FAILED' %}
-                            <span class="text-danger small fw-bold"><i class="fas fa-times-circle me-1"></i>
-                                Fallido</span>
+                            <span class="text-danger small fw-bold"
+                                title="{{ doc[8] if doc[8] else 'Error desconocido' }}">
+                                <i class="fas fa-times-circle me-1"></i> Fallido
+                            </span>
                             {% else %}
                             <span class="text-warning small fw-bold">{{ doc[4] }}</span>
+                            {% endif %}
                             {% endif %}
                         </td>
                         <td class="text-muted small">
                             {{ doc[5][:16].replace('T', ' ') if doc[5] else '-' }}
                         </td>
                         <td class="text-end pe-4 text-nowrap">
-                            <a href="{{ url_for('document_detail', doc_id=doc[0]) }}"
-                                class="btn btn-sm btn-outline-light rounded-pill px-3">
-                                Revisar
+                            <a href="{{ url_for('main.verify_document', doc_id=doc[0]) }}"
+                                class="btn btn-sm btn-{{ 'warning' if is_verification_list else 'outline-light' }} rounded-pill px-3">
+                                {{ 'Verificar' if is_verification_list else 'Revisar' }}
                             </a>
                             {% if doc[1].lower().endswith('.pdf') %}
                             <button onclick="promptSplit('{{ doc[0] }}')"
@@ -145,34 +167,31 @@
         </div>
 
         <!-- Modern Pagination -->
-        {% if total_pages > 1 %}
         <div class="d-flex justify-content-center py-4 border-top border-secondary border-opacity-10">
             <nav aria-label="Pagination">
                 <ul class="pagination mb-0 gap-1">
                     <li class="page-item {{ 'disabled' if page == 1 }}">
                         <a class="page-link rounded-2"
-                            href="{{ url_for('documents', page=page-1, status=status_filter, type=type_filter, search=search) }}">
+                            href="{{ url_for('main.documents', page=page-1, status=status_filter, type=type_filter, search=search) }}">
                             <i class="fas fa-chevron-left"></i>
                         </a>
                     </li>
                     {% for p in range(max(1, page-2), min(total_pages+1, page+3)) %}
                     <li class="page-item {{ 'active' if p == page }}">
                         <a class="page-link rounded-2"
-                            href="{{ url_for('documents', page=p, status=status_filter, type=type_filter, search=search) }}">{{
+                            href="{{ url_for('main.documents', page=p, status=status_filter, type=type_filter, search=search) }}">{{
                             p }}</a>
                     </li>
                     {% endfor %}
                     <li class="page-item {{ 'disabled' if page == total_pages }}">
                         <a class="page-link rounded-2"
-                            href="{{ url_for('documents', page=page+1, status=status_filter, type=type_filter, search=search) }}">
+                            href="{{ url_for('main.documents', page=page+1, status=status_filter, type=type_filter, search=search) }}">
                             <i class="fas fa-chevron-right"></i>
                         </a>
                     </li>
                 </ul>
             </nav>
         </div>
-        {% endif %}
-
         {% else %}
         <div class="text-center py-5">
             <div class="mb-3 opacity-25">
@@ -180,7 +199,7 @@
             </div>
             <h5 class="text-muted fw-normal">No se encontraron documentos</h5>
             <p class="small text-muted mb-4 opacity-75">Intente con otros filtros o suba un nuevo archivo.</p>
-            <a href="{{ url_for('upload') }}" class="btn btn-primary px-4">
+            <a href="{{ url_for('main.upload') }}" class="btn btn-primary px-4">
                 Subir Documento
             </a>
         </div>
@@ -189,16 +208,10 @@
 </div>
 
 <script>
-    function toggleAll(source) {
-        checkboxes = document.querySelectorAll('.doc-selector');
-        for (var i = 0; i < checkboxes.length; i++) {
-            checkboxes[i].checked = source.checked;
-        }
-    }
 
     function mergeDocuments() {
         let selected = [];
-        document.querySelectorAll('.doc-selector:checked').forEach(e => selected.push(e.value));
+        document.querySelectorAll('.doc-checkbox:checked').forEach(e => selected.push(e.value));
 
         if (selected.length < 2) {
             alert("Seleccione al menos 2 documentos para grapar.");
@@ -241,4 +254,96 @@
             });
     }
 </script>
+<!-- Floating Action Bar -->
+<div id="batch-actions"
+    class="position-fixed bottom-0 start-50 translate-middle-x mb-4 ms-5 p-3 bg-dark rounded-pill shadow-lg d-flex align-items-center gap-3 animate-slide-up"
+    style="display: none; z-index: 1000; min-width: 350px;">
+    <span class="text-white fw-bold ps-2"><span id="selected-count">0</span> seleccionados</span>
+    <div class="vr bg-white opacity-25"></div>
+
+    <form id="batch-form" method="POST" action="{{ url_for('main.batch_action') }}" class="d-flex gap-2">
+        <input type="hidden" name="doc_ids" id="batch-doc-ids">
+        <input type="hidden" name="action" id="batch-action-type">
+
+        <button type="button" class="btn btn-sm btn-light rounded-pill fw-bold" onclick="submitBatch('export')">
+            <i class="fas fa-download me-2"></i> Exportar
+        </button>
+        {% if is_verification_list %}
+        <button type="button" class="btn btn-sm btn-success rounded-pill fw-bold" onclick="submitBatch('auto_verify')"
+            title="Auto Verificar">
+            <i class="fas fa-magic me-2"></i> Auto-Verificar
+        </button>
+        {% endif %}
+        <button type="button" class="btn btn-sm btn-outline-warning rounded-pill border-0"
+            onclick="submitBatch('reprocess')" title="Reprocesar">
+            <i class="fas fa-sync-alt"></i>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-danger rounded-pill border-0"
+            onclick="submitBatch('delete')" title="Eliminar">
+            <i class="fas fa-trash"></i>
+        </button>
+    </form>
+
+    <button class="btn btn-sm btn-outline-secondary rounded-circle border-0 ms-auto" onclick="clearSelection()"
+        title="Cancelar">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+    const checkboxes = document.querySelectorAll('.doc-checkbox');
+    const selectAll = document.getElementById('selectAll');
+    const batchBar = document.getElementById('batch-actions');
+    const countSpan = document.getElementById('selected-count');
+
+    function updateUI() {
+        const checked = document.querySelectorAll('.doc-checkbox:checked');
+        const count = checked.length;
+        countSpan.textContent = count;
+
+        if (count > 0) {
+            batchBar.style.display = 'flex';
+        } else {
+            batchBar.style.display = 'none';
+        }
+    }
+
+    // Initial UI update in case some checkboxes are pre-checked (e.g., after back navigation)
+    document.addEventListener('DOMContentLoaded', updateUI);
+
+    // Event listeners for individual checkboxes
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', updateUI);
+    });
+
+    // Event listener for selectAll checkbox
+    if (selectAll) { // Check if selectAll exists
+        selectAll.addEventListener('change', (e) => {
+            checkboxes.forEach(cb => cb.checked = e.target.checked);
+            updateUI();
+        });
+    }
+
+    function clearSelection() {
+        checkboxes.forEach(cb => cb.checked = false);
+        if (selectAll) {
+            selectAll.checked = false;
+        }
+        updateUI();
+    }
+
+    function submitBatch(action) {
+        if (!confirm('¿Estás seguro de realizar esta acción en los elementos seleccionados?')) return;
+
+        const checked = document.querySelectorAll('.doc-checkbox:checked');
+        const ids = Array.from(checked).map(cb => cb.value);
+
+        document.getElementById('batch-doc-ids').value = JSON.stringify(ids);
+        document.getElementById('batch-action-type').value = action;
+        document.getElementById('batch-form').submit();
+    }
+</script>
+{% endblock %}
+```

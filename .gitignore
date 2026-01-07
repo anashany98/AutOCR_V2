@@ -47,3 +47,11 @@ web_app/logs/
 # config.yaml (Included in source usually, unless it has keys. Checking content... it seems generic enough but user might want it tracked.)
 # For now we track config.yaml as it is the main config structure.
 .env
+venv311/
+models/
+*.log
+*_log.txt
+temp_*.txt
+ocr_test_output.txt
+.gemini/
+.vscode/

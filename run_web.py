@@ -124,7 +124,7 @@ def main() -> None:
 
     logger.info("🌐 Web interface available at {}", url)
     logger.info("📦 Flask debug mode: {}", debug_mode)
-    app.run(debug=debug_mode, host="0.0.0.0", port=port)
+    app.run(debug=True, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":

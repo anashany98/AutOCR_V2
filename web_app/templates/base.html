@@ -24,37 +24,42 @@
             </div>
 
             <div class="nav flex-column">
-                <a class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}"
-                    href="{{ url_for('dashboard') }}">
+                <a class="nav-link {{ 'active' if request.endpoint == 'main.dashboard' else '' }}"
+                    href="{{ url_for('main.dashboard') }}">
                     <i class="fas fa-chart-pie"></i> Dashboard
                 </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'documents' else '' }}"
-                    href="{{ url_for('documents') }}">
+                <a class="nav-link {{ 'active' if request.endpoint == 'main.documents' else '' }}"
+                    href="{{ url_for('main.documents') }}">
                     <i class="fas fa-layer-group"></i> Documentos
                 </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'upload' else '' }}"
-                    href="{{ url_for('upload') }}">
+                <a class="nav-link {{ 'active' if request.endpoint == 'main.upload' else '' }}"
+                    href="{{ url_for('main.upload') }}">
                     <i class="fas fa-cloud-upload-alt"></i> Subir
                 </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'batch_process' else '' }}"
-                    href="{{ url_for('batch_process') }}">
+                <a class="nav-link {{ 'active' if request.endpoint == 'main.batch_process' else '' }}"
+                    href="{{ url_for('main.batch_process') }}">
                     <i class="fas fa-boxes-stacked"></i> Procesar Lote
                 </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'chat' else '' }}" href="{{ url_for('chat') }}">
+                <a class="nav-link {{ 'active' if request.endpoint == 'main.tasks_page' else '' }}"
+                    href="{{ url_for('main.tasks_page') }}">
+                    <i class="fas fa-tasks"></i> Monitor de Tareas
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'main.chat' else '' }}"
+                    href="{{ url_for('main.chat') }}">
                     <i class="fas fa-robot"></i> Chat IA
                 </a>
                 <div class="mt-4 mb-2 text-muted text-uppercase" style="font-size: 0.75rem; padding-left: 1rem;">Sistema
                 </div>
-                <a class="nav-link {{ 'active' if request.endpoint == 'gallery' else '' }}"
-                    href="{{ url_for('gallery') }}">
+                <a class="nav-link {{ 'active' if request.endpoint == 'main.gallery' else '' }}"
+                    href="{{ url_for('main.gallery') }}">
                     <i class="fas fa-images"></i> Galería Visual
                 </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'settings' else '' }}"
-                    href="{{ url_for('settings') }}">
+                <a class="nav-link {{ 'active' if request.endpoint == 'main.settings' else '' }}"
+                    href="{{ url_for('main.settings') }}">
                     <i class="fas fa-cog"></i> Configuración
                 </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'duplicates_page' else '' }}"
-                    href="{{ url_for('duplicates_page') }}">
+                <a class="nav-link {{ 'active' if request.endpoint == 'main.duplicates_page' else '' }}"
+                    href="{{ url_for('main.duplicates_page') }}">
                     <i class="fas fa-clone"></i> Limpiar Duplicados
                 </a>
             </div>

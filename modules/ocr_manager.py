@@ -59,7 +59,7 @@ _PADDLE_SINGLETON: Optional["PaddleOCR"] = None
 _PADDLE_CONFIG: Dict[str, Any] | None = None
 
 
-def get_paddle_ocr(lang: str, use_gpu: bool, **kwargs: Any) -> Optional["PaddleOCR"]:
+def get_paddle_ocr(lang: str, use_gpu: bool, gpu_id: int = 0, **kwargs: Any) -> Optional["PaddleOCR"]:
     """
     Lazily create and reuse a single PaddleOCR instance per process.
     Compatible with PaddleOCR >=3.2 (use_cuda instead of use_gpu, show_log removed).
@@ -75,43 +75,35 @@ def get_paddle_ocr(lang: str, use_gpu: bool, **kwargs: Any) -> Optional["PaddleO
         "lang": lang,
     }
 
-    # PaddleOCR >=3.3.0 handles GPU automatically - no explicit use_cuda parameter needed
-    # GPU detection is automatic based on CUDA availability
+    if requested_cuda:
+        params["use_gpu"] = True
+        params["gpu_id"] = gpu_id
+        # Note: In some versions of PaddleOCR, this might be use_cuda instead of use_gpu
+        # but the internal logic usually handles it.
 
     # merge any other custom kwargs
     if kwargs:
         params.update(kwargs)
 
-    if _PADDLE_SINGLETON is None:
-        try:
-            _PADDLE_SINGLETON = PaddleOCR(**params)
-            _PADDLE_CONFIG = {"lang": params["lang"], "use_cuda": requested_cuda}
-            _LOGGER.info("PaddleOCR loaded successfully.")
-            if requested_cuda:
-                loguru_logger.success("PaddleOCR (GPU) initialized successfully.")
-        except RuntimeError as exc:
-            if "PDX has already been initialized" in str(exc):
-                _LOGGER.warning("PaddleOCR already initialised; reusing existing singleton.")
-            else:
-                raise
-        except TypeError as exc:
-            _LOGGER.error("Failed to initialise PaddleOCR: %s", exc)
-            return None
-    else:
-        params_cuda = requested_cuda if "use_cuda" not in params else bool(params.get("use_cuda"))
-        if _PADDLE_CONFIG and (
-            params["lang"] != _PADDLE_CONFIG.get("lang")
-            or params_cuda != _PADDLE_CONFIG.get("use_cuda")
-        ):
-            _LOGGER.warning(
-                "Requested PaddleOCR configuration (lang=%s, cuda=%s) differs from singleton (lang=%s, cuda=%s); reusing existing instance.",
-                params["lang"],
-                params_cuda,
-                _PADDLE_CONFIG.get("lang"),
-                _PADDLE_CONFIG.get("use_cuda"),
-            )
+    # For multi-GPU, we can't use a single global singleton easily if they need different GPUs
+    # However, if it's the SAME GPU_ID, we can reuse.
+    # We'll use a dictionary of singletons keyed by (lang, gpu_id)
+    global _PADDLE_SINGLETON_MAP
+    if "_PADDLE_SINGLETON_MAP" not in globals():
+        globals()["_PADDLE_SINGLETON_MAP"] = {}
 
-    return _PADDLE_SINGLETON
+    key = (lang, gpu_id if requested_cuda else -1)
+    
+    if key not in globals()["_PADDLE_SINGLETON_MAP"]:
+        try:
+            instance = PaddleOCR(**params)
+            globals()["_PADDLE_SINGLETON_MAP"][key] = instance
+            _LOGGER.info(f"PaddleOCR loaded successfully for {key}.")
+        except Exception as exc:
+            _LOGGER.error(f"Failed to initialise PaddleOCR for {key}: {exc}")
+            return None
+    
+    return globals()["_PADDLE_SINGLETON_MAP"][key]
 
 
 
@@ -178,10 +170,12 @@ class OCRManager:
         self,
         config: OCRConfig | None = None,
         logger: Optional[logging.Logger] = None,
+        gpu_id: int = 0,
     ) -> None:
         self.config = config or OCRConfig()
         self.logger = logger or logging.getLogger(__name__)
         self.enabled = self.config.enabled
+        self.gpu_id = gpu_id
 
         self.engine_configs: Dict[str, Dict[str, object]] = {
             key.lower(): value for key, value in (self.config.engine_configs or {}).items()
@@ -189,6 +183,7 @@ class OCRManager:
         self.primary_engine = self.config.primary_engine.lower()
         self.secondary_engine = self.config.secondary_engine.lower()
         self.languages = tuple(self.config.languages) if self.config.languages else DEFAULT_LANGUAGES
+        self.poppler_path = self.engine_configs.get("poppler_path")
 
         paddle_conf = self.engine_configs.get("paddleocr", {})
         easy_conf = self.engine_configs.get("easyocr", {})
@@ -251,7 +246,7 @@ class OCRManager:
             hw_prob = detect_handwriting_probability(image)
             is_handwritten_scores.append(hw_prob)
 
-            # ✅ Preprocess image for better accuracy
+            #  Preprocess image for better accuracy
             processed_image = self._preprocess_image(image)
             
             text, confidence = self._run_primary_engine(processed_image)
@@ -386,8 +381,22 @@ class OCRManager:
         texts: List[str] = []
         confidences: List[float] = []
 
-        for line in result:
-            for _, data in line:
+        # Handle different return structures from PaddleOCR
+        pages = result
+        # Check if result is a single page (list of lines)
+        if result and isinstance(result, list) and len(result) > 0:
+            first_item = result[0]
+            # If first item is a line [box, (text, score)], wrap it in a page list
+            if isinstance(first_item, list) and len(first_item) == 2 and isinstance(first_item[1], tuple):
+                 pages = [result]
+        
+        for page in pages:
+            if not page:
+                 continue
+            for item in page:
+                if not isinstance(item, (list, tuple)) or len(item) != 2:
+                    continue
+                box, data = item
                 text = (data[0] or "").strip()
                 conf = float(data[1]) if len(data) > 1 and data[1] is not None else 0.0
                 if text:
@@ -439,6 +448,7 @@ class OCRManager:
             self._paddle_ocr = get_paddle_ocr(
                 lang=self._paddle_lang,
                 use_gpu=self._paddle_use_gpu,
+                gpu_id=self.gpu_id,
                 **kwargs,
             )
             if self._paddle_ocr is not None:
@@ -463,7 +473,7 @@ class OCRManager:
                 surya = SuryaOCREngine(surya_conf, logger=self.logger)
                 if surya.initialize():
                     self.extra_engines["surya"] = surya
-                    self.logger.info("✅ Surya OCR Engine initialized.")
+                    self.logger.info(" Surya OCR Engine initialized.")
             except Exception as e:
                 self.logger.error(f"Failed to initialize Surya OCR: {e}")
 
@@ -502,6 +512,8 @@ class OCRManager:
         if self.primary_engine != "easyocr" and self.secondary_engine != "easyocr":
             return
         try:
+            # easyocr.Reader doesn't always support gpu_id in all versions.
+            # It uses the current torch device.
             self._easy_reader = easyocr.Reader(self._easy_langs, gpu=self._easy_use_gpu)  # type: ignore[arg-type]
             self.logger.info(
                 "EasyOCR initialised (langs=%s, gpu=%s).",
@@ -527,7 +539,7 @@ class OCRManager:
                 gpu_count = 0
         else:
             self.logger.info("Paddle not installed with GPU support; using CPU.")
-        self.logger.info("🧠 GPU available: %s (%d GPUs detected)", has_cuda, gpu_count)
+        self.logger.info(" GPU available: %s (%d GPUs detected)", has_cuda, gpu_count)
         if not requested:
             return False
         if has_cuda:
@@ -574,13 +586,37 @@ class OCRManager:
         return image.crop((left, top, right, bottom))
 
     def _load_document_images(self, path: str) -> List[Image.Image]:
+        print(f"DEBUG: _load_document_images called for {path}")
         suffix = Path(path).suffix.lower()
         if suffix == ".pdf":
             if convert_from_path is None:
                 raise RuntimeError(
                     "pdf2image is required for PDF OCR but is not installed"
                 )
-            pages = convert_from_path(path)
+            
+            # Use poppler_path if provided in config
+            kwargs = {}
+            if self.poppler_path:
+                print(f"DEBUG: Using poppler_path: {self.poppler_path}")
+                self.logger.info(f"PDF OCR: Using poppler_path: {self.poppler_path}")
+                pdfinfo_path = os.path.join(self.poppler_path, "pdfinfo.exe")
+                if os.path.exists(pdfinfo_path):
+                    print(f"DEBUG: Verified pdfinfo.exe at {pdfinfo_path}")
+                    self.logger.info(f"PDF OCR: Verified pdfinfo.exe at {pdfinfo_path}")
+                    kwargs["poppler_path"] = self.poppler_path
+                    
+                    # Fix for Windows: Ensure poppler bin is in PATH for DLL loading
+                    if os.name == 'nt':
+                        import os
+                        current_path = os.environ.get("PATH", "")
+                        if self.poppler_path not in current_path:
+                            os.environ["PATH"] = self.poppler_path + os.pathsep + current_path
+                else:
+                    self.logger.error(f"PDF OCR: pdfinfo.exe NOT FOUND at {pdfinfo_path}")
+            else:
+                self.logger.warning("PDF OCR: No poppler_path provided in config")
+                
+            pages = convert_from_path(path, **kwargs)
             return [page.convert("RGB") for page in pages]
 
         with Image.open(path) as img:

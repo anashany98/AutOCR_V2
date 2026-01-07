@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import os
 import threading
 import queue
 from contextlib import contextmanager
@@ -47,25 +48,31 @@ class DBManager:
             if psycopg2 is None:
                 raise RuntimeError("psycopg2 is not installed; cannot connect to PostgreSQL")
             self.pg_conf = self.config.get("postgresql", {})
-            # Validate connection params by creating one test connection
             try:
-                test_conn = self._create_connection()
-                test_conn.close()
+                # Initialize ThreadedConnectionPool for Postgres
+                self._pool = pool.ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=int(os.getenv("DB_POOL_SIZE", self.config.get("pool_size", 10))),
+                    host=os.getenv("DB_HOST", self.pg_conf.get("host", "localhost")),
+                    port=int(os.getenv("DB_PORT", self.pg_conf.get("port", 5432))),
+                    user=os.getenv("DB_USER", self.pg_conf.get("user", "postgres")),
+                    password=os.getenv("DB_PASSWORD", self.pg_conf.get("password", "123")),
+                    dbname=os.getenv("DB_NAME", self.pg_conf.get("dbname", "autocr"))
+                )
             except Exception as e:
-                 raise RuntimeError(f"Failed to connect to PostgreSQL: {e}")
+                 raise RuntimeError(f"Failed to initialize PostgreSQL pool: {e}")
 
         elif self.engine_type == "sqlite":
             if sqlite3 is None:
                 raise RuntimeError("sqlite3 is not available in this environment")
             self.db_path = self.config.get("sqlite", {}).get("path", "data/digitalizerai.db")
+            # For SQLite, we use a queue of connections as a simple pool
+            pool_size = self.config.get("pool_size", 5)
+            self._sqlite_pool = queue.Queue(maxsize=pool_size)
+            for _ in range(pool_size):
+                self._sqlite_pool.put(self._create_connection())
 
-        # Initialize connection pool
-        pool_size = self.config.get("pool_size", 5)
-        self._pool = queue.Queue(maxsize=pool_size)
-        for _ in range(pool_size):
-            self._pool.put(self._create_connection())
-
-        # Initialize schema using a temporary connection from pool
+        # Initialize schema using a temporary connection
         with self.get_connection() as conn:
              self.initialize_schema(conn)
              self.upgrade_schema(conn)
@@ -89,11 +96,18 @@ class DBManager:
     @contextmanager
     def get_connection(self):
         """Context manager to borrow a connection from the pool."""
-        conn = self._pool.get()
-        try:
-            yield conn
-        finally:
-            self._pool.put(conn)
+        if self.engine_type == "postgresql":
+            conn = self._pool.getconn()
+            try:
+                yield conn
+            finally:
+                self._pool.putconn(conn)
+        else:
+            conn = self._sqlite_pool.get()
+            try:
+                yield conn
+            finally:
+                self._sqlite_pool.put(conn)
 
     def upgrade_schema(self, conn=None):
         """Handle migrations/column additions."""
@@ -153,8 +167,9 @@ class DBManager:
         ):
             self._ensure_column("ocr_texts", column, definition, conn)
         
-        # Add workflow state to documents table
+        # Add workflow state and error_message to documents table
         self._ensure_column("documents", "workflow_state", "TEXT DEFAULT 'new'", conn)
+        self._ensure_column("documents", "error_message", "TEXT", conn)
 
     def get_cursor(self, conn=None):
         """Get a cursor from the provided connection or raise error if no connection."""
@@ -162,7 +177,7 @@ class DBManager:
              raise RuntimeError("Use 'with db.get_connection() as conn:' pattern instead of get_cursor()")
              
         if self.engine_type == "postgresql":
-            return conn.cursor(cursor_factory=extras.RealDictCursor)
+            return conn.cursor(cursor_factory=extras.DictCursor)
         return conn.cursor()
 
     # ------------------------------------------------------------------ #
@@ -193,7 +208,8 @@ class DBManager:
                     status TEXT NOT NULL,
                     type TEXT,
                     tags TEXT,
-                    workflow_state TEXT DEFAULT 'new'
+                    workflow_state TEXT DEFAULT 'new',
+                    error_message TEXT
                 )
                 """
             )
@@ -210,7 +226,8 @@ class DBManager:
                     status TEXT NOT NULL,
                     type TEXT,
                     tags TEXT,
-                    workflow_state TEXT DEFAULT 'new'
+                    workflow_state TEXT DEFAULT 'new',
+                    error_message TEXT
                 )
                 """
             )
@@ -328,14 +345,79 @@ class DBManager:
                         CREATE TABLE IF NOT EXISTS document_embeddings (
                             id SERIAL PRIMARY KEY,
                             doc_id INTEGER NOT NULL REFERENCES documents(id),
-                            embedding vector(512)
+                            embedding vector(384),
+                            chunk_text TEXT
                         )
                         """
                     )
                     cursor.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_doc ON document_embeddings(doc_id)")
                 except Exception as e:
+                    if self.engine_type == "postgresql":
+                        conn.rollback()
                     logger.warning(f"Failed to initialize pgvector: {e}")
+            
+            # Simple Full Text Search for PostgreSQL
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_ocr_texts_fts ON ocr_texts USING gin(to_tsvector('spanish', text))")
+            except Exception as e:
+                if self.engine_type == "postgresql":
+                    conn.rollback()
+                logger.warning(f"Failed to create GIN index for FTS: {e}")
 
+        # Chat History Table
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    user_id TEXT
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    user_id TEXT
+                )
+                """
+            )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_history(session_id)")
+
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    zones_json TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS templates (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    zones_json TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        
         conn.commit()
 
     def _ensure_column(self, table: str, column: str, definition: str, conn=None) -> None:
@@ -394,6 +476,7 @@ class DBManager:
         doc_type: Optional[str] = None,
         tags: Optional[Iterable[str]] = None,
         workflow_state: str = "new",
+        error_message: Optional[str] = None,
     ) -> int:
         """Insert a document record and return its ID."""
         tags_json = json.dumps(list(tags)) if tags else None
@@ -401,16 +484,17 @@ class DBManager:
             cursor = self.get_cursor(conn)
             sql = f"""
                 INSERT INTO documents (
-                    filename, path, md5_hash, datetime, duration, status, type, tags, workflow_state
+                    filename, path, md5_hash, datetime, duration, status, type, tags, workflow_state, error_message
                 ) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, 
-                          {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+                          {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
             """
-            params = (filename, path, md5_hash, timestamp.isoformat(), float(duration), status, doc_type, tags_json, workflow_state)
+            params = (filename, path, md5_hash, timestamp.isoformat(), float(duration), status, doc_type, tags_json, workflow_state, error_message)
             
             if self.engine_type == "postgresql":
                 sql += " RETURNING id"
                 cursor.execute(sql, params)
-                doc_id = cursor.fetchone()["id"]
+                row = cursor.fetchone()
+                doc_id = row["id"] if isinstance(row, dict) else row[0]
             else:
                 cursor.execute(sql, params)
                 doc_id = cursor.lastrowid
@@ -594,18 +678,117 @@ class DBManager:
                 logger.error(f"Failed to update document state {doc_id}: {e}")
                 return False
 
+    def update_document_type(self, doc_id: int, doc_type: str) -> bool:
+        """Update the document type (Invoice, Contract, etc.)."""
+        try:
+            self.execute(
+                "UPDATE documents SET type = ? WHERE id = ?",
+                (doc_type, doc_id),
+                commit=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update document type {doc_id}: {e}")
+            return False
 
+
+
+
+    def insert_template(self, name: str, description: str, zones_json: str) -> int:
+        """Insert a new template."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            sql = f"""
+                INSERT INTO templates (name, description, zones_json, created_at)
+                VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+            """
+            params = (name, description, zones_json, datetime.datetime.now().isoformat())
+            
+            if self.engine_type == "postgresql":
+                sql += " RETURNING id"
+                cursor.execute(sql, params)
+                t_id = cursor.fetchone()["id"]
+            else:
+                cursor.execute(sql, params)
+                t_id = cursor.lastrowid
+                
+            conn.commit()
+            return int(t_id)
+
+    def get_templates(self) -> list:
+        """Retrieve all templates."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute("SELECT * FROM templates ORDER BY created_at DESC")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def delete_template(self, template_id: int) -> bool:
+        """Delete a template by ID."""
+        try:
+            self.execute("DELETE FROM templates WHERE id = ?", (template_id,), commit=True)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete template {template_id}: {e}")
+            return False
+
+    def insert_chat_message(self, session_id: str, role: str, content: str, user_id: Optional[str] = None) -> int:
+        """Insert a chat message into history."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            sql = f"""
+                INSERT INTO chat_history (session_id, role, content, timestamp, user_id)
+                VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+            """
+            params = (session_id, role, content, datetime.datetime.now().isoformat(), user_id)
+            
+            if self.engine_type == "postgresql":
+                sql += " RETURNING id"
+                cursor.execute(sql, params)
+                msg_id = cursor.fetchone()["id"]
+            else:
+                cursor.execute(sql, params)
+                msg_id = cursor.lastrowid
+                
+            conn.commit()
+            return int(msg_id)
+
+    def get_chat_history(self, session_id: str, limit: int = 50) -> list:
+        """Retrieve recent chat history for a specific session."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(
+                f"""
+                SELECT role, content, timestamp 
+                FROM chat_history 
+                WHERE session_id = {self.placeholder}
+                ORDER BY id ASC
+                """,
+                (session_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def execute(self, query: str, params: tuple = (), commit: bool = False):
+        """Helper to execute a query with automatic placeholder replacement and connection management."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            # Standardize query
+            final_query = query.replace("?", self.placeholder)
+            cursor.execute(final_query, params)
+            if commit:
+                conn.commit()
+            return cursor
 
     def close(self) -> None:
         """Close all connections in the pool."""
-        # Simple implementation: drain pool and close.
-        # In production this might need to handle in-use connections gracefully.
-        while not self._pool.empty():
-            try:
-                conn = self._pool.get_nowait()
-                conn.close()
-            except Exception:
-                pass
+        if self.engine_type == "postgresql":
+            self._pool.closeall()
+        else:
+            while not self._sqlite_pool.empty():
+                try:
+                    conn = self._sqlite_pool.get_nowait()
+                    conn.close()
+                except Exception:
+                    pass
 
 
 __all__ = ["DBManager"]

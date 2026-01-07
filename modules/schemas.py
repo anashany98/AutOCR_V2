@@ -6,14 +6,18 @@ class DocumentUpdateSchema(BaseModel):
     """Schema for validating document update requests via API."""
     
     filename: Optional[str] = Field(None, min_length=1, strip_whitespace=True)
-    date: Optional[str] = Field(None, description="ISO 8601 date string (YYYY-MM-DD)")
-    total: Optional[float] = Field(None, ge=0)
-    supplier: Optional[str] = Field(None, strip_whitespace=True)
     type: Optional[str] = Field(None, strip_whitespace=True)
-    tags: List[str] = Field(default_factory=list)
+    status: Optional[str] = Field(None)
+    tags: Optional[List[str]] = Field(None)
+    date: Optional[str] = Field(None, description="ISO 8601 date string (YYYY-MM-DD)")
+    total: Optional[str] = Field(None) # Changed to str to match app.py flexibility
+    supplier: Optional[str] = Field(None, strip_whitespace=True)
+    text: Optional[str] = None
+    markdown: Optional[str] = None
     
     # Optional JSON fields if we want to update blocks/tables directly
     notes: Optional[str] = Field(None)
+    corrections: Optional[List[Any]] = Field(None, description="Visual editor annotations")
 
     @field_validator('date')
     @classmethod

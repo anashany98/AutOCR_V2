@@ -33,6 +33,7 @@ KEYWORDS = {
     "Estimate": ["presupuesto", "estimate", "cotización", "quote"],
     "Report": ["report", "informe", "memo", "informe"],
     "Letter": ["dear", "estimado", "letter", "carta"],
+    "Technical Plan": ["plano", "drawing", "scheme", "esquema", "blueprint", "diagrama", "technical drawing"],
 }
 
 

@@ -6,7 +6,7 @@
 <div class="row mb-4 animate-fade-in">
     <div class="col-12 d-flex justify-content-between align-items-center">
         <div>
-            <h1 class="display-5 fw-bold mb-0">Gemelos Digitales 👯</h1>
+            <h1 class="display-5 fw-bold mb-0">Duplicados</h1>
             <p class="text-muted">Documentos visualmente idénticos encontrados por la IA.</p>
         </div>
         <button onclick="scanDuplicates()" class="btn btn-primary" id="scan-btn">
@@ -28,8 +28,9 @@
     </div>
 </div>
 
-<!-- Template for a Duplicate Group -->
+<!-- Template using standard template tag -->
 <template id="group-template">
+    <!-- ... (template logic handled via JS) -->
     <div class="col-12 fade-in-up">
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-warning bg-opacity-10 border-0 d-flex align-items-center gap-2">
@@ -89,7 +90,12 @@
 
         try {
             const res = await fetch('/api/duplicates/scan');
+            if (!res.ok) throw new Error("Error del servidor: " + res.status);
+
             const data = await res.json();
+
+            if (data.error) throw new Error(data.error);
+            if (!Array.isArray(data)) throw new Error("La respuesta no tiene el formato esperado.");
 
             if (data.length === 0) {
                 container.innerHTML = `
@@ -108,12 +114,6 @@
                         const clone = tmpl.content.cloneNode(true);
 
                         // Fill Primary
-                        clone.querySelector('.primary-img').src = `/vision/preview/${primary.token}`;
-                        // Note: accessing token might tricky if not pre-generated.
-                        // We might need an ID-based preview URL.
-                        // Let's assume API returns valid preview URLs or we construct them 
-                        // "/document/<id>/preview"? Current app uses Tokens.
-                        // Let's assume API sends "preview_url".
                         clone.querySelector('.primary-img').src = primary.preview_url;
                         clone.querySelector('.primary-name').textContent = primary.filename;
                         clone.querySelector('.primary-date').textContent = primary.date || '';

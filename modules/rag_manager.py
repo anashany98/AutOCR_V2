@@ -30,7 +30,11 @@ class RAGManager:
         self.index = None
         self.metadata: List[Dict[str, Any]] = [] # Maps index ID to doc info
         
+        self.db_manager = None # Optional reference
         self.ensure_loaded()
+
+    def set_db_manager(self, db_manager):
+        self.db_manager = db_manager
 
     def ensure_loaded(self):
         """Lazy load model and index."""
@@ -71,62 +75,122 @@ class RAGManager:
         with open(self.meta_path, "wb") as f:
             pickle.dump(self.metadata, f)
 
-    def add_document(self, doc_id: int, filename: str, text: str):
+    def add_document(self, doc_id: int, filename: str, text: str, db_manager=None):
         """Chunk and index a document."""
         self.ensure_loaded()
-        if not self.model or not self.index:
+        if not self.model:
             return
 
-        # Simple chunking by paragraphs or lines
-        # For better RAG, we might want overlapping chunks, but let's keep it simple
-        chunks = [c.strip() for c in text.split('\n\n') if len(c.strip()) > 50]
-        if not chunks:
-             # Fallback to single chunk if no paragraphs
-             chunks = [text[:1000]] # Limit size
+        # Use db_manager from argument or self
+        db = db_manager or self.db_manager
+
+        # Improved chunking: split by paragraphs, then by max length
+        raw_chunks = [c.strip() for c in text.split('\n\n') if len(c.strip()) > 20]
+        chunks = []
+        max_chunk_chars = 1500 # Approx 300-400 tokens
+        
+        for rc in raw_chunks:
+            if len(rc) <= max_chunk_chars:
+                chunks.append(rc)
+            else:
+                # Sub-split large paragraphs
+                for i in range(0, len(rc), max_chunk_chars):
+                    chunks.append(rc[i:i+max_chunk_chars])
+        
+        if not chunks and text:
+             chunks = [text[:max_chunk_chars]]
         
         if not chunks: 
             return
 
         embeddings = self.model.encode(chunks)
-        self.index.add(np.array(embeddings).astype('float32'))
         
-        for chunk in chunks:
-            self.metadata.append({
-                "doc_id": doc_id,
-                "filename": filename,
-                "text": chunk
-            })
-        
-        # Auto-save occasionally? For now, manual save calls or save on every add (slow)
-        self.save_index()
+        # Check for pgvector support
+        use_pgvector = False
+        if db:
+            pg_conf = db.config.get("postgresql", {})
+            use_pgvector = pg_conf.get("use_pgvector", False)
 
-    def search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+        if db and db.engine_type == "postgresql" and use_pgvector:
+            # Store in Postgres document_embeddings table
+            with db.get_connection() as conn:
+                cursor = db.get_cursor(conn)
+                for i, chunk in enumerate(chunks):
+                    emb = list(embeddings[i].astype('float32'))
+                    # Assuming table 'document_embeddings' exists with 'embedding' column of type 'vector'
+                    # and 'chunk_text' for RAG
+                    cursor.execute(
+                        "INSERT INTO document_embeddings (doc_id, embedding, chunk_text) VALUES (%s, %s, %s)",
+                        (doc_id, emb, chunk)
+                    )
+                conn.commit()
+        else:
+            # Fallback to FAISS
+            if not self.index: return
+            self.index.add(np.array(embeddings).astype('float32'))
+            for chunk in chunks:
+                self.metadata.append({
+                    "doc_id": doc_id,
+                    "filename": filename,
+                    "text": chunk
+                })
+            # self.save_index() # Save manually or periodically
+
+    def search(self, query: str, k: int = 5, db_manager=None) -> List[Dict[str, Any]]:
         """Retrieve most relevant chunks."""
         self.ensure_loaded()
-        if not self.model or not self.index or self.index.ntotal == 0:
+        if not self.model:
             return []
 
-        vec = self.model.encode([query])
-        D, I = self.index.search(np.array(vec).astype('float32'), k)
+        db = db_manager or self.db_manager
         
-        results = []
-        for i, idx in enumerate(I[0]):
-            if idx == -1 or idx >= len(self.metadata):
-                continue
-            item = self.metadata[idx].copy()
-            item["score"] = float(D[0][i])
-            results.append(item)
+        # Check for pgvector support
+        use_pgvector = False
+        if db:
+            pg_conf = db.config.get("postgresql", {})
+            use_pgvector = pg_conf.get("use_pgvector", False)
+
+        if db and db.engine_type == "postgresql" and use_pgvector:
+            vec = list(self.model.encode([query])[0].astype('float32'))
+            with db.get_connection() as conn:
+                cursor = db.get_cursor(conn)
+                # Proper pgvector search using <=> (cosine distance) or <-> (L2 distance)
+                # Assuming IndexFlatL2 in FAISS, we use <-> here
+                cursor.execute(
+                    "SELECT doc_id, chunk_text as text, embedding <-> %s as score FROM document_embeddings ORDER BY score LIMIT %s",
+                    (vec, k)
+                )
+                rows = cursor.fetchall()
+                results = []
+                for row in rows:
+                    results.append({
+                        "doc_id": row[0],
+                        "text": row[1],
+                        "score": float(row[2])
+                    })
+                return results
+        else:
+            if not self.index or self.index.ntotal == 0:
+                return []
+            vec = self.model.encode([query])
+            D, I = self.index.search(np.array(vec).astype('float32'), k)
             
-        return results
+            results = []
+            for i, idx in enumerate(I[0]):
+                if idx == -1 or idx >= len(self.metadata):
+                    continue
+                item = self.metadata[idx].copy()
+                item["score"] = float(D[0][i])
+                results.append(item)
+                
+            return results
 
     def rebuild(self, db_manager):
         """Re-index everything from DB."""
         self._create_new_index() # Reset
         
         # Need to fetch all docs
-        # This is heavy for large DBs, but fine for MVP
-        cursor = db_manager.conn.cursor()
-        cursor.execute("""
+        cursor = db_manager.execute("""
             SELECT d.id, d.filename, o.text 
             FROM documents d 
             JOIN ocr_texts o ON d.id = o.id_doc 
@@ -136,7 +200,12 @@ class RAGManager:
         
         logger.info(f"Rebuilding RAG index for {len(rows)} documents...")
         for row in rows:
-            self.add_document(row[0], row[1], row[2])
+            # Flexible access for both SQLite Row and dict-like Postgre Row
+            id_val = row[0] if isinstance(row, (tuple, list)) else row['id']
+            fname_val = row[1] if isinstance(row, (tuple, list)) else row['filename']
+            text_val = row[2] if isinstance(row, (tuple, list)) else row['text']
+            self.add_document(id_val, fname_val, text_val, db_manager)
             
-        self.save_index()
+        if db_manager.engine_type == "sqlite":
+            self.save_index()
         logger.info("RAG index rebuild complete.")
