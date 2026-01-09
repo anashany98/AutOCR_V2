@@ -1,0 +1,147 @@
+﻿.\venv311\Scripts\python.exe : [33mChecking connectivity to the model hosters, 
+this may take a while. To bypass this check, set `DISABLE_MODEL_SOURCE_CHECK` to 
+`True`.[0m
+En línea: 1 Carácter: 1
++ .\venv311\Scripts\python.exe debug_paddle.py > debug_output_v2.txt 2> ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33mChecking c... to `True`.[0m:Str 
+   ing) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Traceback (most recent call last):
+  File "C:\Users\Usuario\Desktop\Repositorio 
+Anas\AutoOCR_FinalVersion\debug_paddle.py", line 9, in <module>
+    p = PPStructureV3(use_gpu=True)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddleocr\_pipelines\pp_structurev3.py", line 137, in __init__
+    super().__init__(**kwargs)
+  File "C:\Users\Usuario\Desktop\Repositorio 
+Anas\AutoOCR_FinalVersion\venv311\Lib\site-packages\paddleocr\_pipelines\base.py", 
+line 63, in __init__
+    self._common_args = parse_common_args(
+                        ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio 
+Anas\AutoOCR_FinalVersion\venv311\Lib\site-packages\paddleocr\_common_args.py", 
+line 45, in parse_common_args
+    raise ValueError(f"Unknown argument: {name}")
+ValueError: Unknown argument: use_gpu
+[32mCreating model: ('PP-LCNet_x1_0_doc_ori', None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete 
+the directory manually: 
+`C:\Users\Usuario\.paddlex\official_models\PP-LCNet_x1_0_doc_ori`.[0m
+Traceback (most recent call last):
+  File "C:\Users\Usuario\Desktop\Repositorio 
+Anas\AutoOCR_FinalVersion\debug_paddle.py", line 17, in <module>
+    p = PPStructureV3()
+        ^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddleocr\_pipelines\pp_structurev3.py", line 137, in __init__
+    super().__init__(**kwargs)
+  File "C:\Users\Usuario\Desktop\Repositorio 
+Anas\AutoOCR_FinalVersion\venv311\Lib\site-packages\paddleocr\_pipelines\base.py", 
+line 67, in __init__
+    self.paddlex_pipeline = self._create_paddlex_pipeline()
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio 
+Anas\AutoOCR_FinalVersion\venv311\Lib\site-packages\paddleocr\_pipelines\base.py", 
+line 105, in _create_paddlex_pipeline
+    return create_pipeline(config=self._merged_paddlex_config, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\__init__.py", line 167, in 
+create_pipeline
+    pipeline = BasePipeline.get(pipeline_name)(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio 
+Anas\AutoOCR_FinalVersion\venv311\Lib\site-packages\paddlex\utils\deps.py", line 
+206, in _wrapper
+    return old_init_func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\_parallel.py", line 103, in __init__
+    self._pipeline = self._create_internal_pipeline(config, self.device)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\_parallel.py", line 158, in 
+_create_internal_pipeline
+    return self._pipeline_cls(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\layout_parsing\pipeline_v2.py", line 84, 
+in __init__
+    self.inintial_predictor(config)
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\layout_parsing\pipeline_v2.py", line 
+134, in inintial_predictor
+    self.doc_preprocessor_pipeline = self.create_pipeline(
+                                     ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\base.py", line 140, in create_pipeline
+    pipeline = create_pipeline(
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\__init__.py", line 167, in 
+create_pipeline
+    pipeline = BasePipeline.get(pipeline_name)(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio 
+Anas\AutoOCR_FinalVersion\venv311\Lib\site-packages\paddlex\utils\deps.py", line 
+206, in _wrapper
+    return old_init_func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\_parallel.py", line 103, in __init__
+    self._pipeline = self._create_internal_pipeline(config, self.device)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\_parallel.py", line 158, in 
+_create_internal_pipeline
+    return self._pipeline_cls(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\doc_preprocessor\pipeline.py", line 69, 
+in __init__
+    self.doc_ori_classify_model = self.create_model(doc_ori_classify_config)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\pipelines\base.py", line 106, in create_model
+    model = create_predictor(
+            ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\models\__init__.py", line 84, in create_predictor
+    return BasePredictor.get(model_name)(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\models\image_classification\predictor.py", line 
+49, in __init__
+    self.preprocessors, self.infer, self.postprocessors = self._build()
+                                                          ^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\models\image_classification\predictor.py", line 
+82, in _build
+    infer = self.create_static_infer()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\models\base\predictor\base_predictor.py", line 
+300, in create_static_infer
+    return PaddleInfer(
+           ^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\models\common\static_infer.py", line 284, in 
+__init__
+    self.predictor = self._create()
+                     ^^^^^^^^^^^^^^
+  File "C:\Users\Usuario\Desktop\Repositorio Anas\AutoOCR_FinalVersion\venv311\Lib\
+site-packages\paddlex\inference\models\common\static_infer.py", line 402, in 
+_create
+    config.set_optimization_level(3)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'paddle.base.libpaddle.AnalysisConfig' object has no attribute 
+'set_optimization_level'
+PaddleOCR version: 3.3.2
+Attempting to initialize PPStructureV3(use_gpu=True)...
+Failed to initialize PPStructureV3 with use_gpu=True
+
+Attempting to initialize PPStructureV3()...
+Failed to initialize PPStructureV3 with default args

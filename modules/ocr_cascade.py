@@ -13,11 +13,11 @@ from typing import Any, Dict, List, Sequence
 from loguru import logger
 from PIL import Image
 
-from .paddle_singleton import get_paddle_ocr
+from .paddle_singleton import get_ppstructure_v3_instance
 
 try:
     import easyocr  # type: ignore
-except ImportError as exc:  # pragma: no cover - optional dependency
+except (ImportError, OSError) as exc:  # pragma: no cover - optional dependency
     easyocr = None  # type: ignore[assignment]
     logger.error("❌ EasyOCR import failed: {}", exc)
 
@@ -29,7 +29,7 @@ except ImportError as exc:  # pragma: no cover - optional dependency
 
 try:
     import torch  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
+except (ImportError, OSError):  # pragma: no cover - optional dependency
     torch = None  # type: ignore[assignment]
 
 
@@ -44,13 +44,7 @@ class MultiOCR:
         logger.info("🧠 GPU available: {}", self.gpu_available)
         logger.info("🔤 OCR cascade languages: {}", self.langs)
 
-        self.paddle = None
-        try:
-            self.paddle = get_paddle_ocr()
-            if self.paddle is None:
-                logger.warning("⚠️ PaddleOCR singleton returned None. Cascade will start from EasyOCR.")
-        except Exception as exc:  # pragma: no cover - Paddle runtime errors
-            logger.warning("⚠️ PaddleOCR unavailable: {}", exc)
+        self._paddle_ocr = None
 
         if easyocr is None:
             raise ImportError("EasyOCR is required for the OCR cascade.")
@@ -63,11 +57,26 @@ class MultiOCR:
         """
         if self.paddle is not None:
             try:
-                logger.info("▶️ Running PaddleOCR on {}", image_path)
-                result = self.paddle(image_path)
-                if result:
-                    logger.success("📄 PaddleOCR succeeded.")
-                    return result
+                logger.info("▶️ Running PaddleOCR (PPStructureV3) on {}", image_path)
+                # PPStructureV3 returns a list of blocks
+                results = self.paddle(image_path)
+                if results:
+                    texts = []
+                    for block in results:
+                        res = block.get("res")
+                        if res and isinstance(res, list):
+                            for item in res:
+                                if isinstance(item, (list, tuple)) and len(item) == 2:
+                                    # item: [box, (text, score)]
+                                    data = item[1]
+                                    if data and isinstance(data, (list, tuple)):
+                                        text = (str(data[0]) or "").strip()
+                                        if text:
+                                            texts.append(text)
+                    
+                    if texts:
+                        logger.success("📄 PaddleOCR (Structural) succeeded.")
+                        return [{"text": "\n".join(texts)}]
             except Exception as exc:  # pragma: no cover - Paddle runtime errors
                 logger.warning("⚠️ PaddleOCR failed: {}", exc)
                 logger.opt(exception=exc).debug("PaddleOCR exception stacktrace")

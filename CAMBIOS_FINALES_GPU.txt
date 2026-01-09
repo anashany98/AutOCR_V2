@@ -1,0 +1,49 @@
+================================================================================
+                        RESUMEN DE CAMBIOS: AUTOOCR GPU FIX
+================================================================================
+Fecha: 07 de Enero de 2026
+Objetivo: Habilitar aceleración GPU (CUDA 12.1) para PaddleOCR y EasyOCR.
+
+1. CONFIGURACIÓN DEL ENTORNO (DEPENDENCIAS EXTERNAS)
+--------------------------------------------------------------------------------
+- CUDA Toolkit: Se actualizó a la versión 12.1.
+- cuDNN: Se instaló la versión 8.9.7 (compatible con CUDA 12.x).
+  * CRÍTICO: Se copió manualmente `zlibwapi.dll` en `CUDA/v12.1/bin` para resolver errores de carga de DLL.
+- C++ Redistributable: Se verificó la instalación de VC++ 2015-2022.
+
+2. ACTUALIZACIÓN DE LIBRERÍAS PYTHON (requirements.txt / pip)
+--------------------------------------------------------------------------------
+- PaddlePaddle-GPU: Se actualizó a `2.6.1.post120` (versión compatible con CUDA 12).
+- Numpy: Se estandarizó en `1.26.4` para evitar conflictos de tensores con Paddle/PyTorch.
+- PaddleOCR: Se eliminaron hacks de versiones antiguas. Ahora usa `paddleocr>=2.7`.
+
+3. REFACTORIZACIÓN DEL CÓDIGO (Monje / Singleton)
+--------------------------------------------------------------------------------
+- Archivo: `modules/paddle_singleton.py`
+  * Se implementó el patrón Singleton para cargar el motor UNA sola vez.
+  * CAMBIO CLAVE: Se renombró la función a `get_ppstructure_v3_instance` para evitar conflictos con versiones cacheadas antiguas.
+  * Se añadió carga manual de DLLs (`ctypes.WinDLL`) para `cudnn64_8.dll` y `zlibwapi.dll` antes de iniciar el motor.
+  * Se eliminó el soporte heredado para PP-Structure v2; ahora todo es **PP-Structure v3**.
+
+- Archivo: `modules/ocr_manager.py` y Consumidores (`layout_manager`, `ocr_cascade`, etc.)
+  * Se actualizaron todas las llamadas para usar `get_ppstructure_v3_instance()`.
+  * Se eliminaron los guardias de importación (try/except) a nivel de módulo que ocultaban errores de carga.
+  * Se añadió un registro de errores (logging) detallado en `OCRManager.__init__` para diagnósticos precisos.
+
+4. SOLUCIÓN DE LANZAMIENTO (El "Secreto" del Éxito)
+--------------------------------------------------------------------------------
+- Archivo: `gpu_launcher.bat` (NUEVO)
+  * Problema: Windows a menudo ignoraba las rutas de CUDA cuando se lanzaba desde Python directo debido a la precedencia de `os.add_dll_directory`.
+  * Solución: Este script inyecta las rutas de CUDA (`v12.1\bin` y `libnvvp`) en el `%PATH%` DEL SISTEMA antes de que Python arranque.
+  * Resultado: Python "nace" en un entorno donde la GPU ya es visible, permitiendo que `paddle.device.get_device()` detecte "gpu:0" y "gpu:1" correctamente.
+
+5. ARREGLOS MENORES
+--------------------------------------------------------------------------------
+- Modelos: Se corrigieron las URLs de descarga para los modelos PP-OCRv4 (server side).
+- Logs: Se aumentó la verbosidad para identificar si EasyOCR o Paddle fallaban por separado.
+
+================================================================================
+ESTADO FINAL: ONLINE
+================================================================================
+El sistema ahora detecta 2 GPUs. 
+Para iniciar, siempre utilice:  gpu_launcher.bat

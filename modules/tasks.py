@@ -9,7 +9,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # Huey instance using SQLite for persistence on Windows
-huey = SqliteHuey(filename=str(PROJECT_ROOT / 'data' / 'huey_db.db'))
+# Huey instance: Redis (Production/Docker) vs SQLite (Local Windows)
+redis_url = os.environ.get('REDIS_URL')
+if redis_url:
+    from huey import RedisHuey
+    huey = RedisHuey('autoocr', url=redis_url)
+else:
+    huey = SqliteHuey(filename=str(PROJECT_ROOT / 'data' / 'huey_db.db'))
+
 
 @huey.task()
 def process_document_task(file_path, options):

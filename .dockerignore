@@ -3,6 +3,17 @@
 # Optimized for GPU build performance
 # ============================================
 
+# --- HUGE DIRECTORIES (MUST EXCLUDE) ---
+venv311/
+venv/
+.venv/
+.git/
+models/
+data/
+processed_docs/
+logs/
+uploads/
+
 # --- Python cache ---
 __pycache__/
 *.pyc
@@ -16,13 +27,6 @@ __pycache__/
 build/
 dist/
 
-# --- Virtual environments ---
-.venv/
-venv/
-env/
-ENV/
-opt/
-
 # --- Editor / IDE files ---
 .vscode/
 .idea/
@@ -30,19 +34,19 @@ opt/
 *.sublime-workspace
 
 # --- Git / Repo metadata ---
-.git/
 .gitignore
 .gitattributes
 .DS_Store
 
 # --- Logs / Debug ---
 *.log
-logs/
 *.tmp
 *.bak
 *.swp
 *.old
 *.orig
+pip_log*.txt
+debug_*.txt
 
 # --- Local / Temporary data ---
 tmp/
@@ -51,12 +55,6 @@ cache/
 __temp__/
 __backup__/
 .backups/
-data/raw/
-data/tmp/
-data/temp/
-data/cache/
-data/*.zip
-data/*.rar
 
 # --- System files / OS metadata ---
 Thumbs.db
@@ -70,8 +68,8 @@ docker-compose.override.yml
 # --- Tests / Samples (not needed inside container) ---
 tests/
 samples/
-scripts/dev/
-tools/experiments/
+scripts/
+tools/
 
 # --- Sensitive files ---
 .env
@@ -89,8 +87,3 @@ README.dev.md
 *.pdf
 *.docx
 *.xlsx
-
-# --- Others you may adjust later ---
-__archive__/
-old_versions/
-C*/Users*/Usuari*/Desktop*/  # Evita rutas con caracteres corruptos

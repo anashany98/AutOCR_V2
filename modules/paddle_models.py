@@ -17,20 +17,20 @@ from typing import Dict
 from loguru import logger
 
 
-# URLs published by PaddleOCR for PP-OCRv4 multilingual (Latin) models.
+# URLs published by PaddleOCR for PP-OCRv4 multilingual (Latin) models compatible with Paddle 3.0.0
 PP_OCRV4_SPECS = {
     "latin": {
         "det": {
-            "url": "https://paddleocr.bj.bcebos.com/PP-OCRv4/multilingual/latin/ch_PP-OCRv4_det_infer.tar",
-            "folder": "ch_PP-OCRv4_det_infer",
+            "url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv4_mobile_det_infer.tar",
+            "folder": "PP-OCRv4_mobile_det_infer",
         },
         "rec": {
-            "url": "https://paddleocr.bj.bcebos.com/PP-OCRv4/multilingual/latin/ppocrv4_rec_infer.tar",
-            "folder": "ppocrv4_rec_infer",
+            "url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/latin_PP-OCRv3_mobile_rec_infer.tar",
+            "folder": "latin_PP-OCRv3_mobile_rec_infer",
         },
         "cls": {
-            "url": "https://paddleocr.bj.bcebos.com/PP-OCRv3/cls/ch_ppocr_mobile_v2.0_cls_infer.tar",
-            "folder": "ch_ppocr_mobile_v2.0_cls_infer",
+            "url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-LCNet_x0_25_textline_ori_infer.tar",
+            "folder": "PP-LCNet_x0_25_textline_ori_infer",
         },
     },
 }
@@ -86,16 +86,20 @@ def _model_ready(path: Path) -> bool:
 def _download_and_extract(url: str, target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     logger.info("⬇️ Downloading Paddle model %s", url)
-    with tempfile.NamedTemporaryFile(suffix=".tar", delete=False) as tmp_file:
-        tmp_path = Path(tmp_file.name)
+    # On Windows, we must close the file handle before another process/helper tries to open it by path
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".tar", delete=False)
+    tmp_path = Path(tmp_file.name)
+    tmp_file.close() 
+    
+    try:
+        _download_file(url, tmp_path)
+        _extract_tar(tmp_path, target_dir)
+    finally:
         try:
-            _download_file(url, tmp_path)
-            _extract_tar(tmp_path, target_dir)
-        finally:
-            try:
+            if tmp_path.exists():
                 tmp_path.unlink()
-            except FileNotFoundError:  # pragma: no cover - best effort cleanup
-                pass
+        except Exception:  # pragma: no cover - best effort cleanup
+            pass
 
 
 def _download_file(url: str, destination: Path) -> None:

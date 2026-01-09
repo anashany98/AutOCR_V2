@@ -22,34 +22,59 @@ import cv2
 
 from .lang_map import map_code, map_codes
 from .paddle_models import ensure_ppocrv4_models
-from .paddle_models import ensure_ppocrv4_models
 from .engines import SuryaOCREngine, OCREngine
-from .image_utils import detect_handwriting_probability, enhance_image
+from .image_utils import detect_handwriting_probability, enhance_image, deskew_image, denoise_image
+from .paddle_singleton import get_ppstructure_v3_instance
 
 try:
     from pdf2image import convert_from_path  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
     convert_from_path = None  # type: ignore
 
+# Windows-specific DLL handling for PyTorch/PaddleOCR
+if os.name == "nt":
+    try:
+        import sys
+        # Identify the probable location of the torch DLLs
+        possible_torch_lib = Path(sys.prefix) / "Lib" / "site-packages" / "torch" / "lib"
+        if possible_torch_lib.exists():
+            os.add_dll_directory(str(possible_torch_lib))
+            
+        # Add CUDA bin directory for cuDNN (PaddleOCR fix for error 126)
+        possible_cuda_bin = Path(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\bin")
+        if possible_cuda_bin.exists():
+            os.add_dll_directory(str(possible_cuda_bin))
+            # Some Paddle components bypass os.add_dll_directory; we also update PATH
+            os.environ["PATH"] = str(possible_cuda_bin) + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass
+
+# Selective backends for OCR engines are loaded lazily via get_paddle_ocr() singleton.
+# However, we need top-level imports for device detection methods below.
 try:
     from paddleocr import PaddleOCR  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
-    PaddleOCR = None  # type: ignore
+except (ImportError, OSError):
+    PaddleOCR = None
 
 try:
     import paddle  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
-    paddle = None  # type: ignore
+except (ImportError, OSError):
+    paddle = None
 
 try:
     import easyocr  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
-    easyocr = None  # type: ignore
+except (ImportError, OSError):
+    easyocr = None
 
-try:  # pragma: no cover - optional dependency
+try:
     import torch  # type: ignore
-except ImportError:  # pragma: no cover
-    torch = None  # type: ignore
+except (ImportError, OSError):
+    torch = None
+
+try:
+    from pdf2image import convert_from_path  # type: ignore
+except ImportError:
+    convert_from_path = None
 
 
 DEFAULT_LANGUAGES: Tuple[str, ...] = ("spa", "eng")
@@ -219,6 +244,8 @@ class OCRManager:
         self._initialise_extra_engines()
 
         if not self._paddle_ocr and not self._easy_reader:
+            self.logger.error("OCR initialization failed: PaddleOCR is %s, EasyOCR is %s", 
+                               type(self._paddle_ocr), type(self._easy_reader))
             raise RuntimeError(
                 "Neither PaddleOCR nor EasyOCR is available. Install at least one OCR backend."
             )
@@ -373,31 +400,35 @@ class OCRManager:
 
         array = self._pil_to_np(image)
         try:
-            result = self._paddle_ocr.ocr(array)  # cls argument causing issues with current version/config
+            # PPStructureV3 returns a list of dictionaries (one for each detected block)
+            # We extract text from all blocks to provide a full page representation.
+            results = self._paddle_ocr(array)
         except Exception as exc:  # pragma: no cover - Paddle runtime errors
-            self.logger.error("PaddleOCR failed: %s", exc)
+            self.logger.error("PaddleOCR (PPStructureV3) failed: %s", exc)
             return "", 0.0
 
         texts: List[str] = []
         confidences: List[float] = []
 
-        # Handle different return structures from PaddleOCR
-        pages = result
-        # Check if result is a single page (list of lines)
-        if result and isinstance(result, list) and len(result) > 0:
-            first_item = result[0]
-            # If first item is a line [box, (text, score)], wrap it in a page list
-            if isinstance(first_item, list) and len(first_item) == 2 and isinstance(first_item[1], tuple):
-                 pages = [result]
-        
-        for page in pages:
-            if not page:
-                 continue
-            for item in page:
+        if not results:
+            return "", 0.0
+
+        for block in results:
+            # Structural blocks have a 'res' key containing detection/recognition results
+            res = block.get("res")
+            if not res or not isinstance(res, list):
+                continue
+            
+            # Format depends on block type, but for text/table it's usually a list of lines
+            for item in res:
                 if not isinstance(item, (list, tuple)) or len(item) != 2:
                     continue
-                box, data = item
-                text = (data[0] or "").strip()
+                # item format: [box, (text, score)]
+                data = item[1]
+                if not isinstance(data, (list, tuple)) or not data:
+                    continue
+                
+                text = (str(data[0]) or "").strip()
                 conf = float(data[1]) if len(data) > 1 and data[1] is not None else 0.0
                 if text:
                     texts.append(text)
@@ -437,30 +468,18 @@ class OCRManager:
         return "\n".join(texts), avg_conf
 
     def _initialise_paddle(self) -> None:
-        if not self._paddle_enabled or PaddleOCR is None:
+        if not self._paddle_enabled:
             return
         if self.primary_engine != "paddleocr" and self.secondary_engine != "paddleocr":
             return
         try:
-            kwargs: Dict[str, Any] = {"use_angle_cls": True}
-            if self._paddle_model_dirs:
-                kwargs.update({k: v for k, v in self._paddle_model_dirs.items() if v})
-            self._paddle_ocr = get_paddle_ocr(
-                lang=self._paddle_lang,
-                use_gpu=self._paddle_use_gpu,
-                gpu_id=self.gpu_id,
-                **kwargs,
-            )
+            # Strictly use PPStructureV3 from the singleton as requested.
+            # No legacy hacks, no version detection, no direct use_gpu/gpu_id arguments.
+            self._paddle_ocr = get_ppstructure_v3_instance()
             if self._paddle_ocr is not None:
-                self.logger.info("PaddleOCR initialised (lang=%s, gpu=%s).", self._paddle_lang, self._paddle_use_gpu)
+                self.logger.info("PaddleOCR (PPStructureV3) initialised via singleton.")
                 if self._paddle_use_gpu:
                     loguru_logger.success("PaddleOCR (GPU) initialized successfully.")
-        except AttributeError as exc:
-            if "set_optimization_level" in str(exc):
-                self.logger.warning("PaddleOCR initialization failed due to PaddlePaddle API incompatibility (set_optimization_level). This is expected with PaddlePaddle 2.6.1 and PaddleOCR 3.3.0. PaddleOCR will be disabled.")
-            else:
-                self.logger.warning("Failed to initialise PaddleOCR due to AttributeError: %s", exc)
-            self._paddle_ocr = None
         except Exception as exc:  # pragma: no cover - Paddle runtime errors
             self.logger.warning("Failed to initialise PaddleOCR: %s", exc)
             self._paddle_ocr = None
@@ -599,10 +618,14 @@ class OCRManager:
             if self.poppler_path:
                 print(f"DEBUG: Using poppler_path: {self.poppler_path}")
                 self.logger.info(f"PDF OCR: Using poppler_path: {self.poppler_path}")
-                pdfinfo_path = os.path.join(self.poppler_path, "pdfinfo.exe")
+                
+                # Cross-platform check
+                pdfinfo_bin = "pdfinfo.exe" if os.name == 'nt' else "pdfinfo"
+                pdfinfo_path = os.path.join(self.poppler_path, pdfinfo_bin)
+                
                 if os.path.exists(pdfinfo_path):
-                    print(f"DEBUG: Verified pdfinfo.exe at {pdfinfo_path}")
-                    self.logger.info(f"PDF OCR: Verified pdfinfo.exe at {pdfinfo_path}")
+                    print(f"DEBUG: Verified {pdfinfo_bin} at {pdfinfo_path}")
+                    self.logger.info(f"PDF OCR: Verified {pdfinfo_bin} at {pdfinfo_path}")
                     kwargs["poppler_path"] = self.poppler_path
                     
                     # Fix for Windows: Ensure poppler bin is in PATH for DLL loading
@@ -635,8 +658,7 @@ class OCRManager:
         Enhance image for OCR: upscale (if small), denoise, and sharpen.
         """
         try:
-            # 0. Phase 9: Auto-Enhancement (User Request: "cientos de gigas")
-            # If configured, we apply PIL-based enhancements BEFORE converting to OpenCV BGR
+            # 0. Phase 9: Auto-Enhancement
             pre_conf = self.config.preprocessing
             if pre_conf.get("auto_enhance", False):
                 pil_image = enhance_image(
@@ -656,15 +678,17 @@ class OCRManager:
                 scale = 1500 / width
                 img_np = cv2.resize(img_np, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
             
-            # 2. Denoise (Fast Non-Local Means) - moderate strength
-            img_np = cv2.fastNlMeansDenoisingColored(img_np, None, 10, 10, 7, 21)
+            # 2. Denoise (Centralized)
+            img_np = denoise_image(img_np)
 
             # 3. Sharpening (Unsharp Masking style)
             gaussian = cv2.GaussianBlur(img_np, (0, 0), 3.0)
             img_np = cv2.addWeighted(img_np, 1.5, gaussian, -0.5, 0)
             
-            # 4. Deskew (Straighten)
-            img_np = self._deskew(img_np)
+            # 4. Deskew (Centralized)
+            img_np, angle = deskew_image(img_np)
+            if abs(angle) > 0.5:
+                self.logger.info(f"📐 Fixed skew: {angle:.2f}°")
 
             # Convert back to PIL RGB
             return Image.fromarray(img_np[:, :, ::-1])
@@ -672,35 +696,6 @@ class OCRManager:
             self.logger.warning(f"Image preprocessing failed, using original: {e}")
             return pil_image
 
-    def _deskew(self, img: np.ndarray) -> np.ndarray:
-        """
-        Detect text orientation and rotate image to straighten it.
-        """
-        try:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            gray = cv2.bitwise_not(gray)
-            thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-            coords = np.column_stack(np.where(thresh > 0))
-            angle = cv2.minAreaRect(coords)[-1]
-            
-            # Adjust angle for cv2.minAreaRect idiosyncrasies
-            if angle < -45:
-                angle = -(90 + angle)
-            else:
-                angle = -angle
-                
-            # Only rotate if significant skew detected (> 0.5 deg) to avoid blurring straight docs
-            if abs(angle) > 0.5 and abs(angle) < 89: # Skip if it looks like 90deg rotation (handled by orientation cls)
-                (h, w) = img.shape[:2]
-                center = (w // 2, h // 2)
-                M = cv2.getRotationMatrix2D(center, angle, 1.0)
-                rotated = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-                self.logger.info(f"📐 Fixed skew: {angle:.2f}°")
-                return rotated
-            return img
-        except Exception as e:
-            self.logger.debug(f"Skew correction skipped: {e}")
-            return img
 
     def _analyze_image_content(self, pil_image: Image.Image) -> str:
         """

@@ -20,7 +20,7 @@ import pandas as pd
 from PIL import Image
 
 from .layout_manager import LayoutBlock
-from .paddle_singleton import get_paddle_ocr
+from .paddle_singleton import get_ppstructure_v3_instance
 
 try:
     from pdf2image import convert_from_path  # type: ignore

@@ -142,3 +142,22 @@ def reload_classifier():
     with _classifier_lock:
         _classifier_instance = None
         get_classifier() # Re-initialize immediately
+
+_llm_instance: Optional["LLMClient"] = None
+_llm_lock = threading.Lock()
+
+def get_llm_client():
+    """Get LLM Client singleton with thread-safe initialization."""
+    global _llm_instance
+    if _llm_instance is None:
+        with _llm_lock:
+            if _llm_instance is None:
+                try:
+                    from modules.llm_client import LLMClient
+                    config = load_configuration()
+                    llm_conf = config.get("llm", {})
+                    _llm_instance = LLMClient(llm_conf, get_logger())
+                except Exception as e:
+                    get_logger().error(f"Failed to load LLM Client: {e}")
+                    _llm_instance = None
+    return _llm_instance

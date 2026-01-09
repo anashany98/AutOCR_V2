@@ -123,3 +123,80 @@ def detect_handwriting_probability(pil_image: Image.Image) -> float:
     except Exception as e:
         logger.error(f"Handwriting detection failed: {e}")
         return 0.0
+        return 0.0
+
+def preprocess_image_for_ocr(image_path: str, deskew: bool = True, denoise: bool = True) -> str:
+    """
+    Preprocess an image for better OCR results.
+    Returns path to temporary processed file.
+    """
+    try:
+        # Load image
+        img = cv2.imread(image_path)
+        if img is None:
+            return image_path
+            
+        # 1. Convert to Grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # 2. Deskew (Straighten)
+        if deskew:
+            gray, angle = deskew_image(gray)
+            if angle != 0:
+                logger.info(f"Deskewed image by {angle:.2f} degrees")
+                
+        # 3. Denoise (Clean)
+        if denoise:
+            gray = denoise_image(gray)
+            
+        # Save to temp file
+        import tempfile
+        import os
+        fd, temp_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        cv2.imwrite(temp_path, gray)
+        
+        return temp_path
+        
+    except Exception as e:
+        logger.error(f"Preprocessing failed: {e}")
+        return image_path
+
+def deskew_image(gray_img: np.ndarray) -> tuple[np.ndarray, float]:
+    """Correct text skew/rotation."""
+    try:
+        # Invert colors (text must be white)
+        coords = np.column_stack(np.where(gray_img > 0)) # Assuming white text? No, usually black text on white.
+        # Threshold to get black text
+        thresh = cv2.threshold(gray_img, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+        
+        coords = np.column_stack(np.where(thresh > 0))
+        if coords.size == 0:
+            return gray_img, 0.0
+            
+        angle = cv2.minAreaRect(coords)[-1]
+        
+        # Adjust angle
+        if angle < -45:
+            angle = -(90 + angle)
+        else:
+            angle = -angle
+            
+        # Rotate
+        (h, w) = gray_img.shape[:2]
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        rotated = cv2.warpAffine(gray_img, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        
+        return rotated, angle
+    except Exception:
+        return gray_img, 0.0
+
+def denoise_image(gray_img: np.ndarray) -> np.ndarray:
+    """Remove noise using Fast Non-Local Means."""
+    try:
+        # h: parameter deciding filter strength. Higher h -> removes more noise but also removes details.
+        # For OCR, 10 is usually safe.
+        return cv2.fastNlMeansDenoising(gray_img, None, 10, 7, 21)
+    except Exception:
+        return gray_img

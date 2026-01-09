@@ -20,7 +20,7 @@
                 <i class="fas fa-trash-alt"></i>
             </button>
             {% if document.workflow_state != 'verified' %}
-            <a href="{{ url_for('verify_document', doc_id=document.id) }}" class="btn btn-success">
+            <a href="{{ url_for('main.verify_document', doc_id=document.id) }}" class="btn btn-success">
                 <i class="fas fa-edit me-2"></i> Verificar (UI)
             </a>
             {% endif %}
@@ -66,6 +66,26 @@
                     <button class="btn btn-sm btn-outline-success ms-1" id="save-template"
                         title="Guardar como Plantilla" onclick="saveAsTemplate()">
                         <i class="fas fa-save"></i>
+                    </button>
+                    <!-- CAD Export Button -->
+                    <button class="btn btn-sm btn-outline-warning ms-1" id="export-dxf" title="Exportar a AutoCAD (DXF)"
+                        onclick="exportToCAD()">
+                        <i class="fas fa-drafting-compass"></i>
+                    </button>
+                    <!-- Blueprint Analysis Button -->
+                    <button class="btn btn-sm btn-outline-primary ms-1" id="analyze-blueprint"
+                        title="Analizar Plano (Escala/Áreas)" onclick="analyzeBlueprint()">
+                        <i class="fas fa-ruler-combined"></i>
+                    </button>
+                    <!-- Proposal Generator Button -->
+                    <button class="btn btn-sm btn-outline-danger ms-1" id="gen-proposal" title="Generar Propuesta (PDF)"
+                        onclick="generateProposal()">
+                        <i class="fas fa-file-pdf"></i>
+                    </button>
+                    <!-- Order Export Button -->
+                    <button class="btn btn-sm btn-outline-success ms-1" id="gen-order" title="Generar Pedido (Excel)"
+                        onclick="generateOrder()">
+                        <i class="fas fa-file-excel"></i>
                     </button>
                     <div class="dropdown d-inline-block ms-1">
                         <button class="btn btn-sm btn-outline-info dropdown-toggle" type="button"
@@ -163,12 +183,14 @@
                             type="button">Inteligencia Visual</button>
                     </li>
                     {% endif %}
+                    <!-- Structured Data Tab Hidden by User Request
                     {% if document.type != 'Imagen' and document.structured_data %}
                     <li class="nav-item">
                         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#structured-data"
                             type="button">Datos Estructurados</button>
                     </li>
                     {% endif %}
+                    -->
                     {% endif %}
                 </ul>
             </div>
@@ -350,152 +372,22 @@
                             </div>
                         </div>
 
-                        <!-- Structured Data Tab -->
-                        {% if document.structured_data %}
-                        <div class="tab-pane fade" id="structured-data">
-                            <!-- Anomaly Alerts -->
-                            {% if document.structured_data.anomalies and document.structured_data.anomalies|length > 0
-                            %}
-                            <div class="alert alert-warning alert-dismissible fade show mb-4" role="alert">
-                                <h6 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Anomalías
-                                    Detectadas</h6>
-                                <ul class="mb-0 small">
-                                    {% for anomaly in document.structured_data.anomalies %}
-                                    <li>
-                                        {{ anomaly|replace('_', ' ')|title }}
-                                        <button type="button" class="btn-close btn-close-sm ms-2"
-                                            onclick="dismissAnomaly('{{ anomaly }}')"
-                                            data-anomaly="{{ anomaly }}"></button>
-                                    </li>
-                                    {% endfor %}
-                                </ul>
-                            </div>
-                            {% endif %}
 
-                            <!-- Extracted Fields -->
-                            <h6 class="text-muted small fw-bold text-uppercase mb-3">Campos Extraídos</h6>
-                            <div class="row g-3">
-                                {% if document.structured_data.fields %}
-                                {% if 'date' in document.structured_data.fields %}
-                                <div class="col-md-4">
-                                    <div class="card bg-dark border-secondary">
-                                        <div class="card-body">
-                                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                                <h6 class="card-subtitle text-muted small mb-0">
-                                                    <i class="fas fa-calendar me-2"></i>Fecha
-                                                </h6>
-                                                {% set conf = document.structured_data.fields.date.confidence %}
-                                                <span
-                                                    class="badge {% if conf >= 0.8 %}bg-success{% elif conf >= 0.5 %}bg-warning{% else %}bg-danger{% endif %} bg-opacity-25">
-                                                    {{ (conf * 100)|int }}%
-                                                </span>
-                                            </div>
-                                            <p class="card-text fs-5 mb-1">
-                                                {{ document.structured_data.fields.date.value }}
-                                            </p>
-                                            <small class="text-muted">
-                                                Raw: <code>{{ document.structured_data.fields.date.raw }}</code>
-                                            </small>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endif %}
-
-                                {% if 'total' in document.structured_data.fields %}
-                                <div class="col-md-4">
-                                    <div class="card bg-dark border-secondary">
-                                        <div class="card-body">
-                                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                                <h6 class="card-subtitle text-muted small mb-0">
-                                                    <i class="fas fa-euro-sign me-2"></i>Total
-                                                </h6>
-                                                {% set conf = document.structured_data.fields.total.confidence %}
-                                                <span
-                                                    class="badge {% if conf >= 0.8 %}bg-success{% elif conf >= 0.5 %}bg-warning{% else %}bg-danger{% endif %} bg-opacity-25">
-                                                    {{ (conf * 100)|int }}%
-                                                </span>
-                                            </div>
-                                            <p class="card-text fs-5 mb-1">
-                                                {{ document.structured_data.fields.total.value }}
-                                                {{ document.structured_data.fields.total.currency }}
-                                            </p>
-                                            <small class="text-muted">
-                                                Raw: <code>{{ document.structured_data.fields.total.raw }}</code>
-                                            </small>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endif %}
-
-                                {% if 'vendor' in document.structured_data.fields %}
-                                <div class="col-md-4">
-                                    <div class="card bg-dark border-secondary">
-                                        <div class="card-body">
-                                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                                <h6 class="card-subtitle text-muted small mb-0">
-                                                    <i class="fas fa-building me-2"></i>Proveedor
-                                                </h6>
-                                                {% set conf = document.structured_data.fields.vendor.confidence %}
-                                                <span
-                                                    class="badge {% if conf >= 0.8 %}bg-success{% elif conf >= 0.5 %}bg-warning{% else %}bg-danger{% endif %} bg-opacity-25">
-                                                    {{ (conf * 100)|int }}%
-                                                </span>
-                                            </div>
-                                            <p class="card-text fs-5 mb-1">
-                                                {{ document.structured_data.fields.vendor.value }}
-                                            </p>
-                                            <small class="text-muted">
-                                                Raw: <code>{{ document.structured_data.fields.vendor.raw }}</code>
-                                            </small>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endif %}
-                                {% else %}
-                                <div class="col-12">
-                                    <div class="alert alert-info">
-                                        <i class="fas fa-info-circle me-2"></i>
-                                        No se extrajeron campos estructurados de este documento.
-                                    </div>
-                                </div>
-                                {% endif %}
-                            </div>
-
-                            <!-- Provider Search (if vendor exists but has low confidence) -->
-                            {% if document.structured_data.fields and 'vendor' in document.structured_data.fields %}
-                            {% if document.structured_data.fields.vendor.confidence < 0.8 %} <div class="mt-4">
-                                <h6 class="text-muted small fw-bold text-uppercase mb-3">
-                                    <i class="fas fa-search me-2"></i>Buscar Proveedor
-                                </h6>
-                                <div class="input-group">
-                                    <input type="text" class="form-control bg-dark text-light border-secondary"
-                                        id="provider-search" placeholder="Buscar en base de datos de proveedores..."
-                                        onkeyup="searchProviders(this.value)">
-                                    <button class="btn btn-outline-secondary" type="button">
-                                        <i class="fas fa-search"></i>
-                                    </button>
-                                </div>
-                                <div id="provider-results" class="mt-2"></div>
-                        </div>
-                        {% endif %}
-                        {% endif %}
                     </div>
-                    {% endif %}
+                </form>
             </div>
-            </form>
         </div>
     </div>
-</div>
 </div>
 
 <script>
     async function deleteDocument(docId) {
         if (!confirm('¿Está seguro de eliminar este documento? Esta acción no se puede deshacer.')) return;
         try {
-            const res = await fetch(`/api/document/${docId}/delete`, { method: 'POST' });
+            const res = await fetch(`/api/document/${docId}`, { method: 'DELETE' });
             const data = await res.json();
             if (res.ok) {
-                window.location.href = "{{ url_for('documents') }}";
+                window.location.href = "{{ url_for('main.documents') }}";
             } else {
                 alert('Error al eliminar: ' + data.message);
             }
@@ -729,6 +621,38 @@
         } finally {
             btn.disabled = false;
             btn.innerHTML = 'Aplicar Cambios';
+        }
+    }
+
+    // CAD Export Logic
+    async function exportToCAD() {
+        const btn = document.getElementById('export-dxf');
+        const originalIcon = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        try {
+            const res = await fetch(`/api/document/{{ document.id }}/export/dxf`, { method: 'POST' });
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "{{ document.filename|replace('.', '_') }}.dxf";
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            } else {
+                const err = await res.json();
+                alert('Error al exportar a DXF: ' + (err.error || 'Desconocido'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error de conexión al exportar.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalIcon;
         }
     }
 </script>
@@ -1060,54 +984,209 @@
         }
     };
 
-    // Initial load
-    initViewer();
+    async function generateOrder() {
+        const btn = document.getElementById('gen-order');
+        const originalIcon = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        try {
+            const res = await fetch(`/api/document/{{ document.id }}/generate_order`, { method: 'POST' });
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "Pedido_{{ document.filename|replace('.', '_') }}.xlsx";
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+
+                alert('Hoja de pedido generada con éxito.');
+            } else {
+                const err = await res.json();
+                alert('Error al generar pedido: ' + (err.error || 'Desconocido'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error de conexión al generar pedido.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalIcon;
+        }
+    }
+
+    async function analyzeBlueprint() {
+        const btn = document.getElementById('analyze-blueprint');
+        const originalIcon = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        try {
+            const res = await fetch(`/api/document/{{ document.id }}/interpret_blueprint`, { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+
+                // Populate Modal
+                document.getElementById('bp-scale').textContent = data.scale || 'No detectada';
+
+                const roomsList = document.getElementById('bp-rooms');
+                roomsList.innerHTML = '';
+                if (data.rooms && data.rooms.length > 0) {
+                    data.rooms.forEach(room => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item';
+                        li.textContent = room;
+                        roomsList.appendChild(li);
+                    });
+                } else {
+                    roomsList.innerHTML = '<li class="list-group-item text-muted">No detectadas</li>';
+                }
+
+                const areasList = document.getElementById('bp-areas');
+                areasList.innerHTML = '';
+                if (data.areas && data.areas.length > 0) {
+                    data.areas.forEach(area => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item';
+                        li.textContent = area;
+                        areasList.appendChild(li);
+                    });
+                } else {
+                    areasList.innerHTML = '<li class="list-group-item text-muted">No detectadas</li>';
+                }
+
+                // Show Modal
+                const modal = new bootstrap.Modal(document.getElementById('blueprintModal'));
+                modal.show();
+            } else {
+                const err = await res.json();
+                alert('Error al analizar plano: ' + (err.error || 'Desconocido'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error de conexión al analizar plano.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalIcon;
+        }
+    }
+
+    async function generateProposal() {
+        const btn = document.getElementById('gen-proposal');
+        const originalIcon = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        try {
+            const res = await fetch(`/api/document/{{ document.id }}/generate_proposal`, { method: 'POST' });
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "Propuesta_{{ document.filename|replace('.', '_') }}.pdf";
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+
+                // Show success toast
+                alert('Propuesta generada con éxito.');
+            } else {
+                const err = await res.json();
+                alert('Error al generar propuesta: ' + (err.error || 'Desconocido'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error de conexión al generar propuesta.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalIcon;
+        }
+    }
+    async function exportToCAD() {
+        const btn = document.getElementById('export-dxf');
+        const originalIcon = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        try {
+            const res = await fetch(`/api/document/{{ document.id }}/export_dxf`, { method: 'POST' });
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "Plano_{{ document.filename|replace('.', '_') }}.dxf";
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+                alert('Archivo DXF generado y descargado.');
+            } else {
+                const err = await res.json();
+                alert('Error al exportar a CAD: ' + (err.error || 'Desconocido'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error de conexión al exportar.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalIcon;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', initViewer);
+</script>
 
 
-    <!-- Enhancement Modal -->
-    <div class="modal fade" id="enhanceModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content bg-dark text-light border-secondary">
-                <div class="modal-header border-secondary">
-                    <h5 class="modal-title"><i class="fas fa-magic me-2 text-warning"></i>Reparar Escaneo</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                        aria-label="Close"></button>
+
+<!-- Enhancement Modal -->
+<div class="modal fade" id="enhanceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="fas fa-magic me-2 text-warning"></i>Reparar Escaneo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-4 text-center">
+                    <button class="btn btn-warning w-100" onclick="applyEnhancement('auto')">
+                        <i class="fas fa-wand-magic-sparkles me-2"></i> Auto-Fix (Recomendado)
+                    </button>
+                    <small class="text-muted d-block mt-2">Aplica contraste adaptativo y nitidez
+                        automáticamente.</small>
                 </div>
-                <div class="modal-body">
-                    <div class="mb-4 text-center">
-                        <button class="btn btn-warning w-100" onclick="applyEnhancement('auto')">
-                            <i class="fas fa-wand-magic-sparkles me-2"></i> Auto-Fix (Recomendado)
-                        </button>
-                        <small class="text-muted d-block mt-2">Aplica contraste adaptativo y nitidez
-                            automáticamente.</small>
-                    </div>
 
-                    <hr class="border-secondary">
+                <hr class="border-secondary">
 
-                        <h6 class="mb-3">Ajuste Manual</h6>
+                <h6 class="mb-3">Ajuste Manual</h6>
 
-                        <label class="form-label small">Contraste</label>
-                        <input type="range" class="form-range" id="contrastRange" min="0.5" max="2.0" step="0.1" value="1.0">
+                <label class="form-label small">Contraste</label>
+                <input type="range" class="form-range" id="contrastRange" min="0.5" max="2.0" step="0.1" value="1.0">
 
-                            <label class="form-label small mt-2">Brillo</label>
-                            <input type="range" class="form-range" id="brightnessRange" min="0.5" max="2.0" step="0.1" value="1.0">
+                <label class="form-label small mt-2">Brillo</label>
+                <input type="range" class="form-range" id="brightnessRange" min="0.5" max="2.0" step="0.1" value="1.0">
 
-                                <label class="form-label small mt-2">Nitidez</label>
-                                <input type="range" class="form-range" id="sharpnessRange" min="0.0" max="3.0" step="0.5" value="1.0">
+                <label class="form-label small mt-2">Nitidez</label>
+                <input type="range" class="form-range" id="sharpnessRange" min="0.0" max="3.0" step="0.5" value="1.0">
 
-                                    <div class="form-check form-switch mt-3">
-                                        <input class="form-check-input" type="checkbox" id="claheCheck">
-                                            <label class="form-check-label" for="claheCheck">Corrección de Iluminación (CLAHE)</label>
-                                    </div>
-                                </div>
-                                <div class="modal-footer border-secondary">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                    <button type="button" class="btn btn-primary" id="btn-apply-enhance"
-                                        onclick="applyEnhancement('manual')">
-                                        Aplicar Cambios
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                <div class="form-check form-switch mt-3">
+                    <input class="form-check-input" type="checkbox" id="claheCheck">
+                    <label class="form-check-label" for="claheCheck">Corrección de Iluminación (CLAHE)</label>
                 </div>
-                {% endblock %}
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-apply-enhance"
+                    onclick="applyEnhancement('manual')">
+                    Aplicar Cambios
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

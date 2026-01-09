@@ -83,6 +83,9 @@ app:
   use_sql_server: false
   sql_server_dsn: Driver={SQL Server};Server=localhost;Database=DigitalizerAI;Trusted_Connection=yes;
   log_level: INFO
+features:
+  enable_folders: false
+  enable_versioning: false
 ocr_pipeline:
   engines:
   - name: paddleocr
@@ -104,18 +107,18 @@ ocr_pipeline:
     - eng
   fusion:
     strategy: levenshtein
-    min_confidence: 0.8
+    min_confidence: 0.7
     min_similarity: 0.82
     priority:
     - paddleocr
     - easyocr
     
-  poppler_path: "tools/poppler/poppler-25.07.0/Library/bin"
+  poppler_path: "/usr/bin"
   
 llm:
   enabled: true
   provider: "lm_studio"  # Configurado para LM Studio
-  base_url: "http://127.0.0.1:1234/v1"
+  base_url: "http://host.docker.internal:1234/v1"
   model: "llama-3.2-1b-instruct"
   timeout: 60
 
@@ -123,11 +126,11 @@ llm:
     enabled: false
     # Model for general conversation
     general_chat:
-      base_url: "http://127.0.0.1:1235/v1"
+      base_url: "http://host.docker.internal:1234/v1"
       model: "mistral-small-24b"
     # Model for document analysis (RAG)
     document_chat:
-      base_url: "http://127.0.0.1:1234/v1"
+      base_url: "http://host.docker.internal:1234/v1"
       model: "llama-3.1-70b"
 
   vision:
@@ -144,37 +147,129 @@ llm:
       - Silla
       - Mesa de Comedor
       - Mesa de Centro
+      - Mesa Auxiliar
       - Cama
+      - Cabecero
+      - Mesita de Noche
       - Armario
-      - Lámpara
+      - Vestidor
+      - Cómoda
+      - Sinfonier
+      - Escritorio
+      - Estantería
+      - Librería
+      - Aparador
+      - Vitrina
+      - Mueble TV
+      - Recibidor
+      - Zapatero
+      - Espejo
+      - Banco
+      - Taburete
+      - Pouf
+      - Chaise Longue
+      - Lámpara de Techo
+      - Lámpara de Pie
+      - Lámpara de Mesa
+      - Aplique de Pared
+      - Foco Empotrado
+      - Tira LED
       - Alfombra
+      - Cortina
+      - Estor
+      - Visillo
+      - Cojín
+      - Plaid
+      - Ropa de Cama
+      - Papel Pintado
+      - Revestimiento de Pared
+      - Moldura
+      - Rodapié
+      - Suelo de Madera
+      - Suelo Laminado
+      - Suelo Vinílico
+      - Suelo Cerámico
+      - Azulejo
+      - Mármol
+      - Porcelánico
+      - Microcemento
+      - Pintura
       - Madera Roble (Oak)
       - Madera Nogal (Walnut)
       - Madera Pino
       - Madera Caoba
+      - Madera Haya
+      - Madera Fresno
+      - Madera Teca
       - Madera Clara
       - Madera Oscura
       - Tela Terciopelo
       - Tela Lino
       - Tela Algodón
       - Tela Seda
+      - Tela Lana
+      - Bouclé
+      - Jacquard
+      - Chenilla
+      - Polipiel
       - Cuero
       - Cuero Sintético
+      - Metal Dorado
+      - Metal Plateado
+      - Metal Negro
+      - Latón
+      - Bronce
+      - Acero Inoxidable
+      - Cristal
+      - Espejo Envejecido
+      - Mimbre
+      - Ratán
+      - Yute
+      - Bambú
       - Color Beige
       - Color Gris
       - Color Blanco
       - Color Negro
       - Color Azul Marino
+      - Color Azul Cielo
       - Color Verde Esmeralda
+      - Color Verde Salvia
       - Color Mostaza
       - Color Terracota
-      - Color Pastel
+      - Color Ocre
+      - Color Rosa Palo
+      - Color Vino
+      - Color Topo
+      - Color Arena
+      - Tono Pastel
+      - Tono Neutro
+      - Tono Vibrante
       - Estilo Moderno
       - Estilo Industrial
       - Estilo Rústico
       - Estilo Nórdico
       - Estilo Clásico
       - Estilo Minimalista
+      - Estilo Bohemio
+      - Estilo Wabi-Sabi
+      - Estilo Art Deco
+      - Estilo Mid-Century
+      - Estilo Mediterráneo
+      - Estilo Japandi
+      - Plano Técnico
+      - Plano de Planta
+      - Alzado
+      - Sección
+      - Detalle Constructivo
+      - Boceto a Mano
+      - Sketch
+      - Perspectiva
+      - Render
+      - Hoja de Confección
+      - Patrón de Costura
+      - Despiece
+      - Moodboard
+      - Collage de Materiales
   output:
     formats:
     - markdown
@@ -182,7 +277,7 @@ llm:
     save_markdown_in_db: true
   primary_engine: auto
 database:
-  engine: postgresql  # Cambiado de sqlite a postgresql
+  engine: sqlite  # Cambiado de postgresql a sqlite
   sqlite:
     path: data/digitalizerai.db
   postgresql:

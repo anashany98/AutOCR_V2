@@ -37,7 +37,12 @@ class DBManager:
         config: Dict[str, Any]
     ) -> None:
         self.config = config.get("database", {})
-        self.engine_type = self.config.get("engine", "sqlite").lower()
+        
+        # Auto-detect Production Environment (Docker) -> Force PostgreSQL
+        if os.environ.get("POSTGRES_HOST"):
+            self.engine_type = "postgresql"
+        else:
+            self.engine_type = self.config.get("engine", "sqlite").lower()
         self._lock = threading.RLock()
         self.conn = None
         
@@ -418,6 +423,76 @@ class DBManager:
                 """
             )
         
+        # Folders Table
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS folders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    parent_id INTEGER,
+                    created_at TEXT,
+                    FOREIGN KEY(parent_id) REFERENCES folders(id)
+                )
+                """
+            )
+        else:
+             cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS folders (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    parent_id INTEGER REFERENCES folders(id),
+                    created_at TEXT
+                )
+                """
+            )
+
+        # Document Versions Table
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS document_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    doc_id INTEGER NOT NULL,
+                    version_number INTEGER NOT NULL,
+                    text_content TEXT,
+                    markdown_content TEXT,
+                    structured_data TEXT,
+                    created_at TEXT,
+                    created_by TEXT,
+                    change_reason TEXT,
+                    FOREIGN KEY(doc_id) REFERENCES documents(id)
+                )
+                """
+            )
+        if self.engine_type != "sqlite":
+             cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS document_versions (
+                    id SERIAL PRIMARY KEY,
+                    doc_id INTEGER NOT NULL REFERENCES documents(id),
+                    version_number INTEGER NOT NULL,
+                    text_content TEXT,
+                    markdown_content TEXT,
+                    structured_data TEXT,
+                    created_at TEXT,
+                    created_by TEXT,
+                    change_reason TEXT
+                )
+                """
+            )
+        
+        # COMMIT table creation before migrations!
+        # Otherwise _ensure_column might rollback if it fails the first time.
+        conn.commit()
+
+        # Ensure we have folder_id in documents table (Migration)
+        # Note: We need to do this OUTSIDE the big create block but inside the transaction preferably
+        # However, _ensure_column starts its own transaction if conn is not passed.
+        # But here we have 'conn'.
+        self._ensure_column("documents", "folder_id", "INTEGER REFERENCES folders(id)" if self.engine_type != "sqlite" else "INTEGER", conn=conn)
+        
         conn.commit()
 
     def _ensure_column(self, table: str, column: str, definition: str, conn=None) -> None:
@@ -691,6 +766,57 @@ class DBManager:
             logger.error(f"Failed to update document type {doc_id}: {e}")
             return False
 
+    def delete_document(self, doc_id: int) -> bool:
+        """Delete a document and all related data (OCR, FTS, search, embeddings)."""
+        # Start by getting the file path to delete it later
+        path_str = self.get_document_path(doc_id)
+
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                # ORDER MATTERS: Delete children first
+                # 1. Embeddings (if exist)
+                if self.engine_type == "postgresql":
+                    try:
+                        # Check table existence to avoid transaction abort
+                        cursor.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'document_embeddings'")
+                        if cursor.fetchone():
+                            cursor.execute("DELETE FROM document_embeddings WHERE doc_id = %s", (doc_id,))
+                    except Exception:
+                        conn.rollback() # Recover from potential failed check
+                        cursor = self.get_cursor(conn)
+                
+                # 2. Search Index (SQLite only)
+                if self.engine_type == "sqlite":
+                    cursor.execute("DELETE FROM documents_search WHERE doc_id = ?", (doc_id,))
+                
+                # 3. OCR Texts
+                final_q_ocr = "DELETE FROM ocr_texts WHERE id_doc = ?".replace('?', self.placeholder)
+                cursor.execute(final_q_ocr, (doc_id,))
+                
+                # 4. Document Record
+                final_q_doc = "DELETE FROM documents WHERE id = ?".replace('?', self.placeholder)
+                cursor.execute(final_q_doc, (doc_id,))
+                
+                conn.commit()
+                
+                # 5. Physical File Cleanup (Post-commit)
+                if path_str:
+                    try:
+                        abs_path = Path(path_str)
+                        if not abs_path.is_absolute():
+                            abs_path = Path(os.getcwd()) / path_str
+                        if abs_path.exists():
+                            os.remove(abs_path)
+                    except Exception as e:
+                        logger.error(f"Failed to delete file {path_str}: {e}")
+                
+                return True
+            except Exception as e:
+                logger.error(f"Failed to delete document {doc_id}: {e}")
+                conn.rollback()
+                return False
+
 
 
 
@@ -730,6 +856,166 @@ class DBManager:
         except Exception as e:
             logger.error(f"Failed to delete template {template_id}: {e}")
             return False
+
+    # -------------------------------------------------------------------------
+    # FOLDER MANAGEMENT (New Features)
+    # -------------------------------------------------------------------------
+    def create_folder(self, name: str, parent_id: Optional[int] = None) -> int:
+        query = f"INSERT INTO folders (name, parent_id, created_at) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder})" \
+            if self.engine_type == "sqlite" else \
+            f"INSERT INTO folders (name, parent_id, created_at) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}) RETURNING id"
+        
+        from datetime import datetime
+        now = datetime.now().isoformat()
+        
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(query, (name, parent_id, now))
+            
+            if self.engine_type == "sqlite":
+                conn.commit()
+                return cursor.lastrowid
+            else:
+                row = cursor.fetchone()
+                conn.commit()
+                return row[0]
+
+    def get_folders(self) -> List[Dict[str, Any]]:
+        """Get flattened list of folders."""
+        query = "SELECT id, name, parent_id, created_at FROM folders ORDER BY name ASC"
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            return [
+                {"id": r[0], "name": r[1], "parent_id": r[2], "created_at": r[3]}
+                for r in rows
+            ]
+
+    def move_documents_to_folder(self, doc_ids: List[int], folder_id: Optional[int]) -> bool:
+        """Move documents to a specific folder (or root if None)."""
+        if not doc_ids: return False
+        
+        placeholders = ",".join([self.placeholder] * len(doc_ids))
+        query = f"UPDATE documents SET folder_id = {self.placeholder} WHERE id IN ({placeholders})"
+        params = [folder_id] + doc_ids
+        
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(query, params)
+                conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to move docs to folder {folder_id}: {e}")
+                conn.rollback()
+                return False
+
+    # -------------------------------------------------------------------------
+    # VERSION CONTROL (New Features)
+    # -------------------------------------------------------------------------
+    def create_document_version(self, doc_id: int, reason: str = "Manual Save", user: str = "System") -> bool:
+        """Snapshot current document state into versions table."""
+        # 1. Get current state
+        doc = self.get_document(doc_id)
+        if not doc: return False
+        
+        # 2. Get next version number
+        v_query = f"SELECT MAX(version_number) FROM document_versions WHERE doc_id = {self.placeholder}"
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(v_query, (doc_id,))
+            row = cursor.fetchone()
+            current_max = row[0] if row else 0 # Handle potential None if table empty
+            next_version = (current_max or 0) + 1
+            
+            # 3. Insert snapshot
+            from datetime import datetime
+            now = datetime.now().isoformat()
+            
+            insert_q = f"""
+                INSERT INTO document_versions 
+                (doc_id, version_number, text_content, markdown_content, structured_data, created_at, created_by, change_reason)
+                VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+            """
+            
+            # Serialize structured_data if it's a dict (get_document returns dict)
+            s_data = doc.get("structured_data")
+            if isinstance(s_data, dict):
+                import json
+                s_data = json.dumps(s_data)
+                
+            params = (
+                doc_id, 
+                next_version, 
+                doc.get("text"), 
+                doc.get("markdown"), 
+                s_data,
+                now,
+                user,
+                reason
+            )
+            
+            try:
+                cursor.execute(insert_q, params)
+                conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to create version for doc {doc_id}: {e}")
+                conn.rollback()
+                return False
+
+    def get_document_versions(self, doc_id: int) -> List[Dict[str, Any]]:
+        query = f"""
+            SELECT id, version_number, created_at, created_by, change_reason 
+            FROM document_versions 
+            WHERE doc_id = {self.placeholder} 
+            ORDER BY version_number DESC
+        """
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(query, (doc_id,))
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": r[0], 
+                    "version": r[1], 
+                    "date": r[2], 
+                    "user": r[3], 
+                    "reason": r[4]
+                } for r in rows
+            ]
+
+    def restore_version(self, version_id: int) -> bool:
+        """Restore a version to the main tables."""
+        # Get snapshot
+        q_snap = f"SELECT doc_id, text_content, markdown_content, structured_data FROM document_versions WHERE id = {self.placeholder}"
+        
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(q_snap, (version_id,))
+            row = cursor.fetchone()
+            if not row: return False
+            
+            doc_id, text, markdown, s_data = row
+            
+            # Update main tables
+            # 1. Update ocr_texts
+            q_ocr = f"UPDATE ocr_texts SET text = {self.placeholder}, markdown_text = {self.placeholder}, tables_json = {self.placeholder} WHERE id_doc = {self.placeholder}"
+            # Note: tables_json is part of structured_data usually, or separate? 
+            # In get_document, we merge them. In create_version, we just dumped doc['structured_data'].
+            # Let's assume restoration updates the main text fields.
+            
+            try:
+                # We need to be careful mapping fields back.
+                # For now, let's just restore text and markdown.
+                cursor.execute(q_ocr, (text, markdown, s_data, doc_id))
+                conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to restore version {version_id}: {e}")
+                conn.rollback()
+                return False
 
     def insert_chat_message(self, session_id: str, role: str, content: str, user_id: Optional[str] = None) -> int:
         """Insert a chat message into history."""

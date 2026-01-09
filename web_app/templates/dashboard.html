@@ -3,308 +3,242 @@
 {% block title %}Dashboard - AutOCR{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-12">
-        <h1><i class="fas fa-tachometer-alt"></i> Panel general</h1>
-        <p class="text-muted">Resumen del pipeline de AutOCR con tablas e índice visual.</p>
-    </div>
-</div>
+<!-- WRAPPER -->
+<div class="container-fluid p-0">
 
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card bg-primary text-white">
-            <div class="card-body">
-                <h6 class="card-title mb-2"><i class="fas fa-file-alt"></i> Documentos</h6>
-                <h2 class="card-text">{{ total_docs }}</h2>
-            </div>
+    <div class="row mb-4 animate-fade-in align-items-end">
+        <div class="col-md-8">
+            <h1 class="h3 fw-bold bg-clip-text mb-1"><i class="fas fa-tachometer-alt me-2 text-primary"></i>Panel de
+                Control</h1>
+            <p class="text-muted mb-0">Visión general del rendimiento y estado del sistema.</p>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <span
+                class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-2 rounded-pill">
+                <i class="fas fa-clock me-1"></i> Estado: <strong>En Línea</strong>
+            </span>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card bg-success text-white">
-            <div class="card-body">
-                <h6 class="card-title mb-2"><i class="fas fa-check-circle"></i> OK</h6>
-                <h2 class="card-text">{{ status_stats.get('OK', 0) }}</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-danger text-white">
-            <div class="card-body">
-                <h6 class="card-title mb-2"><i class="fas fa-times-circle"></i> Fallidos</h6>
-                <h2 class="card-text">{{ status_stats.get('FAILED', 0) }}</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-warning text-dark border-0 shadow-sm"
-            style="background: linear-gradient(45deg, #f6d365 0%, #fda085 100%);">
-            <div class="card-body">
-                <h6 class="card-title mb-2"><i class="fas fa-exclamation-circle"></i> Pendientes</h6>
-                <div class="d-flex justify-content-between align-items-end">
-                    <h2 class="card-text mb-0">{{ pending_count }}</h2>
-                    <a href="{{ url_for('main.verify_queue') }}"
-                        class="btn btn-sm btn-light rounded-pill px-3">Revisar</a>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 
-<div class="row">
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Tipos más frecuentes</h5>
-            </div>
-            <div class="card-body">
-                {% if type_stats %}
-                <canvas id="typeChart" width="350" height="250"></canvas>
-                {% else %}
-                <p class="text-muted mb-0">No hay datos disponibles.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-clock"></i> Documentos recientes</h5>
-            </div>
-            <div class="card-body">
-                {% if recent_docs %}
-                <div class="list-group">
-                    {% for doc in recent_docs %}
-                    <a href="{{ url_for('main.document_detail', doc_id=doc[0]) }}"
-                        class="list-group-item list-group-item-action">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1">{{ doc[1] }}</h6>
-                            <small class="text-muted">{{ doc[4][:19] }}</small>
+    <!-- Stats Indicators -->
+    <div class="row g-4 mb-4 animate-slide-up">
+        <!-- Total Documents -->
+        <div class="col-md-3">
+            <div class="card stat-card border-0 h-100"
+                style="background: linear-gradient(135deg, rgba(13, 110, 253, 0.1) 0%, rgba(13, 110, 253, 0.05) 100%);">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div class="d-flex align-items-center justify-content-center bg-primary bg-opacity-10 rounded-circle"
+                            style="width: 40px; height: 40px;">
+                            <i class="fas fa-file-alt text-primary"></i>
                         </div>
-                        <p class="mb-1">{{ doc[2] or 'Sin clasificar' }}</p>
-                        <small class="text-muted">Estado: {{ doc[3] }}
-                            {% if doc[3] == 'FAILED' and doc[6] %}
-                            <span class="badge bg-danger" title="{{ doc[6] }}">
-                                <i class="fas fa-exclamation-circle"></i> Error
-                            </span>
-                            {% endif %}
-                            | {{ "%.2f"|format(doc[5]) }}s
-                        </small>
-                    </a>
-                    {% endfor %}
+                    </div>
+                    <h2 class="display-5 fw-bold mb-0 text-white">{{ total_docs }}</h2>
+                    <small class="text-muted text-uppercase fw-semibold"
+                        style="font-size: 0.75rem; letter-spacing: 1px;">Documentos</small>
                 </div>
-                {% else %}
-                <p class="text-muted mb-0">No se han procesado documentos.</p>
-                {% endif %}
+            </div>
+        </div>
+
+        <!-- OK -->
+        <div class="col-md-3">
+            <div class="card stat-card border-0 h-100"
+                style="background: linear-gradient(135deg, rgba(25, 135, 84, 0.1) 0%, rgba(25, 135, 84, 0.05) 100%);">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div class="d-flex align-items-center justify-content-center bg-success bg-opacity-10 rounded-circle"
+                            style="width: 40px; height: 40px;">
+                            <i class="fas fa-check text-success"></i>
+                        </div>
+                    </div>
+                    <h2 class="display-5 fw-bold mb-0 text-success">{{ status_stats.get('OK', 0) }}</h2>
+                    <small class="text-muted text-uppercase fw-semibold"
+                        style="font-size: 0.75rem; letter-spacing: 1px;">Procesados</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Failed -->
+        <div class="col-md-3">
+            <div class="card stat-card border-0 h-100"
+                style="background: linear-gradient(135deg, rgba(220, 53, 69, 0.1) 0%, rgba(220, 53, 69, 0.05) 100%);">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div class="d-flex align-items-center justify-content-center bg-danger bg-opacity-10 rounded-circle"
+                            style="width: 40px; height: 40px;">
+                            <i class="fas fa-times text-danger"></i>
+                        </div>
+                    </div>
+                    <h2 class="display-5 fw-bold mb-0 text-danger">{{ status_stats.get('FAILED', 0) }}</h2>
+                    <small class="text-muted text-uppercase fw-semibold"
+                        style="font-size: 0.75rem; letter-spacing: 1px;">Fallidos</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending Action -->
+        <div class="col-md-3">
+            <div class="card stat-card border-0 h-100 position-relative overflow-hidden"
+                style="background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);">
+                <div class="card-body position-relative z-1 text-dark">
+                    <h6 class="text-uppercase fw-bold mb-2 text-dark opacity-75 small">Cola de Verificación</h6>
+                    <div class="d-flex justify-content-between align-items-end">
+                        <h2 class="display-4 fw-bold mb-0">{{ pending_count }}</h2>
+                        <a href="{{ url_for('main.verify_queue') }}" class="btn btn-dark rounded-pill px-3 shadow-sm">
+                            <i class="fas fa-arrow-right me-1"></i> Revisar
+                        </a>
+                    </div>
+                </div>
+                <!-- Decorative circle -->
+                <div class="position-absolute end-0 top-0 translate-middle-y me-n3 mt-3 rounded-circle bg-white opacity-25"
+                    style="width: 100px; height: 100px;"></div>
             </div>
         </div>
     </div>
-</div>
 
-{% if metrics %}
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-chart-line"></i> Últimas métricas</h5>
-            </div>
-            <div class="card-body table-responsive">
-                <table class="table table-striped align-middle">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>OK</th>
-                            <th>Fallidos</th>
-                            <th>Tiempo medio</th>
-                            <th>Fiabilidad</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for metric in metrics %}
-                        <tr>
-                            <td>{{ metric[0][:19] }}</td>
-                            <td><span class="badge bg-success">{{ metric[1] }}</span></td>
-                            <td><span class="badge bg-danger">{{ metric[2] }}</span></td>
-                            <td>{{ "%.2f"|format(metric[3]) }}s</td>
-                            <td>{{ "%.1f"|format(metric[4]) }}%</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <ul class="nav nav-tabs card-header-tabs" id="insightsTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="tables-tab" data-bs-toggle="tab"
-                            data-bs-target="#tables-pane" type="button" role="tab">
-                            <i class="fas fa-table"></i> Tablas detectadas
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="vision-tab" data-bs-toggle="tab" data-bs-target="#vision-pane"
-                            type="button" role="tab">
-                            <i class="fas fa-image"></i> Búsqueda de imágenes
-                        </button>
-                    </li>
-                </ul>
-            </div>
-            <div class="card-body tab-content">
-                <div class="tab-pane fade show active" id="tables-pane" role="tabpanel">
-                    {% if recent_tables %}
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Documento</th>
-                                    <th>Fecha</th>
-                                    <th>Tabla</th>
-                                    <th>Descargas</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for table in recent_tables %}
-                                <tr>
-                                    <td>
-                                        <a href="{{ url_for('main.document_detail', doc_id=table.doc_id) }}">{{
-                                            table.filename }}</a>
-                                    </td>
-                                    <td>{{ table.datetime[:19] if table.datetime else "N/A" }}</td>
-                                    <td>#{{ table.index + 1 }}</td>
-                                    <td>
-                                        <a class="btn btn-outline-secondary btn-sm"
-                                            href="{{ url_for('main.download_table', doc_id=table.doc_id, index=table.index, fmt='csv') }}">
-                                            CSV
-                                        </a>
-                                        <a class="btn btn-outline-secondary btn-sm"
-                                            href="{{ url_for('main.download_table', doc_id=table.doc_id, index=table.index, fmt='json') }}">
-                                            JSON
-                                        </a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+    <!-- Charts & Recents -->
+    <div class="row g-4 mb-4">
+        <!-- Chart -->
+        <div class="col-lg-6">
+            <div class="card h-100 border-0">
+                <div
+                    class="card-header bg-transparent border-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-chart-pie me-2 text-info"></i>Clasificación</h5>
+                </div>
+                <div class="card-body p-4 d-flex align-items-center justify-content-center">
+                    {% if type_stats %}
+                    <div style="width: 100%; max-width: 300px;">
+                        <canvas id="typeChart"></canvas>
                     </div>
                     {% else %}
-                    <p class="text-muted mb-0">Aún no se han detectado tablas.</p>
+                    <div class="text-center py-5">
+                        <i class="fas fa-chart-area fa-3x text-muted opacity-25 mb-3"></i>
+                        <p class="text-muted">Sin datos suficientes</p>
+                    </div>
                     {% endif %}
                 </div>
-                <div class="tab-pane fade" id="vision-pane" role="tabpanel">
-                    {% if vision_enabled %}
-                    <form action="{{ url_for('main.image_search') }}" method="post" enctype="multipart/form-data"
-                        class="mb-3">
-                        <div class="input-group">
-                            <input type="file" class="form-control" name="image" accept=".jpg,.jpeg,.png,.bmp" required>
-                            <button class="btn btn-primary" type="submit">
-                                <i class="fas fa-search"></i> Buscar similares
-                            </button>
-                        </div>
-                        <div class="form-text">El índice actual debe haberse construido desde la configuración.</div>
-                    </form>
-                    {% if image_error %}
-                    <div class="alert alert-danger">{{ image_error }}</div>
-                    {% endif %}
-                    {% if image_results %}
-                    <div class="row">
-                        {% for result in image_results %}
-                        <div class="col-md-3 mb-3">
-                            <div class="card h-100">
-                                <img src="{{ result.preview_url }}" class="card-img-top" alt="preview">
-                                <div class="card-body">
-                                    <small class="text-muted d-block text-truncate">{{ result.filename or result.path
-                                        }}</small>
+            </div>
+        </div>
 
-                                    <div class="d-flex gap-1 mt-2">
-                                        {% for tag in result.tags %}
-                                        {% if tag.startswith("color:") %}
-                                        <div class="rounded-circle shadow-sm"
-                                            style="width: 12px; height: 12px; background-color: {{ tag.replace('color:', '') }};"
-                                            title="{{ tag }}"></div>
-                                        {% endif %}
-                                        {% endfor %}
-                                    </div>
+        <!-- Recent List -->
+        <div class="col-lg-6">
+            <div class="card h-100 border-0">
+                <div class="card-header bg-transparent border-0 pt-4 px-4">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-history me-2 text-secondary"></i>Actividad Reciente</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if recent_docs %}
+                    <div class="list-group list-group-flush border-0">
+                        {% for doc in recent_docs %}
+                        <a href="{{ url_for('main.document_detail', doc_id=doc[0]) }}"
+                            class="list-group-item list-group-item-action border-0 px-4 py-3 d-flex align-items-center justify-content-between transition-hover">
 
-                                    <span class="badge bg-info text-dark mt-2">Score: {{ "%.2f"|format(result.score)
-                                        }}</span>
+                            <div class="d-flex align-items-center">
+                                <div
+                                    class="rounded p-2 me-3 {{ 'bg-success' if doc[3] == 'OK' else 'bg-danger' if doc[3] == 'FAILED' else 'bg-secondary' }} bg-opacity-10">
+                                    <i
+                                        class="fas {{ 'fa-file-pdf' if doc[1].endswith('.pdf') else 'fa-image' }} {{ 'text-success' if doc[3] == 'OK' else 'text-danger' if doc[3] == 'FAILED' else 'text-muted' }}"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-0 fw-semibold text-truncate" style="max-width: 200px;">{{ doc[1] }}
+                                    </h6>
+                                    <small class="text-muted">{{ doc[2] or 'Sin clasificar' }}</small>
                                 </div>
                             </div>
-                        </div>
+
+                            <div class="text-end">
+                                <div
+                                    class="small fw-bold {{ 'text-success' if doc[3] == 'OK' else 'text-danger' if doc[3] == 'FAILED' else 'text-warning' }}">
+                                    {{ doc[3] }}
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75rem;">{{ "%.2f"|format(doc[5])
+                                    }}s</small>
+                            </div>
+                        </a>
                         {% endfor %}
                     </div>
                     {% else %}
-                    <p class="text-muted mb-0">Suba una imagen para obtener resultados.</p>
-                    {% endif %}
-                    {% else %}
-                    <div class="alert alert-warning mb-0">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        Active la opción de visión en la configuración para habilitar la búsqueda.
+                    <div class="text-center py-5">
+                        <p class="text-muted">No hay actividad reciente.</p>
                     </div>
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-bolt"></i> Acciones rápidas</h5>
-            </div>
-            <div class="card-body d-flex flex-wrap gap-2">
-                <a href="{{ url_for('main.upload') }}" class="btn btn-primary">
-                    <i class="fas fa-upload"></i> Subir archivos
-                </a>
-                <a href="{{ url_for('main.batch_process') }}" class="btn btn-secondary">
-                    <i class="fas fa-folder-open"></i> Procesar carpeta
-                </a>
-                <a href="{{ url_for('main.documents') }}" class="btn btn-outline-primary">
-                    <i class="fas fa-folder"></i> Ver documentos
-                </a>
-                <a href="{{ url_for('main.settings') }}" class="btn btn-outline-secondary">
-                    <i class="fas fa-sliders-h"></i> Configuración
-                </a>
+    <!-- Quick Actions -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 bg-primary bg-opacity-10">
+                <div class="card-body d-flex flex-wrap gap-3 align-items-center p-4">
+                    <span class="fw-bold text-uppercase small text-primary me-2">Acceso Rápido:</span>
+
+                    <a href="{{ url_for('main.upload') }}" class="btn btn-primary rounded-pill px-4">
+                        <i class="fas fa-cloud-upload-alt me-2"></i> Subir Documentos
+                    </a>
+
+                    <a href="{{ url_for('main.batch_process') }}"
+                        class="btn btn-outline-primary rounded-pill px-4 bg-dark">
+                        <i class="fas fa-sync me-2"></i> Procesar Lote
+                    </a>
+
+                    <a href="{{ url_for('main.documents') }}"
+                        class="btn btn-outline-light rounded-pill px-4 text-muted">
+                        <i class="fas fa-search me-2"></i> Buscar
+                    </a>
+                </div>
             </div>
         </div>
     </div>
-</div>
-{% endblock %}
 
-{% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-    document.addEventListener("DOMContentLoaded", () => {
-        const typeStats = {{ type_stats | tojson | safe
-    }};
-    if (typeStats && typeStats.length) {
-        const ctx = document.getElementById('typeChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: typeStats.map(item => item[0] || 'Sin clasificar'),
-                datasets: [{
-                    data: typeStats.map(item => item[1]),
-                    backgroundColor: ['#0d6efd', '#198754', '#dc3545', '#ffc107', '#6f42c1', '#20c997']
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
+    {% endblock %}
+
+    {% block extra_js %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const typeStats = {{ type_stats | tojson | safe
+        }};
+        if (typeStats && typeStats.length) {
+            const ctx = document.getElementById('typeChart').getContext('2d');
+
+            // Custom plugin for center text (optional, kept simple for now)
+
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: typeStats.map(item => item[0] || 'Otros'),
+                    datasets: [{
+                        data: typeStats.map(item => item[1]),
+                        backgroundColor: [
+                            'rgba(13, 110, 253, 0.8)', // Primary
+                            'rgba(25, 135, 84, 0.8)',  // Success
+                            'rgba(220, 53, 69, 0.8)',  // Danger
+                            'rgba(255, 193, 7, 0.8)',  // Warning
+                            'rgba(111, 66, 193, 0.8)', // Purple
+                            'rgba(32, 201, 151, 0.8)'  // Teal
+                        ],
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: '#a0a0a0',
+                                font: { family: 'Inter', size: 12 },
+                                boxWidth: 15
+                            }
+                        }
                     }
                 }
-            }
-        });
-    }
-});
-</script>
-{% endblock %}
+            });
+        }
+    });
+    </script>
+    {% endblock %}

@@ -1,84 +1,60 @@
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS base
+# Base Image: NVIDIA CUDA 12.1 with cuDNN 8 on Ubuntu 22.04
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
+# Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies
+# - Python 3.11 (via deadsnakes PPA if needed, but 22.04 has 3.10 default. Let's stick to system python 3.10 or install 3.11 if strict.)
+# Ubuntu 22.04 has Python 3.10. To match user's 3.11 environment tightly, we add deadsnakes.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3.11-dev \
+    python3-pip \
+    python3-wheel \
+    python3-setuptools \
+    build-essential \
+    pkg-config \
+    libcairo2-dev \
+    libgirepository1.0-dev \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-spa \
+    libmagic1 \
+    libgl1-mesa-glx \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ensure python3 points to python3.11
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Install pip for 3.11 manually to avoid conflicts
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+
 WORKDIR /app
 
-# 1️⃣ System dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv python3-dev \
-    build-essential pkg-config \
-    libglib2.0-0 libsm6 libxext6 libxrender1 libgomp1 \
-    libgtk-3-0 libpango-1.0-0 libatk1.0-0 libcairo-gobject2 \
-    libgdk-pixbuf-2.0-0 libjpeg-dev libopenblas-dev libstdc++6 \
-    poppler-utils libgl1 tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng \
-    libssl-dev libffi-dev \
- && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Copy requirements first for cache efficiency
+COPY requirements_docker.txt .
 
-# 2️⃣ Virtual env
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Install Python dependencies
+# Use --extra-index-url for PyTorch to ensure we get Linux/CUDA wheels
+# --break-system-packages needed for newer pip on Ubuntu/Debian
+RUN pip install --no-cache-dir --break-system-packages --ignore-installed -r requirements_docker.txt \
+    --extra-index-url https://download.pytorch.org/whl/cu121
 
-# 3️⃣ DEPENDENCIAS CON SOLUCIÓN PADDLEPADDLE
-COPY requirements.txt .
-
-# ------------------------------------------------------------
-# PaddlePaddle 2.6.1 is compatible with Ubuntu 22.04's OpenSSL 3.0
-# ------------------------------------------------------------
-
-# Capa 1: NumPy y PaddlePaddle primero (orden crítico)
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir \
-    numpy==1.24.3 \
-    paddlepaddle-gpu==2.6.1 \
-    -i https://pypi.tuna.tsinghua.edu.cn/simple
-
-# Capa 2: PyTorch CUDA 12.1 (ya funciona)
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir \
-    torch==2.3.1+cu121 \
-    torchvision==0.18.1+cu121 \
-    torchaudio==2.3.1+cu121 \
-    --index-url https://download.pytorch.org/whl/cu121
-
-# Capa 3: Resto de dependencias (sin numpy para evitar conflicto)
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir \
-    paddleocr==3.3.0 \
-    paddlex==3.3.0 \
-    easyocr==1.7.2 \
-    pytesseract>=0.3.10 \
-    PyMuPDF==1.23.9 \
-    opencv-python-headless==4.8.1.78 \
-    Pillow==10.4.0 \
-    pdf2image==1.17.0 \
-    open-clip-torch==2.20.0 \
-    sentencepiece==0.1.99 \
-    transformers==4.30.2 \
-    pyyaml>=6.0 \
-    rapidfuzz==3.0.0 \
-    tqdm==4.64.0 \
-    pytest==7.4.0 \
-    loguru==0.7.2 \
-    pydantic==2.7.1 \
-    waitress==3.0.0 \
-    scikit-image==0.25.2 \
-    shapely==2.1.2 \
-    pyclipper==1.3.0.post6 \
-    Flask==3.0.0 \
-    flask-wtf==1.1.1 \
-    wtforms==3.0.1 \
-    -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install --no-cache-dir faiss-gpu==1.7.2
-
-# 4️⃣ GPU verification will happen at runtime when GPUs are available
-
-# 5️⃣ Copy app
+# Copy application source code
 COPY . .
 
-ENV PYTHONUNBUFFERED=1 \
-    NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility
-
+# Expose server port
 EXPOSE 8000
-CMD ["python3", "run_web.py"]
+
+# Run the server
+CMD ["python", "-u", "serve.py"]

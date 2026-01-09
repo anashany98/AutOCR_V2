@@ -17,7 +17,7 @@ from typing import Iterable, List, Optional, Sequence, TypedDict
 import numpy as np
 from PIL import Image
 
-from .paddle_singleton import get_paddle_ocr
+from .paddle_singleton import get_ppstructure_v3_instance
 
 # Disable PaddleOCR's Doc-VLM components to avoid reinitialising PaddleX in multi-import scenarios.
 os.environ.setdefault("PADDLEOCR_DISABLE_VLM", "1")
@@ -167,7 +167,10 @@ class LayoutManager:
             return
 
         try:
-            engine = get_paddle_ocr()
+            # Singleton handles GPU selection internally
+            self._engine = get_ppstructure_v3_instance()
+            if self._engine is None:
+                raise RuntimeError("PaddleOCR engine could not be initialised.")
         except Exception as exc:  # pragma: no cover - Paddle runtime errors
             self.logger.warning(
                 "Failed to initialise PaddleOCR layout detector (%s); falling "

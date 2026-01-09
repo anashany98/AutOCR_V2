@@ -1,4 +1,4 @@
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Union
 from pydantic import BaseModel, Field, field_validator
 from datetime import date as date_type, datetime
 
@@ -10,7 +10,7 @@ class DocumentUpdateSchema(BaseModel):
     status: Optional[str] = Field(None)
     tags: Optional[List[str]] = Field(None)
     date: Optional[str] = Field(None, description="ISO 8601 date string (YYYY-MM-DD)")
-    total: Optional[str] = Field(None) # Changed to str to match app.py flexibility
+    total: Optional[Union[str, float]] = Field(None) # Changed to allow str or float from JS
     supplier: Optional[str] = Field(None, strip_whitespace=True)
     text: Optional[str] = None
     markdown: Optional[str] = None

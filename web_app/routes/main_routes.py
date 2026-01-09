@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from werkzeug.utils import secure_filename
 import tempfile
 
-from web_app.services import get_db, get_pipeline, get_logger, get_classifier, load_configuration, PROJECT_ROOT
+from web_app.services import get_db, get_pipeline, get_logger, get_classifier, load_configuration, save_configuration, PROJECT_ROOT
 from web_app.utils import safe_json_parse, resolve_path, ensure_within_project, encode_path, decode_path
 from modules.file_utils import ensure_directories
 from modules.tasks import process_document_task
@@ -39,11 +39,18 @@ def dashboard():
             SELECT type, COUNT(*) FROM documents
             WHERE type IS NOT NULL
             GROUP BY type
-            ORDER BY COUNT(*) DESC
-            LIMIT 10
             """
         )
-        type_stats = [list(row) for row in cursor.fetchall()]
+        raw_type_stats = cursor.fetchall()
+        
+        # Normalize types in Python (e.g., "invoice" -> "Invoice")
+        normalized_stats = {}
+        for doc_type, count in raw_type_stats:
+            clean_type = doc_type.strip().title() if doc_type else "Desconocido"
+            normalized_stats[clean_type] = normalized_stats.get(clean_type, 0) + count
+            
+        # Sort and limit to top 10
+        type_stats = sorted(normalized_stats.items(), key=lambda x: x[1], reverse=True)[:10]
 
         cursor.execute(
             """
@@ -323,29 +330,98 @@ def chat():
 def duplicates_page():
     return render_template("duplicates.html")
 
-@main_bp.route("/settings")
+@main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
-    # Load config for display
-    # We should pass current config logic
-    # In app.py it passes `config` data.
-    # Re-implment settings data preparation logic?
-    # app.py lines 1255-1275 extract data for template.
     config = load_configuration()
+    
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "directories":
+                post_conf = config.setdefault("postbatch", {})
+                post_conf["input_folder"] = request.form.get("input_folder", "").strip()
+                post_conf["processed_folder"] = request.form.get("processed_folder", "").strip()
+                post_conf["failed_folder"] = request.form.get("failed_folder", "").strip()
+                flash("Directorios actualizados.", "success")
+                
+            elif action == "hot_folder":
+                hot_conf = config.setdefault("hot_folder", {})
+                hot_conf["enabled"] = "hot_enabled" in request.form
+                hot_conf["path"] = request.form.get("hot_path", "").strip()
+                flash("Configuración de Hot Folder actualizada.", "success")
+                
+            elif action == "pipeline":
+                app_conf = config.setdefault("app", {})
+                app_conf["gpu_enabled"] = "gpu_enabled" in request.form
+                
+                pipe_conf = config.setdefault("ocr_pipeline", {})
+                pipe_conf.setdefault("fusion", {})["priority"] = [] # logic for engine selection could be complex
+                # Simplified for UI mapping
+                pipe_conf["primary_engine"] = request.form.get("primary_engine", "auto")
+                
+                post_conf = config.setdefault("postbatch", {})
+                post_conf["languages"] = [l.strip() for l in request.form.get("languages", "es").split(",")]
+                flash("Configuración de Pipeline actualizada.", "success")
+                
+            elif action == "email_import":
+                email_conf = config.setdefault("email_importer", {})
+                email_conf["enabled"] = "email_enabled" in request.form
+                email_conf["host"] = request.form.get("email_host", "").strip()
+                email_conf["port"] = int(request.form.get("email_port", 993))
+                email_conf["user"] = request.form.get("email_user", "").strip()
+                email_conf["password"] = request.form.get("email_password", "").strip()
+                flash("Configuración de Email actualizada.", "success")
+                
+            elif action == "rebuild_index":
+                # Logic to trigger rebuild via background task
+                flash("Reindexado solicitado (no implementado en UI todavía).", "info")
+
+            elif action == "llm_pipeline_config":
+                llm_conf = config.setdefault("llm", {})
+                llm_conf["enabled"] = "llm_enabled" in request.form
+                llm_conf["base_url"] = request.form.get("llm_base_url", "").strip()
+                llm_conf["model"] = request.form.get("llm_model", "").strip()
+                llm_conf["api_key"] = request.form.get("llm_api_key", "").strip()
+                llm_conf["timeout"] = int(request.form.get("llm_timeout", 60))
+                flash("Configuración de Pipeline IA actualizada.", "success")
+
+            elif action == "llm_chat_config":
+                # Ensure routing section exists using nested setdefaults safely
+                if "routing" not in config.get("llm", {}):
+                    config.setdefault("llm", {})["routing"] = {}
+                
+                # Check for existing structure or initialize
+                routing_conf = config["llm"]["routing"]
+                chat_conf = routing_conf.setdefault("general_chat", {})
+                
+                chat_conf["base_url"] = request.form.get("chat_base_url", "").strip()
+                chat_conf["model"] = request.form.get("chat_model", "").strip()
+                flash("Configuración de Chat IA actualizada.", "success")
+                
+            save_configuration(config)
+            return redirect(url_for("main.settings"))
+            
+        except Exception as e:
+            get_logger().error(f"Error saving settings: {e}")
+            flash(f"Error al guardar configuración: {e}", "error")
+
     post_conf = config.get("postbatch", {})
     hot_conf = config.get("hot_folder", {})
     email_conf = config.get("email_importer", {})
     vision_conf = config.get("vision", {})
-    pipeline_conf = config.get("pipeline", {})
+    pipeline_conf = config.get("ocr_pipeline", {}) # Fixed key name
     app_conf = config.get("app", {})
+    llm_conf = config.get("llm", {})
+    chat_conf = llm_conf.get("routing", {}).get("general_chat", {})
     
     settings_data = {
         "input_folder": post_conf.get("input_folder", ""),
         "processed_folder": post_conf.get("processed_folder", ""),
         "failed_folder": post_conf.get("failed_folder", ""),
         "reports_folder": post_conf.get("reports_folder", ""),
-        "gpu_enabled": app_conf.get("gpu_enabled", False), # Assuming logic
+        "gpu_enabled": app_conf.get("gpu_enabled", False),
         "languages": ", ".join(post_conf.get("languages", ["es"])),
-        "primary_engine": pipeline_conf.get("primary_engine", "paddleocr"),
+        "primary_engine": pipeline_conf.get("primary_engine", "auto"),
         "vision_enabled": vision_conf.get("enabled", True),
         "gallery_dir": vision_conf.get("gallery_dir", "data/vision_gallery"),
         "hot_enabled": hot_conf.get("enabled", False),
@@ -354,7 +430,18 @@ def settings():
         "email_host": email_conf.get("host", ""),
         "email_port": email_conf.get("port", 993),
         "email_user": email_conf.get("user", ""),
-        "email_password": email_conf.get("password", "")
+        "email_password": email_conf.get("password", ""),
+        
+        # LLM Pipeline Settings
+        "llm_enabled": llm_conf.get("enabled", False),
+        "llm_base_url": llm_conf.get("base_url", "http://host.docker.internal:1234/v1"),
+        "llm_model": llm_conf.get("model", "local-model"),
+        "llm_api_key": llm_conf.get("api_key", ""),
+        "llm_timeout": llm_conf.get("timeout", 60),
+
+        # LLM Chat Settings
+        "chat_base_url": chat_conf.get("base_url", "http://host.docker.internal:1234/v1"),
+        "chat_model": chat_conf.get("model", "mistral-small-24b")
     }
     return render_template("settings.html", config=settings_data)
 
@@ -388,35 +475,27 @@ def batch_process():
 @main_bp.route("/view_document_file/<int:doc_id>")
 def view_document_file(doc_id):
     db = get_db()
-    path = db.get_document_path(doc_id)
-    if not path:
+    path_str = db.get_document_path(doc_id)
+    if not path_str:
         return "File not found", 404
     
-    p = Path(path)
+    # Resolve to absolute path
+    p = Path(path_str)
+    if not p.is_absolute():
+        p = PROJECT_ROOT / p
     
     # Handle version request
     version = request.args.get("version")
     if version == "original":
          backup_p = p.with_name(f"{p.stem}_original{p.suffix}")
-         if ensure_within_project(backup_p).exists(): # Verify security/existence
+         if backup_p.exists():
              p = backup_p
              
-    # Use helper
     try:
-        p = ensure_within_project(p)
-        # ensure_within_project returns relative if inside, or absolute if outside but handled.
-        # send_from_directory expects absolute directory.  
-        # If relative, we must resolve to absolute first?
-        # send_from_directory(directory, filename)
-        # directory should be absolute path to folder.
-        
-        # If helper returned relative, resolve it back to absolute for send_from_directory
-        if not p.is_absolute():
-             p = PROJECT_ROOT / p
-             
         if not p.exists():
+            get_logger().error(f"File not found on disk: {p}")
             return "File not found on disk", 404
-            
+                
         return send_from_directory(p.parent, p.name)
     except Exception as e:
          get_logger().error(f"Error serving file: {e}")
@@ -472,17 +551,8 @@ def batch_action():
     if action == "delete":
         success_count = 0
         for doc_id in doc_ids:
-            row = db.execute(f"SELECT path FROM documents WHERE id = {db.placeholder}", (doc_id,)).fetchone()
-            if row:
-                path = row[0]
-                db.execute(f"DELETE FROM documents WHERE id = {db.placeholder}", (doc_id,))
-                db.execute(f"DELETE FROM ocr_texts WHERE id_doc = {db.placeholder}", (doc_id,))
-                try:
-                    abs_path = PROJECT_ROOT / path
-                    if abs_path.exists():
-                        os.remove(abs_path)
-                except Exception as e:
-                    get_logger().error(f"Failed to delete file {path}: {e}")
+            # Use the robust delete_document method from DBManager
+            if db.delete_document(doc_id):
                 success_count += 1
         flash(f"{success_count} documentos eliminados", "success")
         

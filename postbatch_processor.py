@@ -18,6 +18,8 @@ import os
 import re
 import shutil
 import statistics
+from modules.interpretation_manager import AdvancedInterpretationRouter
+from modules.llm_client import LLMClient
 import sys
 import threading
 import time
@@ -622,6 +624,7 @@ def process_single_file(
         summary_payload: Dict[str, Any] = {"filename": filename}
         texts_join: List[str] = []
         confidences: List[float] = []
+        layout_blocks: List[Dict[str, Any]] = []
 
         if ocr_enabled and is_visual_document(file_path):
             # OPTIMIZATION: Try Native Extraction first
@@ -632,6 +635,7 @@ def process_single_file(
             if native_blocks:
                 logger.info("Using Native PDF Extraction (Skipping OCR)")
                 block_outputs = native_blocks
+                layout_blocks = native_blocks
                 # Populate stats
                 for b in block_outputs:
                     txt = b.get("text", "")
@@ -786,10 +790,71 @@ def process_single_file(
             doc_type = "Imagen"
 
         # Determine Workflow State
-        workflow_state = "new"
-        if confidence < 0.7 or doc_type == "Unknown":
-            workflow_state = "pending"
-            logger.info(f"Document flagged for review (Confidence: {confidence:.2f}, Type: {doc_type})")
+        # MOMENTUM: User requested disabling manual verification. Auto-verifying unconditionally.
+        workflow_state = "verified"
+        # if confidence < 0.8 or doc_type == "Unknown" or doc_type == "Imagen":
+        #    workflow_state = "verified" # Was verified, logic removed to be clearer
+        logger.info(f"Document Auto-Verified (Confidence: {confidence:.2f}, Type: {doc_type}) - Manual Review Disabled by User Request")
+
+        # ------------------------------------------------------------------ #
+        # NUEVO: Enrutador de Interpretación Avanzada (LLM) - DISABLED BY USER REQUEST
+        # ------------------------------------------------------------------ #
+        # try:
+        #     # 1. Preparar datos para el router
+        #     router_input = {
+        #         "document_id": file_hash,
+        #         "tipo_archivo": "pdf" if file_path.lower().endswith(".pdf") else "imagen",
+        #         "paginas": len(pages) if 'pages' in locals() else 1,
+        #         "es_pdf_nativo": bool(native_blocks) if 'native_blocks' in locals() and native_blocks else False,
+        #         "clasificacion_previa": doc_type,
+        #         "metricas_ocr": {
+        #             "confianza_media": float(confidence),
+        #             "bloques_baja_confianza": len([b for b in block_outputs if b.get("confidence", 1.0) < 0.5]),
+        #             "texto_legible_global": bool(aggregated_text and len(aggregated_text) > 50)
+        #         },
+        #         "indicadores_graficos": {
+        #             "escritura_mano_detectada": "Manuscrito" in tags,
+        #             "dibujos_o_lineas_no_textuales": "VisualClass" in str(tags),
+        #             "estructura_visual_irregular": False
+        #         },
+        #         "resumen_ocr": aggregated_text[:500] if aggregated_text else ""
+        #     }
+        #
+        #     # 2. Instanciar y Evaluar
+        #     router = AdvancedInterpretationRouter(logger=logger)
+        #     decision_llm = router.evaluate_document(router_input)
+        #
+        #     # 3. Actuar según decisión
+        #     if decision_llm["activar_interpretacion_avanzada"]:
+        #         logger.info(f"🤖 IA Activada: {decision_llm['motivo']} (Confianza: {decision_llm['confianza_decision']})")
+        #         tags.append("Requires_Advanced_Review")
+        #         summary_payload["interpretation_needed"] = True
+        #         summary_payload["interpretation_reason"] = decision_llm["motivo"]
+        #         
+        #         # --- INICIO LLM INVOCATION ---
+        #         try:
+        #             llm_config = pipeline_conf.get("llm", {})
+        #             if llm_config.get("enabled", False):
+        #                 llm_client = LLMClient(llm_config, logger=logger)
+        #                 analysis_result = llm_client.analyze_document(
+        #                     text=aggregated_text,
+        #                     reason=decision_llm["motivo"],
+        #                     doc_type=doc_type
+        #                 )
+        #                 if analysis_result.get("success"):
+        #                     summary_payload["llm_analysis"] = analysis_result["analysis"]
+        #                     logger.info("✅ Análisis LLM completado y adjunto.")
+        #                 else:
+        #                     logger.warning(f"⚠️ Análisis LLM falló: {analysis_result.get('error')}")
+        #         except Exception as e_llm:
+        #             logger.error(f"Error crítico invocando LLM: {e_llm}")
+        #         # --- FIN LLM INVOCATION ---
+        #         
+        #     else:
+        #         logger.debug(f"IA Omitida: {decision_llm['motivo']}")
+        #
+        # except Exception as e_router:
+        #     logger.warning(f"Fallo no crítico en router de interpretación: {e_router}")
 
         # ------------------------------------------------------------------ #
         # Visual Auto-Tagging (Zero-Shot)
@@ -930,13 +995,18 @@ def process_single_file(
                 logger.error(f"Smart renaming failed: {e}")
                 filename = original_filename
 
-        dest_path = move_file(
-            file_path,
-            processed_folder,
-            new_filename=filename, # Pass new filename to move_file
-            delete_original=delete_original,
-            relative_to=input_root,
-        )
+        # DEST_PATH UPDATE:
+        # User requested to disable file movement for Decoration Mode to keep files in place (or input folder).
+        # We skip the move_file call effectively.
+        # dest_path = move_file(...) -> We just set dest_path = file_path
+        logger.info("Configuration (Decoration): File movement disabled. Keeping file at source.")
+        dest_path = file_path 
+        # But we might need to rename if smart renaming was active? 
+        # For now, simplistic approach: just keep it.
+        # If we wanted to rename in place, we'd need os.rename.
+        # User only said "desactiva lo de guardar", implying don't move to processed.
+        
+        # NOTE: logic below uses dest_path for DB insertion.
 
         duration = time.time() - start_time
         doc_id = db.insert_document(
@@ -1200,10 +1270,10 @@ def main(argv: List[str] | None = None) -> int:
                     processed_folder,
                     failed_folder,
                     delete_original,
-                    ocr_enabled,
                     classification_enabled,
                     logger,
                     input_folder,
+                    pipeline_conf=config,
                 )
                 return result
             finally:

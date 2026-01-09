@@ -3,7 +3,7 @@ import json
 import threading
 import tempfile
 from pathlib import Path
-from flask import Blueprint, jsonify, request, url_for, send_from_directory
+from flask import Blueprint, jsonify, request, url_for, send_from_directory, send_file
 from PIL import Image
 
 from pydantic import ValidationError
@@ -291,15 +291,12 @@ def api_delete_document(doc_id):
     path_str = (row["path"] if isinstance(row, dict) else row[0])
     
     try:
-        if hasattr(db, "delete_document"):
-             db.delete_document(doc_id)
-        else:
-             db.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
-             db.execute("DELETE FROM ocr_texts WHERE id_doc = ?", (doc_id,))
-             db.conn.commit()
+        # 1. Database Cleanup
+        db.delete_document(doc_id)
 
+        # 2. File Cleanup
         try:
-            if os.path.exists(path_str):
+            if path_str and os.path.exists(path_str):
                 os.remove(path_str)
         except OSError as e:
             get_logger().error(f"Failed to delete file {path_str}: {e}")
@@ -608,3 +605,257 @@ def api_delete_template(t_id):
     if db.delete_template(t_id):
         return jsonify({"success": True})
     return jsonify({"error": "Failed to delete"}), 500
+
+@api_bp.route("/api/document/<int:doc_id>/export/dxf", methods=["POST"])
+def api_export_dxf(doc_id):
+    """
+    Export a document (image) to DXF format for CAD.
+    """
+    db = get_db()
+    document = db.get_document(doc_id)
+    if not document:
+        return jsonify({"error": "Document not found"}), 404
+    
+    file_path = document.get("path")
+    if not file_path or not os.path.exists(file_path):
+        return jsonify({"error": "File parsing failed: File not found on disk"}), 404
+
+    # Output path
+    output_filename = f"{os.path.splitext(document.get('filename'))[0]}.dxf"
+    # We save to a temp location or processed folder? 
+    # Let's save next to original for simplicity or in temp.
+    # Actually, we want to return it as a download.
+    # We'll create a temp file.
+    import tempfile
+    fd, temp_path = tempfile.mkstemp(suffix=".dxf")
+    os.close(fd)
+    
+    try:
+        vm = VectorizationManager(logger=get_logger())
+        success = vm.raster_to_dxf(file_path, temp_path)
+        
+        if success:
+            return send_file(
+                temp_path,
+                as_attachment=True,
+                download_name=output_filename,
+                mimetype="application/dxf"
+            )
+        else:
+            return jsonify({"error": "Vectorization failed (could not detect edges or empty result)"}), 500
+            
+    except Exception as e:
+        get_logger().error(f"DXF Export failed: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        # Cleanup temp file if it exists and we are done (send_file might need it open? No, usually it reads it)
+        # Note: send_file usually handles file closing. Deleting it might need logic.
+        # safe way: use after_request or assume text file.
+        # For this prototype: we rely on OS temp cleanup or manual later.
+        pass
+
+@api_bp.route("/api/metrics/history")
+def api_metrics_history():
+    try:
+        limit = int(request.args.get("limit", 20))
+        db = get_db()
+        cursor = db.execute(
+            """
+            SELECT datetime, ok_docs, failed_docs, avg_time, reliability_pct
+            FROM metrics
+            ORDER BY datetime DESC
+            LIMIT ?
+            """, (limit,)
+        )
+        rows = cursor.fetchall()
+        
+        history = []
+        for r in rows:
+            history.append({
+                "date": r[0],
+                "ok": r[1],
+                "failed": r[2],
+                "avg_time": round(r[3], 2),
+                "reliability": round(r[4], 1)
+            })
+            
+        return jsonify(history)
+    except Exception as e:
+        get_logger().error(f"Metrics history failed: {e}")
+        return jsonify([])
+
+@api_bp.route("/api/document/<int:doc_id>/generate_proposal", methods=["POST"])
+def api_generate_proposal(doc_id):
+    """
+    Generates a PDF proposal (dossier) for the document.
+    """
+    try:
+        from modules.proposal_manager import ProposalManager
+        
+        db = get_db()
+        doc = db.get_document(doc_id)
+        if not doc:
+            return jsonify({"error": "Document not found"}), 404
+            
+        # Get structured data for detected items
+        cursor = db.execute("SELECT structured_data FROM ocr_texts WHERE id_doc = ?", (doc_id,))
+        row = cursor.fetchone()
+        structured_data = json.loads(row[0]) if row and row[0] else {}
+        
+        items = []
+        
+        # 1. Add the main image itself
+        items.append({
+            'label': f"Vista General ({doc.get('type', 'Unknown')})",
+            'image_path': doc.get('path'),
+            'price': 'Consultar'
+        })
+        
+        # 2. Add crops if available (assuming structured_data['crops'] contains paths)
+        if 'crops' in structured_data:
+            for crop in structured_data['crops']:
+                if os.path.exists(crop.get('path', '')):
+                    items.append({
+                        'label': crop.get('label', 'Elemento'),
+                        'image_path': crop.get('path'),
+                        'price': 'Consultar'
+                    })
+        
+        # Output setup
+        filename = f"Propuesta_{doc.get('filename')}_{doc_id}.pdf"
+        import tempfile
+        fd, temp_path = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        
+        pm = ProposalManager(logger=get_logger())
+        success = pm.generate_proposal(doc.get('filename'), items, temp_path)
+        
+        if success and os.path.exists(temp_path):
+            return send_file(
+                temp_path,
+                as_attachment=True,
+                download_name=filename,
+                mimetype="application/pdf"
+            )
+        else:
+             return jsonify({"error": "Failed to generate PDF"}), 500
+
+    except Exception as e:
+        get_logger().error(f"Proposal generation failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route("/api/document/<int:doc_id>/generate_order", methods=["POST"])
+def api_generate_order(doc_id):
+    """
+    Export detected items to an Excel order list ('Del Moodboard al Pedido').
+    """
+    try:
+        import pandas as pd
+        import tempfile
+        
+        db = get_db()
+        doc = db.get_document(doc_id)
+        if not doc:
+            return jsonify({"error": "Document not found"}), 404
+            
+        cursor = db.execute("SELECT structured_data FROM ocr_texts WHERE id_doc = ?", (doc_id,))
+        row = cursor.fetchone()
+        structured_data = json.loads(row[0]) if row and row[0] else {}
+        
+        # Extract items from structured data or tags
+        items = []
+        
+        # 1. From 'crops' (if Visual Intelligence ran)
+        if 'crops' in structured_data:
+            for crop in structured_data['crops']:
+                items.append({
+                    "Referencia": f"AUTO-{crop.get('label', 'Item')[:3].upper()}-{doc_id}",
+                    "Descripción": crop.get('label', 'Elemento Decorativo'),
+                    "Cantidad": 1,
+                    "Proveedor": "A determinar",
+                    "Precio Est.": "Consultar",
+                    "Estado": "Pendiente",
+                    "Origen": "Detección Visual"
+                })
+                
+        # 2. From Tags (if no crops but tags exist)
+        elif doc.get('tags'):
+            for tag in doc.get('tags'):
+                if ":" not in tag: # Avoid system tags like color:
+                    items.append({
+                        "Referencia": "ETIQUETA",
+                        "Descripción": tag,
+                        "Cantidad": 1,
+                        "Proveedor": "A determinar",
+                        "Precio Est.": "Consultar",
+                        "Estado": "Pendiente",
+                        "Origen": "Etiquetado Auto"
+                    })
+        
+        if not items:
+             items.append({"Descripción": "No se detectaron elementos específicos para listar."})
+
+        df = pd.DataFrame(items)
+        
+        # Create Excel
+        filename = f"Pedido_{doc.get('filename')}_{doc_id}.xlsx"
+        fd, temp_path = tempfile.mkstemp(suffix=".xlsx")
+        os.close(fd)
+        
+        df.to_excel(temp_path, index=False)
+        
+        return send_file(
+            temp_path,
+            as_attachment=True,
+            download_name=filename,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    except Exception as e:
+        get_logger().error(f"Order generation failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/api/document/<int:doc_id>/interpret_blueprint", methods=["POST"])
+def api_interpret_blueprint(doc_id):
+    """
+    Analyze OCR text to extracting blueprint metadata (Scale, Rooms, Areas).
+    """
+    try:
+        from modules.blueprint_interpreter import BlueprintInterpreter
+        from web_app.services import get_llm_client
+        
+        db = get_db()
+
+        
+        # We need the full text for analysis.
+        # Check if text is in 'extracted_text' column or 'ocr_texts' table
+        # Based on previous code, let's look at ocr_texts
+        cursor = db.execute("SELECT raw_text FROM ocr_texts WHERE id_doc = ?", (doc_id,))
+        row = cursor.fetchone()
+        
+        if not row or not row[0]:
+             # Return valid empty response or error? Let's try vision if we have path even without text
+             raw_text = ""
+        else:
+             raw_text = row[0]
+        
+        # Get image path for Vision
+        image_path = doc.get("path")
+        
+        interpreter = BlueprintInterpreter()
+        llm = get_llm_client()
+        
+        # Pass LLM client + Image Path for Vision (Sketch) Analysis
+        metadata = interpreter.infer_metadata(
+            text=raw_text, 
+            llm_client=llm, 
+            image_path=image_path if image_path and os.path.exists(image_path) else None
+        )
+        
+        # Save this metadata back to DB (optional, in 'structured_data' or tags)
+        return jsonify(metadata)
+
+    except Exception as e:
+        get_logger().error(f"Blueprint interpretation failed: {e}")
+        return jsonify({"error": str(e)}), 500

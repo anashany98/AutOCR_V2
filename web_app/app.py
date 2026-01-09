@@ -158,13 +158,16 @@ def init_app():
     try:
         ensure_directories(app.config["UPLOAD_FOLDER"])
         init_watcher()
-        # Pre-warm heavy singletons
-        get_db()
-        get_pipeline()
-        get_classifier()
-        get_rag_manager()
-        get_tool_manager()
-        get_logger().info(" Application singletons pre-warmed and ready.")
+        if os.environ.get("FLASK_DEBUG", "0") != "1" and os.environ.get("FLASK_ENV") != "development":
+             # Pre-warm heavy singletons only in production
+            get_db()
+            get_pipeline()
+            get_classifier()
+            get_rag_manager()
+            get_tool_manager()
+            get_logger().info("✅ Application singletons pre-warmed and ready.")
+        else:
+            get_logger().info("⚡ DEV MODE: Skipped pre-warming for faster startup (Lazy Loading Enabled)")
     except Exception as exc:
         print(f"Error initialising AutOCR Web App: {exc}")
         import traceback
@@ -193,4 +196,4 @@ def init_app():
 # If I look at `web_app/app.py` line 390, it pre-warms.
 # I will invoke `init_app()` here.
 
-init_app()
+# init_app()  <-- Removed to allow lazy init controlled by serve.py

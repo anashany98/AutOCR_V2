@@ -13,9 +13,8 @@ except ImportError:
 
 try:
     from sentence_transformers import SentenceTransformer
-except ImportError:
-    SentenceTransformer = None
-
+except (ImportError, OSError):  # pragma: no cover - optional dependency
+    SentenceTransformer = None  # type: ignore
 logger = logging.getLogger(__name__)
 
 class RAGManager:

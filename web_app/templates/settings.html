@@ -1,234 +1,287 @@
 {% extends "base.html" %}
 
-{% block title %}Ajustes - AutOCR{% endblock %}
+{% block title %}Configuración - AutOCR{% endblock %}
 
 {% block content %}
-<div class="row mb-4 animate-fade-in">
-    <div class="col-12">
-        <h1 class="h3 fw-bold">Configuración del Sistema</h1>
-        <p class="text-muted small">Personalice el comportamiento del motor de procesamiento.</p>
-    </div>
-</div>
+<style>
+    .settings-card {
+        background: rgba(30, 30, 40, 0.6);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 16px;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
 
-<div class="row g-4 animate-slide-up">
-    <!-- Left Column: Core & Input Sources -->
-    <div class="col-lg-6">
-        <!-- Directories -->
-        <div class="card h-100 border-0 mb-4">
-            <div class="card-header bg-transparent border-0 pt-4 px-4">
-                <h6 class="mb-0 fw-bold text-uppercase text-primary small"><i class="fas fa-folder me-2"></i>
-                    Directorios</h6>
-            </div>
-            <div class="card-body p-4">
-                <form method="post">
-                    <input type="hidden" name="action" value="directories">
-                    <div class="mb-3">
-                        <label class="form-label small text-muted">Entrada</label>
-                        <input type="text" class="form-control bg-dark text-light border-secondary" name="input_folder"
-                            value="{{ config.input_folder }}">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small text-muted">Salida (Procesados)</label>
-                        <input type="text" class="form-control bg-dark text-light border-secondary"
-                            name="processed_folder" value="{{ config.processed_folder }}">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small text-muted">Errores</label>
-                        <input type="text" class="form-control bg-dark text-light border-secondary" name="failed_folder"
-                            value="{{ config.failed_folder }}">
-                    </div>
-                    <button type="submit" class="btn btn-outline-primary w-100 mt-2">Guardar Rutas</button>
-                </form>
-            </div>
-        </div>
+    .settings-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
 
-        <!-- Hot Folders -->
-        <div class="card border-0 mb-4">
-            <div class="card-header bg-transparent border-0 pt-4 px-4">
-                <h6 class="mb-0 fw-bold text-uppercase text-warning small"><i class="fas fa-satellite-dish me-2"></i>
-                    Monitorización (Hot Folder)</h6>
-            </div>
-            <div class="card-body p-4">
-                <form method="post">
-                    <input type="hidden" name="action" value="hot_folder">
-                    <div class="form-check form-switch mb-3 d-flex align-items-center justify-content-center p-3 rounded bg-dark bg-opacity-50 border border-secondary border-opacity-25"
-                        style="min-height: 80px;">
-                        <input class="form-check-input ms-0 me-3" type="checkbox" id="hot_enabled" name="hot_enabled" {%
-                            if config.hot_enabled %}checked{% endif %}
-                            style="width: 3.2em; height: 1.6em; cursor: pointer;">
-                        <label class="form-check-label fw-bold mt-1" for="hot_enabled">Activar Monitorización</label>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small text-muted">Ruta a vigilar</label>
-                        <input type="text" class="form-control bg-dark text-light border-secondary" name="hot_path"
-                            value="{{ config.hot_path }}" placeholder="C:\Ruta\A\Carpeta">
-                    </div>
-                    <button type="submit" class="btn btn-outline-warning w-100 mt-2">Guardar Configuración</button>
-                </form>
-            </div>
-        </div>
+    .form-control,
+    .form-select,
+    .input-group-text {
+        background-color: rgba(0, 0, 0, 0.3) !important;
+        border-color: rgba(255, 255, 255, 0.1) !important;
+        color: #e0e0e0 !important;
+    }
 
-        <!-- OCR Pipeline (Moved to Left for Balance) -->
-        <div class="card border-0">
-            <div class="card-header bg-transparent border-0 pt-4 px-4">
-                <h6 class="mb-0 fw-bold text-uppercase text-success small"><i class="fas fa-cogs me-2"></i> Pipeline OCR
-                </h6>
-            </div>
-            <div class="card-body p-4">
-                <form method="post">
-                    <input type="hidden" name="action" value="pipeline">
-                    <div class="form-check form-switch mb-4 p-3 rounded bg-dark bg-opacity-50 d-flex align-items-center justify-content-center"
-                        style="min-height: 80px;">
-                        <input class="form-check-input ms-0 me-3" type="checkbox" id="gpu_enabled" name="gpu_enabled" {%
-                            if config.gpu_enabled %}checked{% endif %}
-                            style="width: 3.2em; height: 1.6em; cursor: pointer;">
-                        <label class="form-check-label fw-bold mt-1" for="gpu_enabled">
-                            Aceleración GPU
-                            <br><small class="text-muted fw-normal" style="font-size: 0.75rem;">Requiere CUDA
-                                compatible.</small>
-                        </label>
-                    </div>
+    .form-control:focus,
+    .form-select:focus {
+        border-color: var(--bs-primary);
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+    }
 
-                    <div class="mb-3">
-                        <label class="form-label small text-muted">Motor Principal (Estrategia)</label>
-                        <select class="form-select bg-dark text-light border-secondary" name="primary_engine">
-                            <option value="auto" {% if config.primary_engine=='auto' %}selected{% endif %}>✨ Auto
-                                (Inteligente)</option>
-                            <option value="paddleocr" {% if config.primary_engine=='paddleocr' %}selected{% endif %}>
-                                PaddleOCR (Estructuras)</option>
-                            <option value="easyocr" {% if config.primary_engine=='easyocr' %}selected{% endif %}>EasyOCR
-                                (Texto simple)</option>
-                            <option value="surya" {% if config.primary_engine=='surya' %}selected{% endif %}>Surya
-                                (Experimental)</option>
-                        </select>
-                        <div class="form-text text-muted small">
-                            "Auto" elige el mejor motor según si detecta tablas o texto.
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small text-muted">Idiomas activos</label>
-                        <input type="text" class="form-control bg-dark text-light border-secondary" name="languages"
-                            value="{{ config.languages }}">
-                    </div>
-                    <button type="submit" class="btn btn-outline-success w-100">Actualizar Motor</button>
-                </form>
-            </div>
+    .section-icon {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        font-size: 1.5rem;
+    }
+</style>
+
+<div class="container-fluid px-4 py-4">
+    <div class="row mb-4 animate-fade-in">
+        <div class="col-12">
+            <h1 class="h3 fw-bold bg-gradient-primary text-transparent bg-clip-text mb-2">
+                <i class="fas fa-sliders-h me-2 text-white"></i>Configuración del Sistema
+            </h1>
+            <p class="text-muted">Personalice el comportamiento, integraciones y rutas de AutOCR.</p>
         </div>
     </div>
 
-    <!-- Right Column: Import & Specialized AI -->
-    <div class="col-lg-6">
-        <!-- Email Import (Moved to Right for Balance) -->
-        <div class="card mb-4 border-0">
-            <div class="card-header bg-transparent border-0 pt-4 px-4">
-                <h6 class="mb-0 fw-bold text-uppercase text-info small"><i class="fas fa-envelope me-2"></i> Importación
-                    Email</h6>
-            </div>
-            <div class="card-body p-4">
-                <form method="post">
-                    <input type="hidden" name="action" value="email_import">
-                    <div class="form-check form-switch mb-3 d-flex align-items-center justify-content-center p-3 rounded bg-dark bg-opacity-50 border border-secondary border-opacity-25"
-                        style="min-height: 80px;">
-                        <input class="form-check-input ms-0 me-3" type="checkbox" id="email_enabled"
-                            name="email_enabled" {% if config.email_enabled %}checked{% endif %}
-                            style="width: 3.2em; height: 1.6em; cursor: pointer;">
-                        <label class="form-check-label fw-bold mt-1" for="email_enabled">Activar Importador</label>
+    <div class="row g-4 animate-slide-up">
+        <!-- LEFT COLUMN -->
+        <div class="col-lg-6">
+
+            <!-- FILESYSTEM SECTION -->
+            <div class="settings-card mb-4">
+                <div class="p-4 border-bottom border-secondary border-opacity-10 d-flex align-items-center">
+                    <div class="section-icon bg-primary bg-opacity-20 text-primary me-3">
+                        <i class="fas fa-folder-open"></i>
                     </div>
-                    <div class="row g-2">
-                        <div class="col-md-8">
-                            <div class="mb-3">
-                                <label class="form-label small text-muted">Servidor IMAP</label>
-                                <input type="text" class="form-control bg-dark text-light border-secondary"
-                                    name="email_host" value="{{ config.email_host }}" placeholder="imap.gmail.com">
+                    <div>
+                        <h5 class="mb-0 fw-bold text-white">Gestión de Archivos</h5>
+                        <small class="text-muted">Directorios de trabajo</small>
+                    </div>
+                </div>
+                <div class="p-4">
+                    <form method="post">
+                        <input type="hidden" name="action" value="directories">
+
+                        <div class="mb-3">
+                            <label class="form-label text-xs text-uppercase text-muted fw-bold ls-1">Entrada
+                                (Input)</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-inbox"></i></span>
+                                <input type="text" class="form-control" name="input_folder"
+                                    value="{{ config.input_folder }}">
                             </div>
                         </div>
-                        <div class="col-md-4">
-                            <div class="mb-3">
-                                <label class="form-label small text-muted">Puerto</label>
-                                <input type="number" class="form-control bg-dark text-light border-secondary"
-                                    name="email_port" value="{{ config.email_port }}" placeholder="993">
+
+                        <div class="mb-3">
+                            <label class="form-label text-xs text-uppercase text-muted fw-bold ls-1">Procesados
+                                (Output)</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-check-circle"></i></span>
+                                <input type="text" class="form-control" name="processed_folder"
+                                    value="{{ config.processed_folder }}">
                             </div>
                         </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small text-muted">Usuario</label>
-                        <input type="email" class="form-control bg-dark text-light border-secondary" name="email_user"
-                            value="{{ config.email_user }}" placeholder="tu@email.com">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small text-muted">Contraseña (App Password)</label>
-                        <input type="password" class="form-control bg-dark text-light border-secondary"
-                            name="email_password" value="{{ config.email_password }}" placeholder="••••••••">
-                    </div>
-                    <button type="submit" class="btn btn-outline-info w-100 mt-2">Guardar Email</button>
-                </form>
-            </div>
-        </div>
 
-        <!-- Vision Index -->
-        <div class="card border-0 mb-4">
-            <div class="card-body p-4 d-flex justify-content-between align-items-center">
-                <div>
-                    <h6 class="fw-bold mb-1">Búsqueda Visual</h6>
-                    <small class="text-muted d-block">Estado: <span
-                            class="{{ 'text-success' if config.vision_enabled else 'text-muted' }}">{{ 'ACTIVO' if
-                            config.vision_enabled else 'INACTIVO' }}</span></small>
-                </div>
-                <form method="post">
-                    <input type="hidden" name="action" value="rebuild_index">
-                    <button type="submit" class="btn btn-sm btn-secondary" {% if not config.vision_enabled %}disabled{%
-                        endif %}>
-                        <i class="fas fa-sync me-1"></i> Reindexar
-                    </button>
-                </form>
-            </div>
-        </div>
+                        <div class="mb-4">
+                            <label class="form-label text-xs text-uppercase text-muted fw-bold ls-1">Errores</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-exclamation-triangle"></i></span>
+                                <input type="text" class="form-control" name="failed_folder"
+                                    value="{{ config.failed_folder }}">
+                            </div>
+                        </div>
 
-        <!-- AI Model Training -->
-        <div class="card border-0">
-            <div class="card-header bg-transparent border-0 pt-4 px-4">
-                <h6 class="mb-0 fw-bold text-uppercase text-info small"><i class="fas fa-brain me-2"></i>
-                    Inteligencia Artificial</h6>
-            </div>
-            <div class="card-body p-4">
-                <p class="small text-muted mb-3">Entrene un modelo personalizado basado en sus documentos verificados
-                    para mejorar la clasificación automática.</p>
-                <div class="d-flex gap-2">
-                    <button id="train-btn" class="btn btn-outline-info w-100">
-                        <i class="fas fa-graduation-cap me-2"></i> Re-entrenar
-                    </button>
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary px-4 rounded-pill">
+                                <i class="fas fa-save me-2"></i>Guardar Rutas
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
+
+            <!-- OCR ENGINE SECTION -->
+            <div class="settings-card mb-4">
+                <div class="p-4 border-bottom border-secondary border-opacity-10 d-flex align-items-center">
+                    <div class="section-icon bg-success bg-opacity-20 text-success me-3">
+                        <i class="fas fa-microchip"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-0 fw-bold text-white">Motor OCR</h5>
+                        <small class="text-muted">Pipeline de procesamiento</small>
+                    </div>
+                </div>
+                <div class="p-4">
+                    <form method="post">
+                        <input type="hidden" name="action" value="pipeline">
+
+                        <div
+                            class="d-flex align-items-center justify-content-between p-3 rounded-3 mb-3 bg-opacity-10 bg-white border border-secondary border-opacity-25">
+                            <div>
+                                <h6 class="mb-0 fw-bold text-white"><i
+                                        class="fas fa-bolt text-warning me-2"></i>Aceleración GPU</h6>
+                                <small class="text-muted" style="font-size: 0.8rem;">Requiere NVIDIA CUDA</small>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="gpu_enabled"
+                                    style="width: 3em; height: 1.5em;" {% if config.gpu_enabled %}checked{% endif %}>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-xs text-uppercase text-muted fw-bold ls-1">Motor
+                                Principal</label>
+                            <select class="form-select" name="primary_engine">
+                                <option value="auto" {% if config.primary_engine=='auto' %}selected{% endif %}>✨
+                                    Automático (Inteligente)</option>
+                                <option value="paddleocr" {% if config.primary_engine=='paddleocr' %}selected{% endif
+                                    %}>PaddleOCR v4 (Rápido)</option>
+                                <option value="easyocr" {% if config.primary_engine=='easyocr' %}selected{% endif %}>
+                                    EasyOCR (Robusto)</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label text-xs text-uppercase text-muted fw-bold ls-1">Idiomas (ISO
+                                Codes)</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-language"></i></span>
+                                <input type="text" class="form-control" name="languages" value="{{ config.languages }}"
+                                    placeholder="es,en">
+                            </div>
+                            <div class="form-text text-muted" style="font-size: 0.75rem;">Separados por comas (ej:
+                                es,en,fr)</div>
+                        </div>
+
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-success px-4 rounded-pill">
+                                <i class="fas fa-sync-alt me-2"></i>Actualizar Motor
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div class="col-lg-6">
+
+            <!-- HOT FOLDER SECTION -->
+            <div class="settings-card mb-4"
+                style="background: linear-gradient(145deg, rgba(255, 193, 7, 0.05) 0%, rgba(30, 30, 40, 0.6) 100%); border-color: rgba(255, 193, 7, 0.2);">
+                <div
+                    class="p-4 border-bottom border-secondary border-opacity-10 d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center">
+                        <div class="section-icon bg-warning bg-opacity-10 text-warning me-3">
+                            <i class="fas fa-satellite-dish"></i>
+                        </div>
+                        <div>
+                            <h5 class="mb-0 fw-bold text-white">Hot Folder</h5>
+                            <small class="text-muted">Monitorización en tiempo real</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4">
+                    <form method="post">
+                        <input type="hidden" name="action" value="hot_folder">
+
+                        <div class="d-flex align-items-center justify-content-between mb-3">
+                            <span class="text-white fw-bold">Estado del Monitor</span>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input bg-warning border-warning" type="checkbox"
+                                    name="hot_enabled" style="width: 3em; height: 1.5em;" {% if config.hot_enabled
+                                    %}checked{% endif %}>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-xs text-uppercase text-muted fw-bold ls-1">Ruta a
+                                Vigilar</label>
+                            <div class="input-group">
+                                <span class="input-group-text text-warning"><i class="fas fa-eye"></i></span>
+                                <input type="text" class="form-control" name="hot_path" value="{{ config.hot_path }}"
+                                    placeholder="C:\Ruta\Absoluta...">
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-outline-warning rounded-pill">
+                                Aplicar Cambios
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- AI SECTION -->
+            <div class="settings-card mb-4">
+                <div class="p-4 border-bottom border-secondary border-opacity-10 d-flex align-items-center">
+                    <div class="section-icon bg-info bg-opacity-20 text-info me-3">
+                        <i class="fas fa-brain"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-0 fw-bold text-white">Inteligencia Artificial</h5>
+                        <small class="text-muted">Modelos LLM y Visión</small>
+                    </div>
+                </div>
+                <div class="p-4">
+                    <!-- LLM Config -->
+                    <form method="post" class="mb-4 pb-4 border-bottom border-secondary border-opacity-25">
+                        <input type="hidden" name="action" value="llm_pipeline_config">
+
+                        <div class="d-flex align-items-center justify-content-between mb-3">
+                            <h6 class="text-white fw-bold mb-0"><i class="fas fa-robot me-2 text-info"></i>LLM (LM
+                                Studio)</h6>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input bg-info border-info" type="checkbox" name="llm_enabled"
+                                    style="width: 2.5em; height: 1.25em;" {% if config.llm_enabled %}checked{% endif %}>
+                            </div>
+                        </div>
+
+                        <div class="input-group mb-3">
+                            <span class="input-group-text"><i class="fas fa-globe"></i></span>
+                            <input type="text" class="form-control" name="llm_base_url"
+                                value="{{ config.llm_base_url }}" placeholder="http://127.0.0.1:1234/v1">
+                            <button class="btn btn-info" type="submit">Guardar</button>
+                        </div>
+                    </form>
+
+                    <!-- Vision Config -->
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h6 class="fw-bold text-white mb-1"><i class="fas fa-eye me-2 text-purple"></i>Índice Visual
+                                (RAG)</h6>
+                            <div class="d-flex align-items-center">
+                                <span
+                                    class="badge {{ 'bg-success' if config.vision_enabled else 'bg-secondary' }} me-2">
+                                    {{ 'Activo' if config.vision_enabled else 'Inactivo' }}
+                                </span>
+                                <small class="text-muted">{{ total_docs }} vectores indexados</small>
+                            </div>
+                        </div>
+                        <form method="post">
+                            <input type="hidden" name="action" value="rebuild_index">
+                            <button type="submit" class="btn btn-outline-light btn-sm rounded-pill" {% if not
+                                config.vision_enabled %}disabled{% endif %}>
+                                <i class="fas fa-sync me-1"></i> Reconstruir Index
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    document.getElementById('train-btn').addEventListener('click', async function () {
-        const btn = this;
-        if (!confirm('¿Desea re-entrenar el modelo de clasificación con los datos actuales?')) return;
-
-        btn.disabled = true;
-        const oldHtml = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Entrenando...';
-
-        try {
-            const res = await fetch('/api/train', { method: 'POST' });
-            const data = await res.json();
-
-            if (res.ok) {
-                alert('Éxito: ' + data.message);
-            } else {
-                alert('Error: ' + data.message);
-            }
-        } catch (e) {
-            alert('Error de conexión');
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = oldHtml;
-        }
-    });
-</script>
 {% endblock %}

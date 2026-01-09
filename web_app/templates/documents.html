@@ -14,14 +14,14 @@
             {% endif %}
         </p>
     </div>
-    <a href="{{ url_for('main.upload') }}" class="btn btn-primary d-flex align-items-center gap-2 text-nowrap">
-        <i class="fas fa-plus"></i>
-        <span>Subir Nuevo</span>
-    </a>
-    <button onclick="mergeDocuments()" class="btn btn-warning d-flex align-items-center gap-2 text-nowrap ms-2">
-        <i class="fas fa-paperclip"></i>
-        <span>Grapar</span>
-    </button>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('main.upload') }}" class="btn btn-primary d-flex align-items-center gap-2 text-nowrap">
+            <i class="fas fa-plus"></i>
+            <span>Subir Nuevo</span>
+        </a>
+        <!-- Grapar button removed by user request -->
+
+    </div>
 </div>
 
 <!-- Filters Card -->
@@ -106,10 +106,12 @@
                                 <div class="icon-square bg-secondary bg-opacity-10 text-muted rounded-3 p-2 me-3">
                                     <i class="fas fa-file-alt"></i>
                                 </div>
-                                <div>
-                                    <h6 class="mb-0 fw-bold text-light">{{ doc[1] }}</h6>
+                                <div style="max-width: 180px; overflow: hidden;">
+                                    <h6 class="mb-0 fw-bold text-light text-truncate" title="{{ doc[1] }}">{{ doc[1] }}
+                                    </h6>
                                     {% if doc[8] %}
-                                    <small class="text-muted">{{ doc[8] }}</small>
+                                    <small class="text-muted text-truncate d-block" style="max-width: 180px;">{{ doc[8]
+                                        }}</small>
                                     {% endif %}
                                 </div>
                             </div>
@@ -149,9 +151,9 @@
                             {{ doc[5][:16].replace('T', ' ') if doc[5] else '-' }}
                         </td>
                         <td class="text-end pe-4 text-nowrap">
-                            <a href="{{ url_for('main.verify_document', doc_id=doc[0]) }}"
-                                class="btn btn-sm btn-{{ 'warning' if is_verification_list else 'outline-light' }} rounded-pill px-3">
-                                {{ 'Verificar' if is_verification_list else 'Revisar' }}
+                            <a href="{{ url_for('main.document_detail', doc_id=doc[0]) }}"
+                                class="btn btn-sm btn-outline-light rounded-pill px-3">
+                                <i class="fas fa-eye me-1"></i> Ver Detalles
                             </a>
                             {% if doc[1].lower().endswith('.pdf') %}
                             <button onclick="promptSplit('{{ doc[0] }}')"

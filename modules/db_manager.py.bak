@@ -1,0 +1,916 @@
+"""
+Database manager for AutOCR.
+
+Provides a thin abstraction over SQLite (default) or SQL Server databases to
+store processed documents, OCR output, logs and batch metrics.
+"""
+
+from __future__ import annotations
+
+import datetime
+import json
+import logging
+import os
+import threading
+import queue
+from contextlib import contextmanager
+from typing import Any, Dict, Iterable, Optional
+
+try:  # pragma: no cover - standard library
+    import sqlite3
+except ImportError:
+    sqlite3 = None
+
+try:  # pragma: no cover - optional dependency
+    import psycopg2
+    from psycopg2 import extras, pool
+except ImportError:
+    psycopg2 = None
+
+logger = logging.getLogger(__name__)
+
+class DBManager:
+    """Unified interface for interacting with SQLite or PostgreSQL."""
+
+    def __init__(
+        self,
+        config: Dict[str, Any]
+    ) -> None:
+        self.config = config.get("database", {})
+        
+        # Auto-detect Production Environment (Docker) -> Force PostgreSQL
+        if os.environ.get("POSTGRES_HOST"):
+            self.engine_type = "postgresql"
+        else:
+            self.engine_type = self.config.get("engine", "sqlite").lower()
+        self._lock = threading.RLock()
+        self.conn = None
+        
+        # Abstraction of SQL placeholders
+        self.placeholder = "?" if self.engine_type == "sqlite" else "%s"
+
+        if self.engine_type == "postgresql":
+            if psycopg2 is None:
+                raise RuntimeError("psycopg2 is not installed; cannot connect to PostgreSQL")
+            self.pg_conf = self.config.get("postgresql", {})
+            try:
+                # Initialize ThreadedConnectionPool for Postgres
+                self._pool = pool.ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=int(os.getenv("DB_POOL_SIZE", self.config.get("pool_size", 10))),
+                    host=os.getenv("DB_HOST", self.pg_conf.get("host", "localhost")),
+                    port=int(os.getenv("DB_PORT", self.pg_conf.get("port", 5432))),
+                    user=os.getenv("DB_USER", self.pg_conf.get("user", "postgres")),
+                    password=os.getenv("DB_PASSWORD", self.pg_conf.get("password", "123")),
+                    dbname=os.getenv("DB_NAME", self.pg_conf.get("dbname", "autocr"))
+                )
+            except Exception as e:
+                 raise RuntimeError(f"Failed to initialize PostgreSQL pool: {e}")
+
+        elif self.engine_type == "sqlite":
+            if sqlite3 is None:
+                raise RuntimeError("sqlite3 is not available in this environment")
+            self.db_path = self.config.get("sqlite", {}).get("path", "data/digitalizerai.db")
+            # For SQLite, we use a queue of connections as a simple pool
+            pool_size = self.config.get("pool_size", 5)
+            self._sqlite_pool = queue.Queue(maxsize=pool_size)
+            for _ in range(pool_size):
+                self._sqlite_pool.put(self._create_connection())
+
+        # Initialize schema using a temporary connection
+        with self.get_connection() as conn:
+             self.initialize_schema(conn)
+             self.upgrade_schema(conn)
+
+    def _create_connection(self):
+        """Create a new raw database connection."""
+        if self.engine_type == "postgresql":
+            conn = psycopg2.connect(
+                host=self.pg_conf.get("host", "localhost"),
+                port=self.pg_conf.get("port", 5432),
+                user=self.pg_conf.get("user", "postgres"),
+                password=self.pg_conf.get("password", ""),
+                dbname=self.pg_conf.get("dbname", "autocr")
+            )
+            return conn
+        else:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            return conn
+
+    @contextmanager
+    def get_connection(self):
+        """Context manager to borrow a connection from the pool."""
+        if self.engine_type == "postgresql":
+            conn = self._pool.getconn()
+            try:
+                yield conn
+            finally:
+                self._pool.putconn(conn)
+        else:
+            conn = self._sqlite_pool.get()
+            try:
+                yield conn
+            finally:
+                self._sqlite_pool.put(conn)
+
+    def upgrade_schema(self, conn=None):
+        """Handle migrations/column additions."""
+        if conn is None:
+            with self.get_connection() as c:
+                self.upgrade_schema(c)
+            return
+
+        self._upgrade_schema_internal(conn)
+
+    def get_document(self, doc_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieve full document details including OCR data."""
+        query = """
+        SELECT d.id, d.filename, d.path, d.type, d.status, d.datetime,
+               d.tags, o.text, o.markdown_text, o.structured_data, o.blocks_json
+        FROM documents d
+        LEFT JOIN ocr_texts o ON d.id = o.id_doc
+        WHERE d.id = ?
+        """
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query.replace('?', self.placeholder), (doc_id,))
+            row = cursor.fetchone()
+            
+            if not row:
+                return None
+            
+            def parse_json(val):
+                if not val: return []
+                try: return json.loads(val)
+                except: return []
+
+            return {
+                "id": row[0],
+                "filename": row[1],
+                "path": row[2],
+                "type": row[3],
+                "status": row[4],
+                "date": row[5],
+                "tags": parse_json(row[6]),
+                "text": row[7],
+                "markdown": row[8],
+                "structured_data": parse_json(row[9]) if row[9] else {},
+                "blocks": parse_json(row[10]),
+                "data": parse_json(row[9]) if row[9] else {"total":0.0, "supplier":"", "date":""}
+            }
+             
+    def _upgrade_schema_internal(self, conn):
+        for column, definition in (
+            ("markdown_text", "TEXT"),
+            ("language", "TEXT"),
+            ("confidence", "REAL"),
+            ("blocks_json", "TEXT"),
+            ("tables_json", "TEXT"),
+            ("structured_data", "TEXT"),  # JSON: fields, anomalies
+        ):
+            self._ensure_column("ocr_texts", column, definition, conn)
+        
+        # Add workflow state and error_message to documents table
+        self._ensure_column("documents", "workflow_state", "TEXT DEFAULT 'new'", conn)
+        self._ensure_column("documents", "error_message", "TEXT", conn)
+
+    def get_cursor(self, conn=None):
+        """Get a cursor from the provided connection or raise error if no connection."""
+        if conn is None:
+             raise RuntimeError("Use 'with db.get_connection() as conn:' pattern instead of get_cursor()")
+             
+        if self.engine_type == "postgresql":
+            return conn.cursor(cursor_factory=extras.DictCursor)
+        return conn.cursor()
+
+    # ------------------------------------------------------------------ #
+    # Schema management
+    # ------------------------------------------------------------------ #
+
+    def initialize_schema(self, conn=None) -> None:
+        """Create the database schema if it does not already exist."""
+        if conn is None:
+            with self.get_connection() as c:
+                self._initialize_schema_internal(c)
+        else:
+            self._initialize_schema_internal(conn)
+
+    def _initialize_schema_internal(self, conn) -> None:
+        cursor = self.get_cursor(conn)
+
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    md5_hash TEXT NOT NULL,
+                    datetime TEXT NOT NULL,
+                    duration REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    type TEXT,
+                    tags TEXT,
+                    workflow_state TEXT DEFAULT 'new',
+                    error_message TEXT
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS documents (
+                    id SERIAL PRIMARY KEY,
+                    filename TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    md5_hash TEXT NOT NULL,
+                    datetime TEXT NOT NULL,
+                    duration REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    type TEXT,
+                    tags TEXT,
+                    workflow_state TEXT DEFAULT 'new',
+                    error_message TEXT
+                )
+                """
+            )
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_datetime ON documents(datetime)")
+
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ocr_texts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id_doc INTEGER NOT NULL,
+                    text TEXT,
+                    markdown_text TEXT,
+                    language TEXT,
+                    confidence REAL,
+                    blocks_json TEXT,
+                    tables_json TEXT,
+                    FOREIGN KEY(id_doc) REFERENCES documents(id)
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ocr_texts (
+                    id SERIAL PRIMARY KEY,
+                    id_doc INTEGER NOT NULL REFERENCES documents(id),
+                    text TEXT,
+                    markdown_text TEXT,
+                    language TEXT,
+                    confidence REAL,
+                    blocks_json TEXT,
+                    tables_json TEXT
+                )
+                """
+            )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_ocr_texts_doc ON ocr_texts(id_doc)")
+
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    datetime TEXT NOT NULL,
+                    event TEXT NOT NULL,
+                    detail TEXT,
+                    level TEXT NOT NULL
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS logs (
+                    id SERIAL PRIMARY KEY,
+                    datetime TEXT NOT NULL,
+                    event TEXT NOT NULL,
+                    detail TEXT,
+                    level TEXT NOT NULL
+                )
+                """
+            )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_datetime ON logs(datetime)")
+
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    datetime TEXT NOT NULL,
+                    ok_docs INTEGER NOT NULL,
+                    failed_docs INTEGER NOT NULL,
+                    avg_time REAL NOT NULL,
+                    reliability_pct REAL NOT NULL
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS metrics (
+                    id SERIAL PRIMARY KEY,
+                    datetime TEXT NOT NULL,
+                    ok_docs INTEGER NOT NULL,
+                    failed_docs INTEGER NOT NULL,
+                    avg_time REAL NOT NULL,
+                    reliability_pct REAL NOT NULL
+                )
+                """
+            )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_metrics_datetime ON metrics(datetime)")
+
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS documents_search USING fts5(
+                    doc_id UNINDEXED,
+                    filename,
+                    text,
+                    tokenize='porter'
+                );
+                """
+            )
+        else:
+            # PostgreSQL Full Text Search approach (simplest: GIN index on text)
+            # Production would use tsvector, but let's keep it simple for now
+            if self.config.get("postgresql", {}).get("use_pgvector", False):
+                try:
+                    cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS document_embeddings (
+                            id SERIAL PRIMARY KEY,
+                            doc_id INTEGER NOT NULL REFERENCES documents(id),
+                            embedding vector(384),
+                            chunk_text TEXT
+                        )
+                        """
+                    )
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_doc ON document_embeddings(doc_id)")
+                except Exception as e:
+                    if self.engine_type == "postgresql":
+                        conn.rollback()
+                    logger.warning(f"Failed to initialize pgvector: {e}")
+            
+            # Simple Full Text Search for PostgreSQL
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_ocr_texts_fts ON ocr_texts USING gin(to_tsvector('spanish', text))")
+            except Exception as e:
+                if self.engine_type == "postgresql":
+                    conn.rollback()
+                logger.warning(f"Failed to create GIN index for FTS: {e}")
+
+        # Chat History Table
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    user_id TEXT
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    user_id TEXT
+                )
+                """
+            )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_history(session_id)")
+
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    zones_json TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS templates (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    zones_json TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        
+        # Folders Table
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS folders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    parent_id INTEGER,
+                    created_at TEXT,
+                    FOREIGN KEY(parent_id) REFERENCES folders(id)
+                )
+                """
+            )
+        else:
+             cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS folders (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    parent_id INTEGER REFERENCES folders(id),
+                    created_at TEXT
+                )
+                """
+            )
+
+        # Document Versions Table
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS document_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    doc_id INTEGER NOT NULL,
+                    version_number INTEGER NOT NULL,
+                    text_content TEXT,
+                    markdown_content TEXT,
+                    structured_data TEXT,
+                    created_at TEXT,
+                    created_by TEXT,
+                    change_reason TEXT,
+                    FOREIGN KEY(doc_id) REFERENCES documents(id)
+                )
+                """
+            )
+        else:
+             cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS document_versions (
+                    id SERIAL PRIMARY KEY,
+                    doc_id INTEGER NOT NULL REFERENCES documents(id),
+                    version_number INTEGER NOT NULL,
+                    text_content TEXT,
+                    markdown_content TEXT,
+                    structured_data TEXT,
+                    created_at TEXT,
+                    created_by TEXT,
+                    change_reason TEXT
+                )
+                """
+            )
+
+        # Ensure we have folder_id in documents table (Migration)
+        # Note: We need to do this OUTSIDE the big create block but inside the transaction preferably
+        # However, _ensure_column starts its own transaction if conn is not passed.
+        # But here we have 'conn'.
+        self._ensure_column("documents", "folder_id", "INTEGER REFERENCES folders(id)" if self.engine_type != "sqlite" else "INTEGER", conn=conn)
+        
+        conn.commit()
+
+    def _ensure_column(self, table: str, column: str, definition: str, conn=None) -> None:
+        """Ensure ``table`` includes ``column`` with the provided definition."""
+        if conn is None:
+             with self.get_connection() as c:
+                 self._ensure_column_internal(table, column, definition, c)
+        else:
+             self._ensure_column_internal(table, column, definition, conn)
+
+    def _ensure_column_internal(self, table, column, definition, conn):
+        cursor = self.get_cursor(conn)
+        try:
+            cursor.execute(f"SELECT {column} FROM {table} LIMIT 1")
+        except Exception:
+            try:
+                # Since we are in a transaction, we might need to rollback before ALTER if previous SELECT failed
+                conn.rollback() # Important for Postgres
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                conn.commit()
+                logger.info("Added missing column %s.%s", table, column)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Could not add column %s.%s: %s", table, column, exc)
+                conn.rollback()
+
+    # ------------------------------------------------------------------ #
+    # CRUD helpers
+    # ------------------------------------------------------------------ #
+
+    def check_duplicate(self, md5_hash: str) -> Optional[int]:
+        """Return existing document ID if the hash already exists."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(f"SELECT id FROM documents WHERE md5_hash = {self.placeholder}", (md5_hash,))
+            row = cursor.fetchone()
+            return int(row[0] if isinstance(row, (tuple, list)) else row["id"]) if row else None
+
+    def get_document_path(self, doc_id: int) -> Optional[str]:
+        """Return the stored path for a given document ID."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(f"SELECT path FROM documents WHERE id = {self.placeholder}", (doc_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return str(row[0] if isinstance(row, (tuple, list)) else row["path"])
+
+    def insert_document(
+        self,
+        filename: str,
+        path: str,
+        md5_hash: str,
+        timestamp: datetime.datetime,
+        duration: float,
+        status: str,
+        doc_type: Optional[str] = None,
+        tags: Optional[Iterable[str]] = None,
+        workflow_state: str = "new",
+        error_message: Optional[str] = None,
+    ) -> int:
+        """Insert a document record and return its ID."""
+        tags_json = json.dumps(list(tags)) if tags else None
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            sql = f"""
+                INSERT INTO documents (
+                    filename, path, md5_hash, datetime, duration, status, type, tags, workflow_state, error_message
+                ) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, 
+                          {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+            """
+            params = (filename, path, md5_hash, timestamp.isoformat(), float(duration), status, doc_type, tags_json, workflow_state, error_message)
+            
+            if self.engine_type == "postgresql":
+                sql += " RETURNING id"
+                cursor.execute(sql, params)
+                row = cursor.fetchone()
+                doc_id = row["id"] if isinstance(row, dict) else row[0]
+            else:
+                cursor.execute(sql, params)
+                doc_id = cursor.lastrowid
+                
+            conn.commit()
+            return int(doc_id)
+
+    def insert_ocr_text(
+        self,
+        id_doc: int,
+        text: str,
+        markdown_text: Optional[str] = None,
+        language: Optional[str] = None,
+        confidence: Optional[float] = None,
+        blocks: Optional[Iterable[Dict[str, Any]]] = None,
+        tables: Optional[Iterable[Dict[str, Any]]] = None,
+        structured_data: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Insert OCR text and associated metadata."""
+        blocks_json = json.dumps(list(blocks), ensure_ascii=False) if blocks else None
+        tables_json = json.dumps(list(tables), ensure_ascii=False) if tables else None
+        structured_json = json.dumps(structured_data, ensure_ascii=False) if structured_data else None
+
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            sql = f"""
+                INSERT INTO ocr_texts (
+                    id_doc, text, markdown_text, language, confidence, blocks_json, tables_json, structured_data
+                ) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, 
+                          {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+            """
+            params = (id_doc, text, markdown_text, language, confidence, blocks_json, tables_json, structured_json)
+            
+            if self.engine_type == "postgresql":
+                sql += " RETURNING id"
+                cursor.execute(sql, params)
+                ocr_id = cursor.fetchone()["id"]
+            else:
+                cursor.execute(sql, params)
+                ocr_id = cursor.lastrowid
+
+            # Auto-index into FTS (SQLite only for now)
+            if text and self.engine_type == "sqlite":
+                try:
+                    cursor.execute(f"SELECT filename FROM documents WHERE id = ?", (id_doc,))
+                    doc_row = cursor.fetchone()
+                    fname = doc_row[0] if doc_row else ""
+                    cursor.execute(
+                        "INSERT INTO documents_search (doc_id, filename, text) VALUES (?, ?, ?)",
+                        (id_doc, fname, text),
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to index document {id_doc} for search: {e}")
+
+            conn.commit()
+            return int(ocr_id)
+
+    def insert_log(self, event: str, detail: Optional[str], level: str) -> int:
+        """Insert a structured log entry."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            sql = f"INSERT INTO logs (datetime, event, detail, level) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})"
+            params = (datetime.datetime.now().isoformat(), event, detail, level)
+            
+            if self.engine_type == "postgresql":
+                sql += " RETURNING id"
+                cursor.execute(sql, params)
+                log_id = cursor.fetchone()["id"]
+            else:
+                cursor.execute(sql, params)
+                log_id = cursor.lastrowid
+                
+            conn.commit()
+            return int(log_id)
+
+    def get_recent_logs(self, limit: int = 100) -> list:
+        """Get recent log entries for monitoring."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(
+                f"SELECT datetime, event, detail, level FROM logs ORDER BY datetime DESC LIMIT {self.placeholder}",
+                (limit,),
+            )
+            return cursor.fetchall()
+
+    def insert_metrics(
+        self,
+        timestamp: datetime.datetime,
+        ok_docs: int,
+        failed_docs: int,
+        avg_time: float,
+        reliability_pct: float,
+    ) -> int:
+        """Insert aggregated batch metrics."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            sql = f"""
+                INSERT INTO metrics (datetime, ok_docs, failed_docs, avg_time, reliability_pct)
+                VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+            """
+            params = (timestamp.isoformat(), ok_docs, failed_docs, avg_time, reliability_pct)
+            
+            if self.engine_type == "postgresql":
+                sql += " RETURNING id"
+                cursor.execute(sql, params)
+                m_id = cursor.fetchone()["id"]
+            else:
+                cursor.execute(sql, params)
+                m_id = cursor.lastrowid
+                
+            conn.commit()
+            return int(m_id)
+
+    def search_documents(self, query_text: str, limit: int = 50) -> list:
+        """Perform a full-text search."""
+        if not query_text.strip():
+            return []
+        
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            if self.engine_type == "sqlite":
+                try:
+                    cursor.execute(
+                        """
+                        SELECT doc_id, filename, snippet(documents_search, 2, '<b>', '</b>', '...', 20) as snippet, rank
+                        FROM documents_search
+                        WHERE documents_search MATCH ?
+                        ORDER BY rank
+                        LIMIT ?
+                        """,
+                        (query_text, limit),
+                    )
+                    return cursor.fetchall()
+                except Exception as e:
+                    logger.error(f"Search error: {e}")
+                    return []
+            else:
+                # Basic PostgreSQL ILIKE search as fallback for full FTS implementation
+                cursor.execute(
+                    f"SELECT id as doc_id, filename, content as snippet FROM ocr_texts WHERE text ILIKE {self.placeholder} LIMIT {self.placeholder}",
+                    (f"%{query_text}%", limit)
+                )
+                return cursor.fetchall()
+
+    def update_document_metadata(self, doc_id: int, text: str, markdown: str, doc_type: str, status: str) -> bool:
+        """Update document content and metadata."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(
+                    f"UPDATE documents SET type = {self.placeholder}, status = {self.placeholder} WHERE id = {self.placeholder}",
+                    (doc_type, status, doc_id)
+                )
+                cursor.execute(
+                    f"UPDATE ocr_texts SET text = {self.placeholder}, markdown_text = {self.placeholder} WHERE id_doc = {self.placeholder}",
+                    (text, markdown, doc_id)
+                )
+                if self.engine_type == "sqlite":
+                    cursor.execute(
+                        f"UPDATE documents_search SET text = {self.placeholder} WHERE doc_id = {self.placeholder}",
+                        (text, doc_id)
+                    )
+                conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to update document {doc_id}: {e}")
+                return False
+
+    def update_document_state(self, doc_id: int, workflow_state: str) -> bool:
+        """Update the workflow state (new, pending, verified) of a document."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(
+                    f"UPDATE documents SET workflow_state = {self.placeholder} WHERE id = {self.placeholder}",
+                    (workflow_state, doc_id)
+                )
+                conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to update document state {doc_id}: {e}")
+                return False
+
+    def update_document_type(self, doc_id: int, doc_type: str) -> bool:
+        """Update the document type (Invoice, Contract, etc.)."""
+        try:
+            self.execute(
+                "UPDATE documents SET type = ? WHERE id = ?",
+                (doc_type, doc_id),
+                commit=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update document type {doc_id}: {e}")
+            return False
+
+    def delete_document(self, doc_id: int) -> bool:
+        """Delete a document and all related data (OCR, FTS, search, embeddings)."""
+        # Start by getting the file path to delete it later
+        path_str = self.get_document_path(doc_id)
+
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                # ORDER MATTERS: Delete children first
+                # 1. Embeddings (if exist)
+                if self.engine_type == "postgresql":
+                    try:
+                        # Check table existence to avoid transaction abort
+                        cursor.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'document_embeddings'")
+                        if cursor.fetchone():
+                            cursor.execute("DELETE FROM document_embeddings WHERE doc_id = %s", (doc_id,))
+                    except Exception:
+                        conn.rollback() # Recover from potential failed check
+                        cursor = self.get_cursor(conn)
+                
+                # 2. Search Index (SQLite only)
+                if self.engine_type == "sqlite":
+                    cursor.execute("DELETE FROM documents_search WHERE doc_id = ?", (doc_id,))
+                
+                # 3. OCR Texts
+                final_q_ocr = "DELETE FROM ocr_texts WHERE id_doc = ?".replace('?', self.placeholder)
+                cursor.execute(final_q_ocr, (doc_id,))
+                
+                # 4. Document Record
+                final_q_doc = "DELETE FROM documents WHERE id = ?".replace('?', self.placeholder)
+                cursor.execute(final_q_doc, (doc_id,))
+                
+                conn.commit()
+                
+                # 5. Physical File Cleanup (Post-commit)
+                if path_str:
+                    try:
+                        abs_path = Path(path_str)
+                        if not abs_path.is_absolute():
+                            abs_path = Path(os.getcwd()) / path_str
+                        if abs_path.exists():
+                            os.remove(abs_path)
+                    except Exception as e:
+                        logger.error(f"Failed to delete file {path_str}: {e}")
+                
+                return True
+            except Exception as e:
+                logger.error(f"Failed to delete document {doc_id}: {e}")
+                conn.rollback()
+                return False
+
+
+
+
+    def insert_template(self, name: str, description: str, zones_json: str) -> int:
+        """Insert a new template."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            sql = f"""
+                INSERT INTO templates (name, description, zones_json, created_at)
+                VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+            """
+            params = (name, description, zones_json, datetime.datetime.now().isoformat())
+            
+            if self.engine_type == "postgresql":
+                sql += " RETURNING id"
+                cursor.execute(sql, params)
+                t_id = cursor.fetchone()["id"]
+            else:
+                cursor.execute(sql, params)
+                t_id = cursor.lastrowid
+                
+            conn.commit()
+            return int(t_id)
+
+    def get_templates(self) -> list:
+        """Retrieve all templates."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute("SELECT * FROM templates ORDER BY created_at DESC")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def delete_template(self, template_id: int) -> bool:
+        """Delete a template by ID."""
+        try:
+            self.execute("DELETE FROM templates WHERE id = ?", (template_id,), commit=True)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete template {template_id}: {e}")
+            return False
+
+    def insert_chat_message(self, session_id: str, role: str, content: str, user_id: Optional[str] = None) -> int:
+        """Insert a chat message into history."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            sql = f"""
+                INSERT INTO chat_history (session_id, role, content, timestamp, user_id)
+                VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+            """
+            params = (session_id, role, content, datetime.datetime.now().isoformat(), user_id)
+            
+            if self.engine_type == "postgresql":
+                sql += " RETURNING id"
+                cursor.execute(sql, params)
+                msg_id = cursor.fetchone()["id"]
+            else:
+                cursor.execute(sql, params)
+                msg_id = cursor.lastrowid
+                
+            conn.commit()
+            return int(msg_id)
+
+    def get_chat_history(self, session_id: str, limit: int = 50) -> list:
+        """Retrieve recent chat history for a specific session."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(
+                f"""
+                SELECT role, content, timestamp 
+                FROM chat_history 
+                WHERE session_id = {self.placeholder}
+                ORDER BY id ASC
+                """,
+                (session_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def execute(self, query: str, params: tuple = (), commit: bool = False):
+        """Helper to execute a query with automatic placeholder replacement and connection management."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            # Standardize query
+            final_query = query.replace("?", self.placeholder)
+            cursor.execute(final_query, params)
+            if commit:
+                conn.commit()
+            return cursor
+
+    def close(self) -> None:
+        """Close all connections in the pool."""
+        if self.engine_type == "postgresql":
+            self._pool.closeall()
+        else:
+            while not self._sqlite_pool.empty():
+                try:
+                    conn = self._sqlite_pool.get_nowait()
+                    conn.close()
+                except Exception:
+                    pass
+
+
+__all__ = ["DBManager"]

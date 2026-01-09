@@ -1,6 +1,26 @@
-from waitress import serve
-from web_app.app import app, PROJECT_ROOT, get_logger
 import os
+import sys
+from pathlib import Path
+print("DEBUG: serve.py loaded", flush=True)
+
+# CRITICAL: Windows GPU environment setup must happen before any other imports
+if os.name == "nt":
+    cuda_bin = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\bin"
+    if os.path.exists(cuda_bin):
+        os.environ["PATH"] = cuda_bin + os.pathsep + os.environ.get("PATH", "")
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(cuda_bin)
+
+            os.add_dll_directory(cuda_bin)
+
+print("DEBUG: Importing waitress", flush=True)
+try:
+    from waitress import serve
+except ImportError:
+    serve = None
+print("DEBUG: Importing web_app", flush=True)
+from web_app.app import app, PROJECT_ROOT, get_logger
+print("DEBUG: Imports complete", flush=True)
 import socket
 
 def get_ip_address():
@@ -41,7 +61,18 @@ def kill_zombies(port=8000):
         print(f"✅  Puerto {port} liberado.")
 
 if __name__ == "__main__":
-    kill_zombies(8000)
+    print("DEBUG: Entering main", flush=True)
+    # Check for Development Mode check early
+    is_debug = os.environ.get("FLASK_DEBUG", "0") == "1" or os.environ.get("FLASK_ENV") == "development"
+
+    if not is_debug:
+        try:
+            kill_zombies(8000)
+        except Exception as e:
+            print(f"WARNING: kill_zombies failed: {e}", flush=True)
+    else:
+        print("DEBUG: kill_zombies skipped in dev/hot-reload mode to prevent self-termination.", flush=True)
+
     logger = get_logger()
     host_ip = get_ip_address()
     
@@ -80,7 +111,24 @@ if __name__ == "__main__":
     consumer_thread = threading.Thread(target=run_consumer, daemon=True)
     consumer_thread.start()
     
+    # Initialize Web App (Lazy Load)
+    from web_app.app import init_app
+    init_app()
+
     # Production settings:
     # - threads=6: Handle multiple concurrent requests (DB pool is size 5 by default)
     # - url_scheme='http': Standard for local network
-    serve(app, host="0.0.0.0", port=8000, threads=6)
+    # Check for Development Mode (Hot Reload)
+    is_debug = os.environ.get("FLASK_DEBUG", "0") == "1" or os.environ.get("FLASK_ENV") == "development"
+
+    if is_debug:
+        logger.warning("⚠️  DEVELOPMENT MODE ENABLED: Using Flask Dev Server with Hot Reload")
+        print("⚠️  HOT RELOAD IS ACTIVE. Changes to files will restart the server.")
+        app.run(host="0.0.0.0", port=8000, debug=True, use_reloader=True)
+    else:
+        try:
+            from waitress import serve
+            serve(app, host="0.0.0.0", port=8000, threads=6)
+        except ImportError:
+            logger.warning("Waitress not found. Falling back to Flask Development Server.")
+            app.run(host="0.0.0.0", port=8000, debug=True)

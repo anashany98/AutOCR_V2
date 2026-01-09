@@ -108,35 +108,57 @@ def api_chat_post():
 
     # 2. Check LLM Config
     full_config = load_configuration()
+    # 3. Call Chat LLM
+    # Use dedicated chat config
     llm_conf = full_config.get("llm", {})
+    routing_conf = llm_conf.get("routing", {})
+    chat_conf = routing_conf.get("general_chat", {})
     
+    # Check if Chat is enabled? 
+    # For now, we assume if LLM is enabled globally, we try. 
+    # Or strict check? The UI has a global "Interpretation Enabled" toggle in the Pipeline card.
+    # The Chat card doesn't have an explicit 'Enabled' toggle, implied enabled if configured?
+    # Let's check global enabled or just proceed if base_url is present.
     if not llm_conf.get("enabled", False):
-         return jsonify({"results": context_response, "answer": None})
+         # If global switch is off, maybe we disable chat too? 
+         # User asked for separation. Maybe Chat should be always on if configured?
+         # Let's respect the ID 3584 config structure: routing enabled separate??
+         # config.yaml had routing.enabled. 
+         # My UI didn't touch routing.enabled. 
+         # Let's rely on global 'enabled' for safety OR just existence of config.
+         # For safety, if llm global is off, we might want to kill chat too?
+         # No, user wants separation. Let's assume Chat is always active if configured.
+         pass 
 
-    # 3. Call Local LLM
+    base_url = chat_conf.get("base_url", "http://host.docker.internal:1234/v1").rstrip("/")
+    model = chat_conf.get("model", "mistral-small-24b")
+    timeout = int(chat_conf.get("timeout", 60))
+    
+    # Fallback to pipeline setting if chat specific is missing/empty (optional safety)
+    if not base_url or "localhost" in base_url and "1235" not in base_url and not chat_conf:
+         # Fallback logic if needed, but let's trust the new UI.
+         pass
     try:
         max_context_chars = 10000 
         context_str = ""
         for i, item in enumerate(context_response):
-            addition = f"[Document {i+1}]: {item['filename']}\nContent: {item['snippet']}\n\n"
+            addition = f"[ID: {item['id']} Archivo: {item['filename']}]:\n{item['snippet']}\n\n"
             if len(context_str) + len(addition) > max_context_chars:
                 break
             context_str += addition
         
-        base_url = llm_conf.get("base_url", "http://localhost:1234/v1").rstrip("/")
-        model = llm_conf.get("model", "local-model")
-        
+        if not base_url: 
+             base_url = "http://localhost:1234/v1" # Ultimate fallback
+
         system_prompt = (
             "Eres un asistente útil para una empresa de gestión documental. "
             f"{visual_context}"
-            "Responde a la pregunta del usuario. Tienes acceso a documentos de la empresa, pero si la pregunta es general (saludos, ayuda), responde amablemente sin inventar datos.\n\n"
+            "Responde a la pregunta del usuario basándote EXCLUSIVAMENTE en el CONTEXTO proporcionado.\n\n"
             "REGLAS:\n"
-            "1. Cita el nombre del documento si la información viene del CONTEXTO.\n"
-            "2. Si la información NO está en el CONTEXTO:\n"
-            "   - Si es una pregunta general (ej: 'Hola', '¿Qué puedes hacer?'), responde con tu conocimiento base.\n"
-            "   - Si piden datos específicos de la empresa que no tienes, di 'No tengo información suficiente en los documentos'.\n"
-            "3. Cuando uses una herramienta de exportación, informa al usuario.\n\n"
-            f"CONTEXTO:\n{context_str or 'No hay documentos relevantes para esta consulta.'}"
+            "1. Cita siempre la fuente usando el formato [ID: <id>] cuando uses información del contexto (ej: 'El total es 500€ [ID: 12]').\n"
+            "2. Si la información NO está en el CONTEXTO, di 'No tengo información suficiente en los documentos'. No inventes.\n"
+            "3. Se amable y profesional.\n\n"
+            f"CONTEXTO DOCUMENTAL:\n{context_str or 'No hay documentos relevantes para esta consulta.'}"
         )
 
         payload = {
@@ -154,7 +176,7 @@ def api_chat_post():
         response = requests.post(
             f"{base_url}/chat/completions", 
             json=payload, 
-            timeout=llm_conf.get("timeout", 60)
+            timeout=timeout
         )
         
         if response.status_code == 200:
@@ -212,11 +234,18 @@ def api_status_llm():
     """Check connectivity to the configured LLM provider."""
     full_config = load_configuration()
     llm_conf = full_config.get("llm", {})
-    if not llm_conf.get("enabled", False):
+    chat_conf = llm_conf.get("routing", {}).get("general_chat", {})
+    
+    # Start with Chat config
+    base_url = chat_conf.get("base_url", "").rstrip("/")
+    if not base_url:
+        # Fallback to pipeline
+        base_url = llm_conf.get("base_url", "http://host.docker.internal:1234/v1").rstrip("/")
+
+    if not llm_conf.get("enabled", False) and not chat_conf:
         return jsonify({"status": "disabled"})
 
-    base_url = llm_conf.get("base_url", "http://localhost:1234/v1").rstrip("/")
-    
+    get_logger().info(f"DEBUG: LLM Status Check - base_url={base_url}")
     try:
         resp = requests.get(f"{base_url}/models", timeout=5)
         if resp.status_code == 200:

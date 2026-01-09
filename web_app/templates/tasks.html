@@ -69,6 +69,32 @@
         </div>
     </div>
 </div>
+
+<div class="card border-0 animate-slide-up mt-4" style="animation-delay: 0.2s;">
+    <div class="card-header bg-transparent border-secondary border-opacity-10">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-history me-2"></i>Historial de Lotes</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-nowrap">
+                <thead class="bg-light bg-opacity-10">
+                    <tr>
+                        <th class="ps-4">Fecha</th>
+                        <th>Docs OK</th>
+                        <th>Fallidos</th>
+                        <th>Tiempo Medio</th>
+                        <th>Fiabilidad</th>
+                    </tr>
+                </thead>
+                <tbody id="history-table-body">
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted">Cargando historial...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -121,6 +147,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         fetchTasks();
+        fetchHistory();
         setInterval(fetchTasks, 5000); // Auto refresh every 5s
     });
 </script>

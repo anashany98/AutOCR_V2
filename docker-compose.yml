@@ -1,51 +1,73 @@
-version: "3.9"  # Compose Spec 2025 compatible
-
-x-common-env: &common-env
-  FLASK_ENV: production
-  PYTHONUNBUFFERED: "1"
-  NVIDIA_VISIBLE_DEVICES: all
-  NVIDIA_DRIVER_CAPABILITIES: compute,utility
-
 services:
-  autocr_v2:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      cache_from:
-        - type=local,src=.build_cache
-      cache_to:
-        - type=local,dest=.build_cache,mode=max
-    image: autocr_v2_gpu:latest
-    container_name: autocr_v2
+  autoocr:
+    build: .
+    image: autoocr:gpu-latest
+    container_name: autoocr_gpu
+    restart: always
     ports:
-      - "8000:8000"
+      - "8080:8000"
     volumes:
+      # MOMENTUM: Hot Reload enabled (Development Mode)
       - .:/app
+      # Persist data directories (covered by ., but explicit for clarity if paths change)
       - ./data:/app/data
-    environment: *common-env
+      - ./models:/app/models
+      - ./uploads:/app/uploads
+      - ./processed_docs:/app/processed_docs
+      - ./logs:/app/logs
     deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-        window: 30s
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-      labels:
-        - "com.autocr.role=ocr-gpu-service"
-        - "com.autocr.version=2025.10"
-    healthcheck:
-      test: ["CMD", "python3", "scripts/healthcheck.py"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    environment:
+      # Flask Development
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      # GPU Config
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - PADDLE_OCR_USE_GPU=True
+      # Connect to LM Studio on host machine
+      - LLM_BASE_URL=http://host.docker.internal:1234/v1
+      # Database & Redis Config
+      # Database & Redis Config
+      - POSTGRES_HOST=db        # Trigger for DBManager detection
+      - DB_HOST=db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=autoocr
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  db:
+    image: postgres:15-alpine
+    container_name: autoocr_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: autoocr
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: autoocr_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
