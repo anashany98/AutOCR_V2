@@ -175,6 +175,62 @@ class DBManager:
         # Add workflow state and error_message to documents table
         self._ensure_column("documents", "workflow_state", "TEXT DEFAULT 'new'", conn)
         self._ensure_column("documents", "error_message", "TEXT", conn)
+        
+        # Phase 3: Auth & Multi-tenancy
+        self._ensure_column("documents", "owner_id", "INTEGER", conn)
+        
+        # Create users table if not exists
+        cursor = self.get_cursor(conn)
+        sql_sqlite = """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'client',
+                client_id TEXT,
+                created_at TEXT
+            )
+        """
+        sql_pg = """
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT DEFAULT 'client',
+                    client_id TEXT,
+                    created_at TEXT
+                )
+            """
+        cursor.execute(sql_sqlite if self.engine_type == "sqlite" else sql_pg)
+
+        # Phase 4: Product Catalog (ERP)
+        cursor = self.get_cursor(conn)
+        if self.engine_type == "sqlite":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sku TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    price REAL,
+                    stock INTEGER DEFAULT 0,
+                    image_url TEXT,
+                    embedding TEXT
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id SERIAL PRIMARY KEY,
+                    sku TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    price REAL,
+                    stock INTEGER DEFAULT 0,
+                    image_url TEXT,
+                    embedding TEXT
+                )
+            """)
 
     def get_cursor(self, conn=None):
         """Get a cursor from the provided connection or raise error if no connection."""
@@ -552,6 +608,7 @@ class DBManager:
         tags: Optional[Iterable[str]] = None,
         workflow_state: str = "new",
         error_message: Optional[str] = None,
+        owner_id: Optional[int] = None,
     ) -> int:
         """Insert a document record and return its ID."""
         tags_json = json.dumps(list(tags)) if tags else None
@@ -559,11 +616,11 @@ class DBManager:
             cursor = self.get_cursor(conn)
             sql = f"""
                 INSERT INTO documents (
-                    filename, path, md5_hash, datetime, duration, status, type, tags, workflow_state, error_message
+                    filename, path, md5_hash, datetime, duration, status, type, tags, workflow_state, error_message, owner_id
                 ) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, 
-                          {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+                          {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
             """
-            params = (filename, path, md5_hash, timestamp.isoformat(), float(duration), status, doc_type, tags_json, workflow_state, error_message)
+            params = (filename, path, md5_hash, timestamp.isoformat(), float(duration), status, doc_type, tags_json, workflow_state, error_message, owner_id)
             
             if self.engine_type == "postgresql":
                 sql += " RETURNING id"

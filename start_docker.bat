@@ -28,6 +28,6 @@ echo.
 echo ✅ Container started in background!
 echo 📊 View logs with: docker logs -f autoocr_gpu
 echo.
-echo 🌍 Web Interface: http://localhost:8080
+echo 🌍 Web Interface: http://localhost:8081
 echo.
 pause

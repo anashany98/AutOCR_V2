@@ -75,17 +75,32 @@ app.jinja_env.filters['basename'] = os.path.basename
 
 
 # --------------------------------------------------------------------------- #
-# Blueprints Registration
+# Blueprints Registration & Security
 # --------------------------------------------------------------------------- #
+from flask_login import LoginManager
+from modules.auth_manager import AuthManager
+
+login_manager = LoginManager()
+login_manager.login_view = 'auth.login'
+login_manager.init_app(app)
+
+@login_manager.user_loader
+def load_user(user_id):
+    from web_app.services import get_db
+    auth = AuthManager(get_db())
+    return auth.get_user(user_id)
+
 from web_app.routes.main_routes import main_bp
 from web_app.routes.api_routes import api_bp
 from web_app.routes.chat_routes import chat_bp
 from web_app.routes.error_handlers import errors_bp
+from web_app.routes.auth_routes import auth_bp
 
 app.register_blueprint(main_bp)
 app.register_blueprint(api_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(errors_bp)
+app.register_blueprint(auth_bp)
 
 # --------------------------------------------------------------------------- #
 # Hot Folder Logic (Kept here or moved to separate background manager)

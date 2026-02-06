@@ -399,13 +399,22 @@ class OCRManager:
             return "", 0.0
 
         array = self._pil_to_np(image)
-        try:
-            # PPStructureV3 returns a list of dictionaries (one for each detected block)
-            # We extract text from all blocks to provide a full page representation.
-            results = self._paddle_ocr(array)
-        except Exception as exc:  # pragma: no cover - Paddle runtime errors
-            self.logger.error("PaddleOCR (PPStructureV3) failed: %s", exc)
-            return "", 0.0
+        
+        # Retry logic for transient failures (GPU memory, timeout, etc.)
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                # PPStructureV3 returns a list of dictionaries (one for each detected block)
+                # We extract text from all blocks to provide a full page representation.
+                results = self._paddle_ocr(array)
+                break  # Success, exit retry loop
+            except Exception as exc:  # pragma: no cover - Paddle runtime errors
+                self.logger.warning("PaddleOCR attempt %d/%d failed: %s", attempt + 1, max_retries + 1, exc)
+                if attempt == max_retries:
+                    self.logger.error("PaddleOCR (PPStructureV3) failed after %d attempts: %s", max_retries + 1, exc)
+                    return "", 0.0
+                import time
+                time.sleep(0.5 * (attempt + 1))  # Exponential backoff
 
         texts: List[str] = []
         confidences: List[float] = []

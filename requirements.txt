@@ -166,6 +166,9 @@ pdfplumber
 pefile
 pi_heif
 pikepdf
+numpy
+pandas
+opencv-python-headless
 pillow
 platformdirs
 plotly

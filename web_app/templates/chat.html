@@ -197,12 +197,21 @@
                 });
                 const data = await res.json();
 
+                function formatCitations(text) {
+                    if (!text) return "";
+                    // Regex searches for [ID: 123] patterns
+                    return text.replace(/\[ID:\s*(\d+)\]/g, (match, id) => {
+                        return `<a href="/document/${id}" target="_blank" class="badge bg-info text-decoration-none mx-1 hover-shadow" title="Ver documento fuente" style="cursor: pointer; vertical-align: text-bottom;"><i class="fas fa-file-alt me-1"></i>${match}</a>`;
+                    });
+                }
+
                 // 1. Show AI Answer if available
                 if (data.answer) {
+                    const formattedAnswer = formatCitations(data.answer);
                     const answerHtml = `
                         <div class="mb-3">
                             <h6 class="fw-bold text-info mb-2"><i class="fas fa-robot me-2"></i>Respuesta Inteligente:</h6>
-                            <div class="text-light" style="white-space: pre-wrap;">${data.answer}</div>
+                            <div class="text-light" style="white-space: pre-wrap;">${formattedAnswer}</div>
                         </div>
                         <hr class="border-secondary mb-3">
                      `;

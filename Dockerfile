@@ -1,5 +1,5 @@
-# Base Image: NVIDIA CUDA 12.1 with cuDNN 8 on Ubuntu 22.04
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+# Base Image: NVIDIA CUDA 11.8 with cuDNN 8 on Ubuntu 22.04
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -48,7 +48,7 @@ COPY requirements_docker.txt .
 # Use --extra-index-url for PyTorch to ensure we get Linux/CUDA wheels
 # --break-system-packages needed for newer pip on Ubuntu/Debian
 RUN pip install --no-cache-dir --break-system-packages --ignore-installed -r requirements_docker.txt \
-    --extra-index-url https://download.pytorch.org/whl/cu121
+    --extra-index-url https://download.pytorch.org/whl/cu118
 
 # Copy application source code
 COPY . .

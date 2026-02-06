@@ -33,6 +33,12 @@ def process_document_task(file_path, options):
     config = load_configuration(reload=True)
     post_conf = config.get("postbatch", {})
     
+    # Inject owner_id from options into config structure for process_single_file to pick up
+    if options.get("owner_id"):
+        config["owner_id"] = options["owner_id"]
+        # Also put in post_conf just in case
+        post_conf["owner_id"] = options["owner_id"]
+    
     processed_folder = resolve_path(post_conf.get("processed_folder"), "data/scans_processed")
     failed_folder = resolve_path(post_conf.get("failed_folder"), "data/scans_failed")
     

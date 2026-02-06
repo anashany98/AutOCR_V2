@@ -5,7 +5,7 @@ services:
     container_name: autoocr_gpu
     restart: always
     ports:
-      - "8080:8000"
+      - "8081:8000"
     volumes:
       # MOMENTUM: Hot Reload enabled (Development Mode)
       - .:/app
@@ -57,14 +57,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
   redis:
     image: redis:7-alpine
     container_name: autoocr_redis
     restart: always
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
 

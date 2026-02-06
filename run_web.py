@@ -10,6 +10,12 @@ import sys
 # Ensure root path is in sys.path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# ✅ PRE-IMPORT CONFIGURATION (Critical for PaddleX)
+# Must be set before importing paddleocr/paddlex to bypass connectivity checks
+os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+os.environ["DISABLE_MODEL_SOURCE_CHECK"] = "True"
+os.environ["PADDLEOCR_DISABLE_VLM"] = "1"
+
 from modules.logger_setup import logger
 from modules.startup_test import run_startup_test
 from modules.email_importer import EmailImporter

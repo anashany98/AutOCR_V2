@@ -74,7 +74,7 @@ class RAGManager:
         with open(self.meta_path, "wb") as f:
             pickle.dump(self.metadata, f)
 
-    def add_document(self, doc_id: int, filename: str, text: str, db_manager=None):
+    def add_document(self, doc_id: int, filename: str, text: str, db_manager=None, owner_id: Optional[int] = None):
         """Chunk and index a document."""
         self.ensure_loaded()
         if not self.model:
@@ -131,11 +131,12 @@ class RAGManager:
                 self.metadata.append({
                     "doc_id": doc_id,
                     "filename": filename,
+                    "owner_id": owner_id,
                     "text": chunk
                 })
             # self.save_index() # Save manually or periodically
 
-    def search(self, query: str, k: int = 5, db_manager=None) -> List[Dict[str, Any]]:
+    def search(self, query: str, k: int = 5, db_manager=None, owner_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """Retrieve most relevant chunks."""
         self.ensure_loaded()
         if not self.model:
@@ -155,10 +156,26 @@ class RAGManager:
                 cursor = db.get_cursor(conn)
                 # Proper pgvector search using <=> (cosine distance) or <-> (L2 distance)
                 # Assuming IndexFlatL2 in FAISS, we use <-> here
-                cursor.execute(
-                    "SELECT doc_id, chunk_text as text, embedding <-> %s as score FROM document_embeddings ORDER BY score LIMIT %s",
-                    (vec, k)
-                )
+                
+                # Filter by owner_id if provided via JOIN or subquery
+                # This assumes document_embeddings has doc_id FK to documents
+                if owner_id is not None:
+                     query_sql = """
+                        SELECT e.doc_id, e.chunk_text as text, e.embedding <-> %s as score 
+                        FROM document_embeddings e
+                        JOIN documents d ON e.doc_id = d.id
+                        WHERE d.owner_id = %s
+                        ORDER BY score LIMIT %s
+                     """
+                     cursor.execute(query_sql, (vec, owner_id, k))
+                else:
+                     query_sql = """
+                        SELECT doc_id, chunk_text as text, embedding <-> %s as score 
+                        FROM document_embeddings 
+                        ORDER BY score LIMIT %s
+                     """
+                     cursor.execute(query_sql, (vec, k))
+
                 rows = cursor.fetchall()
                 results = []
                 for row in rows:
@@ -172,15 +189,31 @@ class RAGManager:
             if not self.index or self.index.ntotal == 0:
                 return []
             vec = self.model.encode([query])
-            D, I = self.index.search(np.array(vec).astype('float32'), k)
+            
+            # Fetch more candidates to allow for filtering
+            search_k = k * 10 if owner_id is not None else k
+            D, I = self.index.search(np.array(vec).astype('float32'), search_k)
             
             results = []
+            count = 0
             for i, idx in enumerate(I[0]):
                 if idx == -1 or idx >= len(self.metadata):
                     continue
                 item = self.metadata[idx].copy()
+                
+                # Privacy Barrier
+                if owner_id is not None:
+                    # If item has no owner_id (public) or matches user
+                    # Assuming items without owner_id are PUBLIC/SYSTEM docs
+                    doc_owner = item.get("owner_id")
+                    if doc_owner is not None and int(doc_owner) != int(owner_id):
+                        continue
+                
                 item["score"] = float(D[0][i])
                 results.append(item)
+                count += 1
+                if count >= k:
+                    break
                 
             return results
 
@@ -189,8 +222,9 @@ class RAGManager:
         self._create_new_index() # Reset
         
         # Need to fetch all docs
+        # Need to fetch all docs
         cursor = db_manager.execute("""
-            SELECT d.id, d.filename, o.text 
+            SELECT d.id, d.filename, o.text, d.owner_id 
             FROM documents d 
             JOIN ocr_texts o ON d.id = o.id_doc 
             WHERE o.text IS NOT NULL
@@ -203,7 +237,8 @@ class RAGManager:
             id_val = row[0] if isinstance(row, (tuple, list)) else row['id']
             fname_val = row[1] if isinstance(row, (tuple, list)) else row['filename']
             text_val = row[2] if isinstance(row, (tuple, list)) else row['text']
-            self.add_document(id_val, fname_val, text_val, db_manager)
+            owner_val = row[3] if isinstance(row, (tuple, list)) else row.get('owner_id')
+            self.add_document(id_val, fname_val, text_val, db_manager, owner_id=owner_val)
             
         if db_manager.engine_type == "sqlite":
             self.save_index()

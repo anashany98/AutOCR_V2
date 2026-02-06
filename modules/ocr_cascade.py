@@ -55,11 +55,19 @@ class MultiOCR:
         """
         Execute the OCR cascade and return normalised results.
         """
-        if self.paddle is not None:
+        # Lazy-load Paddle to avoid import errors at module load time
+        if self._paddle_ocr is None:
+            try:
+                self._paddle_ocr = get_ppstructure_v3_instance()
+            except Exception as exc:
+                logger.warning("Could not initialize PaddleOCR: {}", exc)
+                self._paddle_ocr = False  # Mark as failed, don't retry
+
+        if self._paddle_ocr:
             try:
                 logger.info("▶️ Running PaddleOCR (PPStructureV3) on {}", image_path)
                 # PPStructureV3 returns a list of blocks
-                results = self.paddle(image_path)
+                results = self._paddle_ocr(image_path)
                 if results:
                     texts = []
                     for block in results:

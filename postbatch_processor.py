@@ -1008,17 +1008,23 @@ def process_single_file(
         
         # NOTE: logic below uses dest_path for DB insertion.
 
-        duration = time.time() - start_time
+        if not classification_enabled:
+            tags = []
+
+        # Check options first (passed via wrapper) or pipeline_conf
+        owner_id = pipeline_conf.get("owner_id")
+
         doc_id = db.insert_document(
-            filename=filename,
-            path=dest_path,
-            md5_hash=file_hash,
-            timestamp=datetime.datetime.fromtimestamp(start_time),
-            duration=duration,
-            status=status,
+            filename,
+            dest_path,
+            file_hash,
+            datetime.datetime.now(),
+            duration,
+            status,
             doc_type=doc_type,
             tags=tags,
             workflow_state=workflow_state,
+            owner_id=owner_id
         )
 
         # ------------------------------------------------------------------ #

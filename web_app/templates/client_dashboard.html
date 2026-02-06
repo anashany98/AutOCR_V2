@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Mi Portal - AutoOCR{% endblock %}
+
+{% block content %}
+<div class="row mb-5 animate-fade-in">
+    <div class="col-12 text-center text-md-start">
+        <h1 class="h3 fw-bold text-info"><i class="fas fa-user-circle me-2"></i>Hola, {{ current_user.username }}</h1>
+        <p class="text-muted">Bienvenido a tu Espacio de Cliente. Aquí puedes gestionar tus documentos y consultar a tu
+            asesor.</p>
+    </div>
+</div>
+
+<div class="row g-4 animate-slide-up">
+    <!-- Card 1: Mis Documentos -->
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 bg-dark border-secondary hover-shadow transition-all">
+            <div class="card-body text-center p-5">
+                <div class="mb-4">
+                    <i class="fas fa-folder-open fa-4x text-primary opacity-75"></i>
+                </div>
+                <h3 class="h4 fw-bold">Mis Documentos</h3>
+                <p class="text-muted">Consulta, descarga y organiza tus facturas y contratos.</p>
+                <div class="d-grid mt-4">
+                    <a href="{{ url_for('main.documents') }}" class="btn btn-outline-primary btn-lg">Acceder</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 2: Subir Facturas -->
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 bg-dark border-secondary hover-shadow transition-all">
+            <div class="card-body text-center p-5">
+                <div class="mb-4">
+                    <i class="fas fa-cloud-upload-alt fa-4x text-success opacity-75"></i>
+                </div>
+                <h3 class="h4 fw-bold">Subir Archivos</h3>
+                <p class="text-muted">Envíanos nuevas facturas o documentos para procesar.</p>
+                <div class="d-grid mt-4">
+                    <a href="{{ url_for('main.upload') }}" class="btn btn-outline-success btn-lg">Subir Ahora</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 3: Asesor Inteligente -->
+    <div class="col-md-12 col-lg-4">
+        <div class="card h-100 bg-gradient-dark border-info hover-shadow transition-all" style="border-width: 2px;">
+            <div class="card-body text-center p-5 position-relative overflow-hidden">
+                <div class="position-absolute top-0 start-0 w-100 h-100 bg-info opacity-10"
+                    style="pointer-events: none;"></div>
+                <div class="mb-4">
+                    <i class="fas fa-robot fa-4x text-info animate-pulse"></i>
+                </div>
+                <h3 class="h4 fw-bold text-white">Asesor de Compras</h3>
+                <p class="text-light opacity-75">Tu asistente personal 24/7. Pregunta sobre tus compras o pide
+                    recomendaciones.</p>
+                <div class="d-grid mt-4">
+                    <a href="{{ url_for('chat.api_chat_post') }}"
+                        onclick="event.preventDefault(); window.location.href='/chat'"
+                        class="btn btn-info btn-lg fw-bold text-dark">
+                        <i class="fas fa-comments me-2"></i>Hablar con Asesor
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-12">
+        <div class="card bg-dark border-secondary">
+            <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-history me-2"></i>Actividad Reciente</h5>
+                <small class="text-muted">Últimos 5 movimientos</small>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    <!-- Placeholder logic, logic needs to be passed from backend -->
+                    <div class="list-group-item bg-dark text-light border-secondary text-center py-4 text-muted">
+                        <i class="fas fa-info-circle me-2"></i> No tienes actividad reciente.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

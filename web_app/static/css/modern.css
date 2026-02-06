@@ -231,3 +231,61 @@ h3 {
     background-clip: text;
     -webkit-text-fill-color: transparent;
 }
+
+/* UI Refinement: Auth Layout */
+.auth-layout {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle at center, #1a1a1a 0%, #0d0d0d 100%) !important;
+    min-height: 100vh;
+}
+
+.auth-layout .sidebar {
+    display: none;
+}
+
+.auth-layout .main-content {
+    width: 100%;
+    max-width: 480px;
+    padding: 2rem;
+    box-shadow: none;
+    flex-grow: 0;
+}
+
+.auth-card {
+    border: 1px solid rgba(212, 175, 55, 0.3) !important;
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.5), 0 0 20px rgba(212, 175, 55, 0.1);
+    animation: authFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    background: rgba(30, 30, 30, 0.9) !important;
+}
+
+.auth-card .card-header {
+    background: linear-gradient(to bottom, rgba(212, 175, 55, 0.1), transparent);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+@keyframes authFadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.input-group-text {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: var(--primary-color) !important;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+}
+
+.form-control:focus {
+    box-shadow: 0 0 10px var(--primary-glow) !important;
+    border-color: var(--primary-color) !important;
+}

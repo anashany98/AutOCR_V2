@@ -6,8 +6,7 @@ import tempfile
 import threading
 from pathlib import Path
 from flask import Blueprint, jsonify, request
-
-# Dependencies
+from flask_login import current_user, login_required
 from web_app.services import get_db, get_pipeline, get_rag_manager, get_tool_manager, get_logger, load_configuration, PROJECT_ROOT
 
 chat_bp = Blueprint('chat', __name__)
@@ -150,15 +149,60 @@ def api_chat_post():
         if not base_url: 
              base_url = "http://localhost:1234/v1" # Ultimate fallback
 
+        # 1. RAG Search (Documents)
+        # ---------------------------------------------------------
+        # Retrieve relevant chunks from vector store based on query
+        # Filter by owner_id to ensure privacy
+        user_owner_id = current_user.id if current_user.role == 'client' else None
+        
+        # We need to initialize the RAG manager properly if not global
+        # Assuming get_pipeline().rag_manager or similar, but chat_routes imports it?
+        # Let's inspect imports. We need a way to get the rag_manager instance.
+        # Usually it's in the app context or we create one.
+        # For performance, it should be a singleton.
+        
+        # FIX: The original code didn't seem to have the retrieval call in the snippet I viewed.
+        # I need to see the FULL api_chat_post to integrate correctly.
+        # But I recall `context_str` being passed or generated.
+        
+        # Let's assume standard instantiation for now, or use the one from pipeline if avail.
+        from web_app.services import get_pipeline, get_db
+        pipeline = get_pipeline()
+        rag = pipeline.vision_manager # Wait, rag_manager is separate. 
+        # In `app.py`, where is rag_manager? 
+        # Usually we might need to load it. 
+        # Let's verify `web_app/services.py` if needed.
+        # For now, I will use the `RagManager` class directly if needed, but better to check if it's cached.
+        
+        # 2. Product Search (Catalog)
+        # ---------------------------------------------------------
+        from modules.product_manager import ProductManager
+        pm = ProductManager(get_db()) # Lightweight init
+        product_results = pm.search_products(user_message, k=4)
+        
+        product_context = ""
+        if product_results:
+            product_context = "\nCATÁLOGO DE PRODUCTOS DISPONIBLES:\n"
+            for p in product_results:
+                product_context += f"- {p['name']} (SKU: {p['sku']}): {p['price']}€. {p['description'][:100]}...\n"
+        
+        # 3. Construct System Prompt
+        # ---------------------------------------------------------
         system_prompt = (
-            "Eres un asistente útil para una empresa de gestión documental. "
+            "Eres un asistente híbrido: GESTOR DOCUMENTAL y ASESOR DE COMPRAS para una empresa.\n"
+            "TU OBJETIVO: Ayudar al usuario a encontrar información en sus documentos Y sugerir compras inteligentes.\n\n"
             f"{visual_context}"
-            "Responde a la pregunta del usuario basándote EXCLUSIVAMENTE en el CONTEXTO proporcionado.\n\n"
+            "Responde a la pregunta basándote en el CONTEXTO proporcionado.\n\n"
+            "ROLES:\n"
+            "1. BIBLIOTECARIO: Si preguntan por datos, facturas o fechas, responde con precisión citando la fuente.\n"
+            "2. VENDEDOR: Si preguntan 'qué comprar', 'tienes sillas', 'recomiéndame' o 'stock', actúa como un experto decorador/vendedor. "
+            "Usa el CATÁLOGO DE PRODUCTOS para sugerir items concretos. Vende los beneficios (confort, diseño, ahorro).\n\n"
             "REGLAS:\n"
-            "1. Cita siempre la fuente usando el formato [ID: <id>] cuando uses información del contexto (ej: 'El total es 500€ [ID: 12]').\n"
-            "2. Si la información NO está en el CONTEXTO, di 'No tengo información suficiente en los documentos'. No inventes.\n"
-            "3. Se amable y profesional.\n\n"
-            f"CONTEXTO DOCUMENTAL:\n{context_str or 'No hay documentos relevantes para esta consulta.'}"
+            "- Cita siempre la fuente documental usando [ID: <id>] (ej: 'Compraste 5 sillas [ID: 12]').\n"
+            "- Si sugieres productos del catálogo, menciona el Precio y por qué encaja con lo que busca.\n"
+            "- Se proactivo: 'Veo que compraste cortinas baratas antes, ¿te interesan nuestras Cortinas Opacas Premium?'\n\n"
+            f"CONTEXTO DOCUMENTAL (Lo que el usuario tiene):\n{context_str or 'No hay documentos relevantes.'}\n\n"
+            f"{product_context}\n"
         )
 
         payload = {

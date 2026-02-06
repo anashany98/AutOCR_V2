@@ -16,7 +16,7 @@
             <h1 class="h4 fw-bold mb-0">Revisión y Edición</h1>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <button class="btn btn-outline-danger" onclick="deleteDocument({{ document.id }})">
+            <button class="btn btn-outline-danger" id="btn-delete-doc" data-doc-id="{{ document.id }}">
                 <i class="fas fa-trash-alt"></i>
             </button>
             {% if document.workflow_state != 'verified' %}
@@ -262,9 +262,11 @@
                             <div class="row g-3 mt-2">
                                 <div class="col-md-6">
                                     <label class="form-label text-muted small fw-bold">Estado Procesamiento</label>
-                                    <select class="form-select bg-dark text-light border-secondary" name="status">
-                                        <option value="OK" {{ 'selected' if document.status=='OK' }}>OK</option>
-                                        <option value="FAILED" {{ 'selected' if document.status=='FAILED' }}>Fallido
+                                    <select class="form-select bg-dark text-light border-secondary" name="status"
+                                        id="status-select">
+                                        <option value="OK" {% if document.status=='OK' %}selected{% endif %}>OK</option>
+                                        <option value="FAILED" {% if document.status=='FAILED' %}selected{% endif %}>
+                                            Fallido
                                         </option>
                                     </select>
                                 </div>
@@ -395,6 +397,16 @@
             alert('Error de conexión');
         }
     }
+
+    // Bind delete button event
+    document.addEventListener('DOMContentLoaded', function () {
+        const delBtn = document.getElementById('btn-delete-doc');
+        if (delBtn) {
+            delBtn.addEventListener('click', function () {
+                deleteDocument(this.dataset.docId);
+            });
+        }
+    });
 
     async function verifyDocument(docId) {
         try {

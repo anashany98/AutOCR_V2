@@ -58,6 +58,37 @@ def get_ppstructure_v3_instance():
         if _pp_instance is not None:
             return _pp_instance
 
+        # --- PRE-FLIGHT SAFETY CHECK ---
+        # PaddleOCR 2.6+ on Windows acts unstable with some CUDA versions/DLLs.
+        # to prevent the MAIN process from hard-crashing (exit code 1), we test init in a disposable subprocess.
+        if _pp_instance is None: # Only check once
+            import subprocess
+            try:
+                # We interpret the result of a minimal python script
+                test_cmd = [
+                    sys.executable, "-c",
+                    "import os; os.environ['DISABLE_MODEL_SOURCE_CHECK']='True'; "
+                    "os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK']='True'; "
+                    "import paddle; paddle.set_device('gpu' if paddle.is_compiled_with_cuda() else 'cpu'); "
+                    "from paddleocr import PPStructureV3; "
+                    "PPStructureV3(show_log=False); print('OK')"
+                ]
+                logger.info("🛡️ Running PaddleOCR safety pre-flight check...")
+                result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=30)
+                
+                if result.returncode != 0:
+                    logger.error(f"⚠️ PaddleOCR Safety Check FAILED with code {result.returncode}. Disabling Paddle to prevent crash.")
+                    logger.error(f"Stderr: {result.stderr}")
+                    _pp_instance = False # Marker for "Failed, do not retry"
+                    return None
+                    
+                logger.info("✅ PaddleOCR Safety Check PASSED.")
+
+            except Exception as e:
+                logger.error(f"⚠️ PaddleOCR Safety Check Error: {e}")
+                _pp_instance = False
+                return None
+
         try:
             # Explicit import of required backend
             import paddle
@@ -71,6 +102,8 @@ def get_ppstructure_v3_instance():
             
             # Set environment flags for cleaner execution
             os.environ.setdefault("PADDLEOCR_DISABLE_VLM", "1")
+            os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True") 
+            os.environ.setdefault("DISABLE_MODEL_SOURCE_CHECK", "True")
             
             # Explicit GPU selection as requested
             try:
@@ -91,7 +124,7 @@ def get_ppstructure_v3_instance():
             print("--- PADDLE SINGLETON SPLASH TRACEBACK ---")
             traceback.print_exc()
             print("-----------------------------------------")
-            _pp_instance = None
+            _pp_instance = None # Retryable? Maybe not.
         except Exception as e:
             logger.error("Runtime error during PPStructureV3 initialization: {}", e)
             print("--- PADDLE SINGLETON RUNTIME TRACEBACK ---")
@@ -99,6 +132,6 @@ def get_ppstructure_v3_instance():
             print("------------------------------------------")
             _pp_instance = None
 
-    return _pp_instance
+    return _pp_instance if _pp_instance is not False else None
 
 __all__ = ["get_ppstructure_v3_instance"]
