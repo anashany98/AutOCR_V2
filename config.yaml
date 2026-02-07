@@ -78,11 +78,14 @@ postbatch:
     - .jpg
     - .jpeg
     - .png
+  languages:
+  - es
 app:
   db_path: data/digitalizerai.db
   use_sql_server: false
   sql_server_dsn: Driver={SQL Server};Server=localhost;Database=DigitalizerAI;Trusted_Connection=yes;
   log_level: INFO
+  gpu_enabled: true
 features:
   enable_folders: false
   enable_versioning: false
@@ -105,34 +108,31 @@ ocr_pipeline:
     langs:
     - spa
     - eng
+  - name: paddlevl
+    enabled: true
+    use_gpu: true
+    model_id: PaddlePaddle/PaddleOCR-VL-1.5
   fusion:
     strategy: levenshtein
     min_confidence: 0.7
     min_similarity: 0.82
-    priority:
-    - paddleocr
-    - easyocr
-    
-  poppler_path: "/usr/bin"
-  
+    priority: []
+  poppler_path: /usr/bin
+  primary_engine: paddlevl
 llm:
   enabled: true
-  provider: "lm_studio"  # Configurado para LM Studio
-  base_url: "http://host.docker.internal:1234/v1"
-  model: "llama-3.2-1b-instruct"
-  timeout: 60
-
+  provider: ollama
+  base_url: http://localhost:11434/v1
+  model: moondream
+  timeout: 90
   routing:
-    enabled: false
-    # Model for general conversation
+    enabled: true
     general_chat:
-      base_url: "http://host.docker.internal:1234/v1"
-      model: "mistral-small-24b"
-    # Model for document analysis (RAG)
+      base_url: http://localhost:11434/v1
+      model: llama3.2
     document_chat:
-      base_url: "http://host.docker.internal:1234/v1"
-      model: "llama-3.1-70b"
-
+      base_url: http://localhost:11434/v1
+      model: llama3.2
   vision:
     enabled: true
     index_path: data/vision_index.faiss
@@ -275,15 +275,15 @@ llm:
     - markdown
     - json
     save_markdown_in_db: true
-  primary_engine: auto
+  primary_engine: paddlevl
 database:
-  engine: sqlite  # Cambiado de postgresql a sqlite
+  engine: sqlite
   sqlite:
     path: data/digitalizerai.db
   postgresql:
-    host: localhost  # Cambiar por tu host (ej: 127.0.0.1 o IP del servidor)
+    host: localhost
     port: 5432
-    user: postgres   # Cambiar por tu usuario de postgres
-    password: 123 # Cambiar por tu contraseña
-    dbname: autocr   # Cambiar por el nombre de tu base de datos
+    user: postgres
+    password: 123
+    dbname: autocr
     use_pgvector: false

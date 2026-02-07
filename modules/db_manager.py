@@ -300,17 +300,29 @@ class DBManager:
         if self.engine_type == "sqlite":
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS ocr_texts (
+                CREATE TABLE IF NOT EXISTS items (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    id_doc INTEGER NOT NULL,
-                    text TEXT,
-                    markdown_text TEXT,
-                    language TEXT,
-                    confidence REAL,
-                    blocks_json TEXT,
-                    tables_json TEXT,
+                    id_doc INTEGER,
+                    name TEXT,
+                    normalized_name TEXT,
+                    quantity REAL,
+                    unit TEXT,
+                    price_unit REAL,
+                    total REAL,
                     FOREIGN KEY(id_doc) REFERENCES documents(id)
-                )
+                );
+                
+                -- Phase II: Design History
+                CREATE TABLE IF NOT EXISTS design_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    image_path TEXT,
+                    mode TEXT,
+                    style TEXT,
+                    results_json TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                );
                 """
             )
         else:

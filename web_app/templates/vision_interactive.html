@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Segmentación Interactiva - AutOCR{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="row mb-4 animate-fade-in">
+        <div class="col-12">
+            <h2 class="fw-bold"><i class="fas fa-hand-pointer me-2 text-info"></i>Segmentación Interactiva</h2>
+            <p class="text-muted">Haz clic en un objeto de la imagen para extraerlo automáticamente.</p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Interaction Image -->
+        <div class="col-md-7">
+            <div class="card border-0 bg-dark bg-opacity-25">
+                <div class="card-body p-0 position-relative">
+                    <img id="sourceImage" src="{{ url_for('static', filename=image_url) }}"
+                        class="img-fluid rounded w-100 cursor-crosshair" onclick="segmentAtPoint(event)">
+                    <div id="loadingOverlay"
+                        class="position-absolute top-50 start-50 translate-middle d-none text-center">
+                        <div class="spinner-border text-info" role="status"></div>
+                        <div class="text-info mt-2 fw-bold">Analizando...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Column -->
+        <div class="col-md-5">
+            <div class="card border-0 bg-dark bg-opacity-25 h-100">
+                <div class="card-header bg-transparent border-0 pt-4 px-4">
+                    <h5 class="mb-0 fw-bold">Elemento Extraído</h5>
+                </div>
+                <div id="resultArea" class="card-body p-4 text-center">
+                    <div class="opacity-25 py-5">
+                        <i class="fas fa-mouse-pointer fa-4x mb-3"></i>
+                        <p>Haz clic en la imagen de la izquierda para comenzar.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .cursor-crosshair {
+        cursor: crosshair;
+    }
+
+    #sourceImage {
+        transition: opacity 0.3s;
+    }
+
+    .loading #sourceImage {
+        opacity: 0.5;
+        pointer-events: none;
+    }
+</style>
+
+<script>
+    async function segmentAtPoint(event) {
+        const img = document.getElementById('sourceImage');
+        const rect = img.getBoundingClientRect();
+
+        // Calculate relative coordinates
+        const x = ((event.clientX - rect.left) / rect.width) * 100;
+        const y = ((event.clientY - rect.top) / rect.height) * 100;
+
+        const overlay = document.getElementById('loadingOverlay');
+        const container = document.querySelector('.card-body.position-relative');
+
+        overlay.classList.remove('d-none');
+        container.classList.add('loading');
+
+        try {
+            const formData = new FormData();
+            formData.append('x', x);
+            formData.append('y', y);
+            formData.append('image_url', "{{ image_url }}");
+
+            const response = await fetch('/vision/segment/click', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const resultArea = document.getElementById('resultArea');
+                resultArea.innerHTML = `
+                    <div class="animate-fade-in">
+                        <img src="/static/${data.segment_url}" class="img-fluid rounded shadow-lg mb-4 bg-checkboard">
+                        <div class="alert alert-success bg-opacity-10 border-success text-success small">
+                            <i class="fas fa-check-circle me-1"></i> Objeto extraído con SAM.
+                        </div>
+                        <a href="/static/${data.segment_url}" download class="btn btn-outline-info btn-sm rounded-pill px-4">
+                            <i class="fas fa-download me-1"></i> Descargar PNG
+                        </a>
+                    </div>
+                `;
+            } else {
+                alert("Error: " + data.error);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error de conexión server.");
+        } finally {
+            overlay.classList.add('d-none');
+            container.classList.remove('loading');
+        }
+    }
+</script>
+
+<style>
+    .bg-checkboard {
+        background-image: linear-gradient(45deg, #111 25%, transparent 25%),
+            linear-gradient(-45deg, #111 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #111 75%),
+            linear-gradient(-45deg, transparent 75%, #111 75%);
+        background-size: 20px 20px;
+        background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        background-color: #222;
+    }
+</style>
+{% endblock %}

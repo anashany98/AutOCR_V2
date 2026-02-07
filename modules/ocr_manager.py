@@ -22,7 +22,7 @@ import cv2
 
 from .lang_map import map_code, map_codes
 from .paddle_models import ensure_ppocrv4_models
-from .engines import SuryaOCREngine, OCREngine
+from .engines import SuryaOCREngine, OCREngine, PaddleVLOCHEngine
 from .image_utils import detect_handwriting_probability, enhance_image, deskew_image, denoise_image
 from .paddle_singleton import get_ppstructure_v3_instance
 
@@ -243,11 +243,10 @@ class OCRManager:
         self._initialise_easy()
         self._initialise_extra_engines()
 
-        if not self._paddle_ocr and not self._easy_reader:
-            self.logger.error("OCR initialization failed: PaddleOCR is %s, EasyOCR is %s", 
-                               type(self._paddle_ocr), type(self._easy_reader))
+        if not self._paddle_ocr and not self._easy_reader and not self.extra_engines:
+            self.logger.error("OCR initialization failed: No engines available.")
             raise RuntimeError(
-                "Neither PaddleOCR nor EasyOCR is available. Install at least one OCR backend."
+                "Neither PaddleOCR, EasyOCR nor extra engines are available. Install at least one OCR backend."
             )
 
     # ------------------------------------------------------------------ #
@@ -292,6 +291,19 @@ class OCRManager:
         aggregated_text = "\n".join(part for part in page_texts if part).strip()
         aggregated_conf = float(np.mean(confidences)) if confidences else 0.0
         
+        # --- Visual Validation Layer (VLM) ---
+        # Trigger if confidence is below threshold and PaddleVL is available
+        vlm_engine = self.extra_engines.get("paddlevl")
+        if vlm_engine and aggregated_conf < 0.8 and images:
+            self.logger.info(f"🔍 Low confidence ({aggregated_conf:.2f}), triggering VLM validation...")
+            # Validate first page as a representative sample
+            validation = vlm_engine.visual_validate(images[0], aggregated_text)
+            if validation.get("success"):
+                self.logger.info(f"✅ VLM Validation: is_valid={validation.get('is_valid')}, score={validation.get('score')}")
+                if validation.get("feedback"):
+                    self.logger.info(f"📝 VLM Feedback: {validation.get('feedback')}")
+        # -------------------------------------
+
         # Aggregate handwriting probability (max score across pages)
         is_handwritten = max(is_handwritten_scores) > 0.5 if is_handwritten_scores else False
         
@@ -369,6 +381,9 @@ class OCRManager:
         if engine_to_use == "surya" and "surya" in self.extra_engines:
              return self.extra_engines["surya"].extract_text(image)
 
+        if engine_to_use == "paddlevl" and "paddlevl" in self.extra_engines:
+             return self.extra_engines["paddlevl"].extract_text(image)
+
         if engine_to_use == "paddleocr" and self._paddle_ocr:
             text, conf = self._run_paddle(image)
             if text:
@@ -377,6 +392,8 @@ class OCRManager:
             return self._run_easy(image)
             
         # Fallbacks if selected engine failed or wasn't available
+        if "paddlevl" in self.extra_engines:
+            return self.extra_engines["paddlevl"].extract_text(image)
         if self._paddle_ocr:
             return self._run_paddle(image)
         if self._easy_reader:
@@ -504,6 +521,17 @@ class OCRManager:
                     self.logger.info(" Surya OCR Engine initialized.")
             except Exception as e:
                 self.logger.error(f"Failed to initialize Surya OCR: {e}")
+
+        # PaddleOCR-VL-1.5 (Transformers based)
+        paddlevl_conf = self.engine_configs.get("paddlevl", {})
+        if paddlevl_conf.get("enabled", False):
+            try:
+                pvl = PaddleVLOCHEngine(paddlevl_conf, logger=self.logger)
+                if pvl.initialize():
+                    self.extra_engines["paddlevl"] = pvl
+                    self.logger.info(" PaddleOCR-VL Engine initialized.")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize PaddleOCR-VL: {e}")
 
     def _prepare_paddle_models(self, paddle_conf: Dict[str, Any]) -> None:
         if not self._paddle_enabled:

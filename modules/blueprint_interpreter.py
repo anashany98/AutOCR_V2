@@ -100,6 +100,34 @@ class BlueprintInterpreter:
 
         return metadata
 
+    def export_to_json(self, metadata: Dict[str, Any], output_path: str):
+        """Exports analysis results to JSON for CAD/Revit import."""
+        try:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=4, ensure_ascii=False)
+            logger.info(f"Metadata exported to JSON: {output_path}")
+        except Exception as e:
+            logger.error(f"Failed to export JSON: {e}")
+
+    def export_to_csv(self, metadata: Dict[str, Any], output_path: str):
+        """Exports rooms and scales to CSV."""
+        try:
+            with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Key", "Value", "Type"])
+                writer.writerow(["Scale", metadata.get("scale", "Unknown"), "General"])
+                for room in metadata.get("rooms", []):
+                    writer.writerow(["Room", room, "Element"])
+                # The original snippet included 'dimensions' which is not part of the current metadata structure.
+                # Assuming 'areas' might be intended if dimensions are not present.
+                # If 'dimensions' is a future feature, it would need to be added to the metadata dict.
+                # For now, I'll omit the 'dimensions' part as it would cause an error.
+                # for dim in metadata.get("dimensions", []):
+                #     writer.writerow(["Dimension", f"{dim.get('value')} {dim.get('unit')}", "Technical"])
+            logger.info(f"Metadata exported to CSV: {output_path}")
+        except Exception as e:
+            logger.error(f"Failed to export CSV: {e}")
+
     def _extract_scale(self, text: str) -> Optional[str]:
         """Finds the most likely scale."""
         for pattern in self.SCALE_PATTERNS:

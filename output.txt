@@ -1,0 +1,72 @@
+C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\cuda\__init__.py:374: UserWarning: Found GPU0 NVIDIA GeForce RTX 5070 Laptop GPU which is of compute capability (CC) 12.0.
+The following list shows the CCs this version of PyTorch was built for and the hardware CCs it supports:
+- 5.0 which supports hardware CC >=5.0,<6.0 except {5.3}
+- 6.0 which supports hardware CC >=6.0,<7.0 except {6.2}
+- 6.1 which supports hardware CC >=6.1,<7.0 except {6.2}
+- 7.0 which supports hardware CC >=7.0,<8.0 except {7.2}
+- 7.5 which supports hardware CC >=7.5,<8.0
+- 8.0 which supports hardware CC >=8.0,<9.0 except {8.7}
+- 8.6 which supports hardware CC >=8.6,<9.0 except {8.7}
+- 9.0 which supports hardware CC >=9.0,<10.0
+Please follow the instructions at https://pytorch.org/get-started/locally/ to install a PyTorch release that supports one of these CUDA versions: 12.8, 13.0
+  _warn_unsupported_code(d, device_cc, code_ccs)
+C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\cuda\__init__.py:492: UserWarning: 
+NVIDIA GeForce RTX 5070 Laptop GPU with CUDA capability sm_120 is not compatible with the current PyTorch installation.
+The current PyTorch install supports CUDA capabilities sm_50 sm_60 sm_61 sm_70 sm_75 sm_80 sm_86 sm_90.
+If you want to use the NVIDIA GeForce RTX 5070 Laptop GPU GPU with PyTorch, please check the instructions at https://pytorch.org/get-started/locally/
+
+  queued_call()
+Unrecognized keys in `rope_scaling` for 'rope_type'='default': {'mrope_section'}
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.48, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+Unrecognized keys in `rope_scaling` for 'rope_type'='default': {'mrope_section'}
+Testing PaddlePaddle/PaddleOCR-VL-1.5...
+CUDA detected: NVIDIA GeForce RTX 5070 Laptop GPU
+Loading tokenizer...
+Loading model...
+Model loaded successfully.
+Running inference...
+Error: CUDA error: no kernel image is available for execution on the device
+Search for `cudaErrorNoKernelImageForDevice' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+
+[WARN] CUDA COMPATIBILITY ISSUE DETECTED
+Your RTX 5070 (Blackwell) requires CUDA 12.8+, but installed PyTorch uses older kernels.
+Falling back to CPU for development/testing...
+CUDA detected (fallback): cpu
+Model loaded on CPU successfully.
+Running inference on CPU...
+Traceback (most recent call last):
+  File "C:\Users\PC\Desktop\AutoOCR\test_vl_model.py", line 47, in test_paddlevl
+    output = model.generate(
+             ^^^^^^^^^^^^^^^
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\utils\_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\transformers\generation\utils.py", line 2033, in generate
+    self._prepare_special_tokens(generation_config, kwargs_has_attention_mask, device=device)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\transformers\generation\utils.py", line 1882, in _prepare_special_tokens
+    and isin_mps_friendly(elements=eos_token_tensor, test_elements=pad_token_tensor).any()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\transformers\pytorch_utils.py", line 343, in isin_mps_friendly
+    return torch.isin(elements, test_elements)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.AcceleratorError: CUDA error: no kernel image is available for execution on the device
+Search for `cudaErrorNoKernelImageForDevice' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\PC\Desktop\AutoOCR\test_vl_model.py", line 90, in <module>
+    success = test_paddlevl()
+              ^^^^^^^^^^^^^^^
+  File "C:\Users\PC\Desktop\AutoOCR\test_vl_model.py", line 76, in test_paddlevl
+    image = Image.open(image_path).convert("RGB")
+                       ^^^^^^^^^^
+NameError: name 'image_path' is not defined

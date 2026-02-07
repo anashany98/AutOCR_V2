@@ -16,10 +16,11 @@ class LLMClient:
         self.config = config or {}
         self.enabled = self.config.get("enabled", False)
         
-        self.base_url = self.config.get("base_url", "http://localhost:1234/v1")
-        self.api_key = self.config.get("api_key", "lm-studio") # Default for local
-        self.model = self.config.get("model", "local-model")
-        self.timeout = self.config.get("timeout", 60)
+        self.base_url = self.config.get("base_url", "http://localhost:11434/v1")
+        self.api_key = self.config.get("api_key", "ollama") 
+        self.model = self.config.get("model", "moondream")
+        self.provider = self.config.get("provider", "ollama").lower()
+        self.timeout = self.config.get("timeout", 90)
         
         self._client = None
         if self.enabled:
@@ -52,13 +53,14 @@ class LLMClient:
         system_prompt = (
             "Eres un asistente administrativo experto en análisis documental. "
             "Tu tarea es extraer información clave, corregir errores de OCR obvios y resumir el contenido.\n"
-            "Devuelve la respuesta en formato JSON puro."
+            "IMPORTANTE: Devuelve la respuesta ÚNICAMENTE en formato JSON válido. No incluyas explicaciones externas."
         )
 
         user_prompt = (
-            f"Analiza el siguiente documento clasificado como '{doc_type}'.\n"
-            f"Contexto de revisión: {reason}\n\n"
-            f"--- TEXTO OCR ---\n{text[:4000]}...\n-----------------" # Truncate to avoid context limit
+            f"Analiza el siguiente documento ({doc_type}).\n"
+            f"Contexto: {reason}\n\n"
+            f"--- TEXTO OCR ---\n{text[:4000]}\n-----------------\n"
+            "Extrae: proveedor, fecha, base_imponible, iva, total."
         )
 
         try:

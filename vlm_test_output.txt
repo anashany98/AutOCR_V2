@@ -1,0 +1,51 @@
+INFO:TestVLM:Loading PaddleOCR-VL-1.5 (PaddlePaddle/PaddleOCR-VL-1.5) on cuda...
+Unrecognized keys in `rope_scaling` for 'rope_type'='default': {'mrope_section'}
+C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\cuda\__init__.py:374: UserWarning: Found GPU0 NVIDIA GeForce RTX 5070 Laptop GPU which is of compute capability (CC) 12.0.
+The following list shows the CCs this version of PyTorch was built for and the hardware CCs it supports:
+- 5.0 which supports hardware CC >=5.0,<6.0 except {5.3}
+- 6.0 which supports hardware CC >=6.0,<7.0 except {6.2}
+- 6.1 which supports hardware CC >=6.1,<7.0 except {6.2}
+- 7.0 which supports hardware CC >=7.0,<8.0 except {7.2}
+- 7.5 which supports hardware CC >=7.5,<8.0
+- 8.0 which supports hardware CC >=8.0,<9.0 except {8.7}
+- 8.6 which supports hardware CC >=8.6,<9.0 except {8.7}
+- 9.0 which supports hardware CC >=9.0,<10.0
+Please follow the instructions at https://pytorch.org/get-started/locally/ to install a PyTorch release that supports one of these CUDA versions: 12.8, 13.0
+  _warn_unsupported_code(d, device_cc, code_ccs)
+C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\cuda\__init__.py:492: UserWarning: 
+NVIDIA GeForce RTX 5070 Laptop GPU with CUDA capability sm_120 is not compatible with the current PyTorch installation.
+The current PyTorch install supports CUDA capabilities sm_50 sm_60 sm_61 sm_70 sm_75 sm_80 sm_86 sm_90.
+If you want to use the NVIDIA GeForce RTX 5070 Laptop GPU GPU with PyTorch, please check the instructions at https://pytorch.org/get-started/locally/
+
+  queued_call()
+INFO:accelerate.utils.modeling:We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
+WARNING:TestVLM:CUDA initialization failed (CUDA error: no kernel image is available for execution on the device
+Search for `cudaErrorNoKernelImageForDevice' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+). Falling back to CPU.
+Unrecognized keys in `rope_scaling` for 'rope_type'='default': {'mrope_section'}
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.48, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+INFO:TestVLM:PaddleOCR-VL-1.5 loaded successfully.
+C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\transformers\generation\configuration_utils.py:628: UserWarning: `do_sample` is set to `False`. However, `temperature` is set to `0.0` -- this flag is only used in sample-based generation modes. You should set `do_sample=True` or unset `temperature`.
+  warnings.warn(
+--- Testing VLM Visual Validation ---
+
+[Scenario 1] Validating INCORRECT text...
+Match: False
+Score: 0.5
+Feedback: Could not parse JSON response
+Raw: User: 
+Validate if this OCR text accurately represents the image content: "This is a test of a completely different text that is not in the image.".
+Provide feedback on discrepancies. Return ONLY a JSON object: {"is_valid": boolean, "confidence_score": float, "discrepancies": string|null}
+Assistant: 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1
+
+[Scenario 2] Validating CORRECT (empty/placeholder) text...
+Match: False
+Score: 0.5
+Feedback: Could not parse JSON response
+Raw: User: 
+Validate if this OCR text accurately represents the image content: "ocr".
+Provide feedback on discrepancies. Return ONLY a JSON object: {"is_valid": boolean, "confidence_score": float, "discrepancies": string|null}
+Assistant: 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1

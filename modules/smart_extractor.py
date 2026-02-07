@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 from pathlib import Path
 from .vendor_matcher import VendorMatcher
+from .schemas import get_schema_for_type
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,36 @@ class FieldExtractor:
         vendor_result = self._extract_vendor(text, blocks)
         if vendor_result:
             fields['vendor'] = vendor_result
+            
+        # --- Pydantic Validation & Enrichment ---
+        doc_type = fields.get('type', {}).get('value', 'Invoice') # Fallback to Invoice
+        schema_class = get_schema_for_type(doc_type)
+        
+        try:
+            # Prepare data for schema
+            data_to_validate = {
+                "doc_type": doc_type,
+                "vendor_name": fields.get('vendor', {}).get('value', 'Unknown'),
+                "total_amount": float(fields.get('total', {}).get('value', 0.0)),
+                "date": fields.get('date', {}).get('value'),
+                "vlm_validated": fields.get('vlm_validated', False)
+            }
+            
+            # Add invoice specific fields if applicable
+            if hasattr(schema_class, 'base_amount'):
+                 data_to_validate.update({
+                     "base_amount": float(fields.get('base_amount', {}).get('value', 0.0)),
+                     "vat_amount": float(fields.get('vat_amount', {}).get('value', 0.0)),
+                 })
+
+            validated_data = schema_class(**data_to_validate)
+            fields['validated_data'] = validated_data.dict()
+            fields['validation_status'] = "valid"
+            
+        except Exception as e:
+            logger.warning(f"Pydantic validation failed: {e}")
+            fields['validation_status'] = "invalid"
+            fields['validation_error'] = str(e)
             
         return fields
     

@@ -20,6 +20,8 @@ from collections import Counter
 import numpy as np
 from PIL import Image
 
+from .engines.florence_wrapper import FlorenceOCREngine
+
 # Imports moved to methods/lazy to avoid DLL conflicts with PaddleOCR
 faiss = None
 torch = None
@@ -73,6 +75,7 @@ class VisionManager:
         self._device = "cpu"
         self._index = None
         self._metadata: List[dict] = []
+        self._florence_engine: Optional[FlorenceOCREngine] = None
         self._load_runtime()
 
     # ------------------------------------------------------------------ #
@@ -151,6 +154,67 @@ class VisionManager:
         except Exception as e:
             self.logger.error(f"Classification failed: {e}")
             return []
+
+    def detect_design_elements(self, image_path: str) -> Dict[str, Any]:
+        """
+        Sophisticated analysis for furniture and materials using Florence-2.
+        """
+        if self._florence_engine is None:
+            self._florence_engine = FlorenceOCREngine()
+        
+        try:
+            return self._florence_engine.detect_furniture_and_materials(image_path)
+        except Exception as e:
+            self.logger.error(f"Florence analysis failed: {e}")
+            return {"error": str(e)}
+
+    def find_similar_products(self, image_path: str, bbox: List[int], product_manager) -> List[Dict[str, Any]]:
+        """
+        Extrais an object from the image using the bbox, encodes it with CLIP,
+        and finds similar products in the database.
+        """
+        try:
+            with Image.open(image_path) as img:
+                # Crop the image to the object of interest
+                # Florence-2 bbox: [x1, y1, x2, y2]
+                obj_img = img.crop(bbox)
+                
+                # Get CLIP embedding
+                emb = self.embed_image_pil(obj_img)
+                
+                if product_manager:
+                    return product_manager.search_by_embedding(emb)
+                return []
+        except Exception as e:
+            self.logger.error(f"Failed to find similar products: {e}")
+            return []
+
+    def search_technical_docs(self, item_name: str, rag_manager) -> List[Dict[str, Any]]:
+        """
+        Uses RAG to find technical manuals or data sheets for a detected item.
+        """
+        if not rag_manager or not item_name:
+            return []
+        
+        try:
+            query = f"manual de mantenimiento ficha tecnica {item_name}"
+            # Use search method of RAGManager (semantic search)
+            results = rag_manager.search(query, k=3)
+            return results
+        except Exception as e:
+            self.logger.error(f"Technical RAG search failed: {e}")
+            return []
+
+    def embed_image_pil(self, pil_img: Image.Image) -> np.ndarray:
+        """Helper to embed a PIL image directly."""
+        if not self._model:
+            self.load_model()
+        
+        with torch.no_grad():
+            img_tensor = self._preprocess(pil_img).unsqueeze(0).to(self._device)
+            features = self._model.encode_image(img_tensor)
+            features /= features.norm(dim=-1, keepdim=True)
+            return features.cpu().numpy()[0]
 
     def analyze_colors(self, image_path: str, num_colors: int = 5) -> list:
         """Extract dominant colors from an image."""

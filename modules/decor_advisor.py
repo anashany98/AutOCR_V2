@@ -36,3 +36,28 @@ class DecorAdvisor:
             advice.append("🎨 Tip: Introduce elementos de madera para dar calidez al color.")
         
         return list(set(advice)) # Deduplicate
+
+    def generate_ai_advice(self, caption: str, objects: List[str], llm_client) -> str:
+        """
+        Uses LLM to provide professional decor advice based on visual analysis.
+        """
+        if not llm_client:
+            return "El asesor inteligente está desactivado por el momento."
+
+        prompt = (
+            f"Como experto en diseño de interiores y arquitectura, analiza estos datos visuales y da 3 consejos cortos y profesionales.\n"
+            f"ESCENA: {caption}\n"
+            f"OBJETOS DETECTADOS: {', '.join(objects)}\n"
+            f"Responde en español de forma inspiracional y técnica."
+        )
+
+        try:
+            # We use analyze_document generic method as a base for custom prompts if supported
+            # or add a specific chat-like method. Let's use custom prompt logic.
+            result = llm_client.analyze_document(text=prompt, doc_type="Diseño de Interiores", reason="Asesoría Estética")
+            # Usually analyze_document returns JSON, we might want just text for advice
+            if isinstance(result, dict) and "analysis" in result:
+                return result["analysis"]
+            return str(result)
+        except Exception as e:
+            return f"Error al generar asesoría: {e}"

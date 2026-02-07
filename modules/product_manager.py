@@ -108,3 +108,43 @@ class ProductManager:
         # Sort by score descending
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:k]
+
+    def search_by_embedding(self, query_vec: np.ndarray, k: int = 5) -> List[Dict[str, Any]]:
+        """Search products using a pre-calculated embedding vector."""
+        results = []
+        with self.db.get_connection() as conn:
+            cursor = self.db.get_cursor(conn)
+            cursor.execute("SELECT id, sku, name, description, price, stock, image_url, embedding FROM products")
+            rows = cursor.fetchall()
+            
+            for row in rows:
+                p_id = row[0] if isinstance(row, (list, tuple)) else row['id']
+                emb_json = row[7] if isinstance(row, (list, tuple)) else row['embedding']
+                
+                if not emb_json:
+                    continue
+                    
+                prod_vec = np.array(json.loads(emb_json))
+                
+                # Cosine similarity
+                norm_q = np.linalg.norm(query_vec)
+                norm_p = np.linalg.norm(prod_vec)
+                if norm_q == 0 or norm_p == 0:
+                    score = 0
+                else:
+                    score = np.dot(query_vec, prod_vec) / (norm_q * norm_p)
+                
+                if score > 0.3:
+                    results.append({
+                        "id": p_id,
+                        "sku": row[1] if isinstance(row, (list, tuple)) else row['sku'],
+                        "name": row[2] if isinstance(row, (list, tuple)) else row['name'],
+                        "description": row[3] if isinstance(row, (list, tuple)) else row['description'],
+                        "price": row[4] if isinstance(row, (list, tuple)) else row['price'],
+                        "stock": row[5] if isinstance(row, (list, tuple)) else row['stock'],
+                        "image_url": row[6] if isinstance(row, (list, tuple)) else row['image_url'],
+                        "score": float(score)
+                    })
+        
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:k]

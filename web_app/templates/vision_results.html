@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}Resultados - Vision Studio{% endblock %}
+
+{% block scripts %}
+<script>
+    async function generateReport() {
+        const btn = event.currentTarget;
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Generando...';
+
+        const data = {
+            "title": "Informe de Diseño de Interiores - AutOCR",
+            "original_image": "{{ image_url }}",
+            "render_image": "{{ results.render_url if results.render_url else '' }}",
+            "furniture": {{ results.objects | tojson if results.objects else '[]'
+    }},
+    "advice": "{{ results.ai_advice | safe | replace('"', '\\"') if results.ai_advice else '' }}",
+        "colors": { { results.colors | tojson if results.colors else '[]' } }
+        };
+
+    try {
+        const response = await fetch('/vision/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (result.success) {
+            window.open(result.report_url, '_blank');
+        } else {
+            alert("Error: " + result.error);
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión con el servidor.");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+    }
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="row mb-4 animate-fade-in">
+        <div class="col-md-6">
+            <h2 class="fw-bold"><i class="fas fa-magic me-2 text-primary"></i>Análisis de IA Completado</h2>
+        </div>
+        <div class="col-md-6 text-end">
+            <button class="btn btn-outline-primary rounded-pill px-4" onclick="generateReport()">
+                <i class="fas fa-file-pdf me-1"></i> Generar Informe PDF
+            </button>
+            <a href="{{ url_for('main.vision_studio') }}" class="btn btn-outline-light rounded-pill px-4">
+                <i class="fas fa-arrow-left me-1"></i> Volver a Studio
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Original Image -->
+        <div class="col-md-6">
+            <div class="card border-0 bg-dark bg-opacity-25 h-100">
+                <div class="card-header bg-transparent border-0 pt-4 px-4">
+                    <h5 class="mb-0 fw-bold">Imagen Original</h5>
+                </div>
+                <div class="card-body p-4 text-center">
+                    <img src="{{ url_for('static', filename=image_url) }}" class="img-fluid rounded shadow-lg"
+                        style="max-height: 500px;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Column -->
+        <div class="col-md-6">
+            {% if mode == 'furniture' %}
+            <div class="card border-0 bg-dark bg-opacity-25 h-100">
+                <div class="card-header bg-transparent border-0 pt-4 px-4">
+                    <h5 class="mb-0 fw-bold">Detección de Mobiliario (Florence-2)</h5>
+                </div>
+                <div class="card-body p-4">
+                    <h6 class="text-info fw-bold mb-3">Descripción Detallada:</h6>
+                    <p class="text-light opacity-75">{{ results.description }}</p>
+
+                    <h6 class="text-info fw-bold mt-4 mb-3">Objetos Detectados:</h6>
+                    <div class="d-flex flex-wrap gap-2 mb-4">
+                        {% for obj in results.objects %}
+                        <span
+                            class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-2 rounded-pill">
+                            <i class="fas fa-tag me-1 small"></i> {{ obj }}
+                        </span>
+                        {% endfor %}
+                    </div>
+
+                    {% if results.ai_advice %}
+                    <div class="alert alert-primary bg-opacity-10 border-primary border-opacity-25 mt-4">
+                        <h6 class="fw-bold"><i class="fas fa-lightbulb me-2"></i>Asesoría Inteligente (Llama 3.2)</h6>
+                        <div class="small opacity-75">{{ results.ai_advice | safe }}</div>
+                    </div>
+                    {% endif %}
+
+                    {% if results.similar_products %}
+                    <h6 class="text-info fw-bold mt-4 mb-3">Productos Similares en Catálogo:</h6>
+                    <div class="row g-2">
+                        {% for item in results.similar_products %}
+                        <div class="col-6">
+                            <div class="card bg-dark border-0 shadow-sm p-2 h-100">
+                                <div class="d-flex align-items-center">
+                                    <div class="flex-grow-1 min-width-0">
+                                        <div class="text-truncate fw-bold small">{{ item.name }}</div>
+                                        <div class="text-primary small">{{ item.price }}€</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {% if results.technical_docs %}
+                    <h6 class="text-warning fw-bold mt-4 mb-3"><i class="fas fa-book-open me-2"></i>Documentación
+                        Técnica Relacionada:</h6>
+                    <div class="list-group list-group-flush bg-dark bg-opacity-25 rounded">
+                        {% for doc in results.technical_docs %}
+                        <div class="list-group-item bg-transparent text-white border-secondary border-opacity-25 py-3">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1 text-info small fw-bold">{{ doc.filename }}</h6>
+                                <small class="text-muted">{{ (doc.score * 100) | round(1) }}% match</small>
+                            </div>
+                            <p class="mb-1 small opacity-75">{{ doc.text[:150] }}...</p>
+                            <button class="btn btn-link btn-sm text-info p-0 mt-1"
+                                onclick="alert('Funcionalidad RAG: Abriendo fragmento relevante')">
+                                Ver fragmento original
+                            </button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% elif mode == 'render' %}
+            <div class="card border-0 bg-dark bg-opacity-25 h-100">
+                <div class="card-header bg-transparent border-0 pt-4 px-4">
+                    <h5 class="mb-0 fw-bold">Propuesta de Render (ControlNet)</h5>
+                </div>
+                <div class="card-body p-4 text-center">
+                    {% if results.render_url %}
+                    <div class="card border-0 bg-dark bg-opacity-25 shadow-lg overflow-hidden">
+                        <img src="{{ url_for('static', filename=results.render_url) }}" class="img-fluid w-100">
+                        <div
+                            class="card-footer bg-transparent border-top border-secondary border-opacity-25 p-3 d-flex justify-content-between">
+                            <span class="text-warning small"><i class="fas fa-check-circle me-1"></i>Render
+                                Generado</span>
+                            <div class="d-flex gap-2">
+                                <a href="{{ url_for('static', filename=results.render_url) }}" download
+                                    class="btn btn-outline-warning btn-sm rounded-pill">
+                                    <i class="fas fa-download me-1"></i> Imagen
+                                </a>
+                                {% if results.cad_metadata %}
+                                <button class="btn btn-warning text-dark btn-sm rounded-pill"
+                                    onclick="alert('Exportando JSON para AutoCAD...')">
+                                    <i class="fas fa-file-code me-1"></i> CAD Metadata
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning bg-opacity-10 border-warning text-warning">
+                        <i class="fas fa-exclamation-triangle me-1"></i> No se pudo conectar con el motor de renderizado
+                        local.
+                        <br><small>Asegúrate de que Stable Diffusion WebUI esté corriendo con --api.</small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

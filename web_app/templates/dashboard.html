@@ -6,17 +6,19 @@
 <!-- WRAPPER -->
 <div class="container-fluid p-0">
 
-    <div class="row mb-4 animate-fade-in align-items-end">
+    <div class="row mb-5 animate-fade-in align-items-end">
         <div class="col-md-8">
-            <h1 class="h3 fw-bold bg-clip-text mb-1"><i class="fas fa-tachometer-alt me-2 text-primary"></i>Panel de
-                Control</h1>
-            <p class="text-muted mb-0">Visión general del rendimiento y estado del sistema.</p>
+            <h1 class="display-6 fw-bold mb-1" style="color: var(--primary-color); letter-spacing: -1px;">
+                <i class="fas fa-chart-line me-2"></i>Dashboard
+            </h1>
+            <p class="text-muted mb-0 opacity-75">Inteligencia Documental & Procesamiento en Tiempo Real</p>
         </div>
         <div class="col-md-4 text-md-end">
-            <span
-                class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-2 rounded-pill">
-                <i class="fas fa-clock me-1"></i> Estado: <strong>En Línea</strong>
-            </span>
+            <div
+                class="d-inline-flex align-items-center bg-success bg-opacity-10 border border-success border-opacity-25 px-4 py-2 rounded-pill">
+                <span class="pulse-dot me-2"></span>
+                <span class="text-success fw-bold small">SISTEMA ACTIVO</span>
+            </div>
         </div>
     </div>
 
@@ -142,7 +144,16 @@
                                 <div>
                                     <h6 class="mb-0 fw-semibold text-truncate" style="max-width: 200px;">{{ doc[1] }}
                                     </h6>
-                                    <small class="text-muted">{{ doc[2] or 'Sin clasificar' }}</small>
+                                    <small class="text-muted d-flex align-items-center gap-2">
+                                        {{ doc[2] or 'Sin clasificar' }}
+                                        {% if doc[3] == 'OK' %}
+                                        <span
+                                            class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 rounded-pill"
+                                            style="font-size: 0.65rem;">
+                                            <i class="fas fa-shield-alt me-1"></i>PYDANTIC
+                                        </span>
+                                        {% endif %}
+                                    </small>
                                 </div>
                             </div>
 
@@ -212,15 +223,24 @@
                     datasets: [{
                         data: typeStats.map(item => item[1]),
                         backgroundColor: [
-                            'rgba(13, 110, 253, 0.8)', // Primary
-                            'rgba(25, 135, 84, 0.8)',  // Success
-                            'rgba(220, 53, 69, 0.8)',  // Danger
-                            'rgba(255, 193, 7, 0.8)',  // Warning
-                            'rgba(111, 66, 193, 0.8)', // Purple
-                            'rgba(32, 201, 151, 0.8)'  // Teal
+                            'rgba(226, 176, 76, 0.85)', // Gold
+                            'rgba(50, 215, 75, 0.85)',  // Green
+                            'rgba(255, 69, 58, 0.85)',  // Red
+                            'rgba(100, 210, 255, 0.85)', // Blue
+                            'rgba(191, 90, 242, 0.85)', // Purple
+                            'rgba(255, 159, 10, 0.85)'  // Orange
                         ],
-                        borderWidth: 0,
-                        hoverOffset: 10
+                        hoverBackgroundColor: [
+                            '#e2b04c',
+                            '#32d74b',
+                            '#ff453a',
+                            '#64d2ff',
+                            '#bf5af2',
+                            '#ff9f0a'
+                        ],
+                        borderWidth: 2,
+                        borderColor: 'rgba(0,0,0,0.5)',
+                        hoverOffset: 15
                     }]
                 },
                 options: {

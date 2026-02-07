@@ -1,32 +1,55 @@
-from typing import List, Optional, Any, Union
 from pydantic import BaseModel, Field, field_validator
-from datetime import date as date_type, datetime
+from typing import Optional, List
+from datetime import datetime
+import re
 
-class DocumentUpdateSchema(BaseModel):
-    """Schema for validating document update requests via API."""
-    
-    filename: Optional[str] = Field(None, min_length=1, strip_whitespace=True)
-    type: Optional[str] = Field(None, strip_whitespace=True)
-    status: Optional[str] = Field(None)
-    tags: Optional[List[str]] = Field(None)
-    date: Optional[str] = Field(None, description="ISO 8601 date string (YYYY-MM-DD)")
-    total: Optional[Union[str, float]] = Field(None) # Changed to allow str or float from JS
-    supplier: Optional[str] = Field(None, strip_whitespace=True)
-    text: Optional[str] = None
-    markdown: Optional[str] = None
-    
-    # Optional JSON fields if we want to update blocks/tables directly
-    notes: Optional[str] = Field(None)
-    corrections: Optional[List[Any]] = Field(None, description="Visual editor annotations")
+class BaseDocument(BaseModel):
+    """Base schema for all document types."""
+    doc_type: str = Field(..., description="Type of document (e.g., Invoice, Receipt, ID)")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    vlm_validated: bool = False
 
-    @field_validator('date')
+class InvoiceSchema(BaseDocument):
+    """Schema for Invoices."""
+    vendor_name: str = Field(..., description="Name of the seller/company")
+    cif_nif: Optional[str] = Field(None, description="Tax identification number (CIF/NIF in Spain)")
+    date: Optional[str] = Field(None, description="Date of the invoice (YYYY-MM-DD)")
+    invoice_number: Optional[str] = Field(None, description="Unique identifier for the invoice")
+    
+    base_amount: float = Field(default=0.0, description="Taxable base amount")
+    vat_percent: float = Field(default=21.0, description="VAT percentage")
+    vat_amount: float = Field(default=0.0, description="Calculated VAT amount")
+    total_amount: float = Field(..., description="Final total amount including taxes")
+    
+    currency: str = Field(default="EUR")
+
+    @field_validator('total_amount')
     @classmethod
-    def validate_date_format(cls, v: Optional[str]) -> Optional[str]:
-        if not v:
-            return None
-        try:
-            # Try parsing to ensure it's a valid date, but return string for DB
-            datetime.strptime(v, '%Y-%m-%d')
-            return v
-        except ValueError:
-            raise ValueError("Date must be in YYYY-MM-DD format")
+    def check_math_consistency(cls, v: float, info):
+        values = info.data
+        base = values.get('base_amount', 0.0)
+        vat = values.get('vat_amount', 0.0)
+        
+        # If both base and vat are provided, check if they sum up to total
+        if base > 0 and vat > 0:
+            expected = round(base + vat, 2)
+            if abs(v - expected) > 0.1: # Allow for small rounding errors
+                # We don't raise error, just log it or mark it
+                pass
+        return v
+
+class ReceiptSchema(BaseDocument):
+    """Simplified schema for tickets/receipts."""
+    vendor_name: str
+    date: Optional[str]
+    total_amount: float
+    currency: str = "EUR"
+
+def get_schema_for_type(doc_type: str):
+    """Factory to get the correct schema class."""
+    doc_type = doc_type.lower()
+    if 'invoice' in doc_type or 'factura' in doc_type:
+        return InvoiceSchema
+    if 'receipt' in doc_type or 'ticket' in doc_type:
+        return ReceiptSchema
+    return BaseDocument
