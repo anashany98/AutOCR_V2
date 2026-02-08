@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Gestión de Usuarios - AutOCR{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="mb-4">
+        <h1 class="h3 mb-0">Gestión de Usuarios</h1>
+        <p class="text-muted">Administra roles y alcances de hoteles para los usuarios.</p>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-dark-subtle">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-dark text-muted small text-uppercase">
+                        <tr>
+                            <th class="ps-4">Usuario</th>
+                            <th>Rol</th>
+                            <th>Alcance de Hoteles</th>
+                            <th class="text-end pe-4">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="avatar-sm bg-secondary rounded-circle me-3 d-flex align-items-center justify-content-center"
+                                        style="width: 32px; height: 32px;">
+                                        <i class="fas fa-user text-white small"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold">{{ user.username }}</div>
+                                        <div class="text-muted extra-small">ID: {{ user.id }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span
+                                    class="badge bg-{{ 'warning' if user.role == 'ADMIN' else 'info' if user.role == 'DIRECCION' else 'primary' if user.role == 'GESTOR' else 'secondary' }}">
+                                    {{ user.role }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if user.role == 'ADMIN' %}
+                                <span class="text-muted small italic">Acceso Global</span>
+                                {% else %}
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% if user.hotel_scope %}
+                                    {% for h_id in user.hotel_scope %}
+                                    {% set h = hotels|selectattr('id', 'equalto', h_id|int)|first %}
+                                    <span class="badge bg-dark-subtle border border-secondary text-white"
+                                        style="font-size: 0.7rem;">
+                                        {{ h.name if h else h_id }}
+                                    </span>
+                                    {% endfor %}
+                                    {% else %}
+                                    <span class="text-muted small">Sin hoteles asignados</span>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow">
+                                        <li>
+                                            <button class="dropdown-item edit-role-btn" data-user-id="{{ user.id }}"
+                                                data-role="{{ user.role }}">
+                                                <i class="fas fa-user-tag me-2"></i> Cambiar Rol
+                                            </button>
+                                        </li>
+                                        {% if user.role != 'ADMIN' %}
+                                        <li>
+                                            <button class="dropdown-item edit-scope-btn" data-user-id="{{ user.id }}"
+                                                data-scope='{{ user.hotel_scope|tojson|safe }}'>
+                                                <i class="fas fa-hotel me-2"></i> Ajustar Alcance
+                                            </button>
+                                        </li>
+                                        {% endif %}
+                                    </ul>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Cambiar Rol -->
+<div class="modal fade" id="roleModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary">
+            <form method="POST">
+                <input type="hidden" name="action" value="update_role">
+                <input type="hidden" name="user_id" id="role_user_id">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Cambiar Rol</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <select name="role" id="role_select" class="form-select bg-dark text-white border-secondary">
+                        {% for r in roles %}
+                        <option value="{{ r }}">{{ r }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="submit" class="btn btn-primary w-100">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ajustar Alcance -->
+<div class="modal fade" id="scopeModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary">
+            <form method="POST">
+                <input type="hidden" name="action" value="update_scope">
+                <input type="hidden" name="user_id" id="scope_user_id">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Alcance de Hoteles</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">Selecciona los hoteles a los que este usuario tiene acceso:</p>
+                    <div class="list-group list-group-flush border border-secondary rounded overflow-hidden">
+                        {% for h in hotels %}
+                        <label class="list-group-item list-group-item-action bg-dark text-white border-secondary">
+                            <input class="form-check-input me-3" type="checkbox" name="hotels" value="{{ h.id }}"
+                                id="chk_hotel_{{ h.id }}">
+                            {{ h.name }} <span class="text-muted small">({{ h.code }})</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="submit" class="btn btn-primary w-100">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('click', function (e) {
+        // Handle Role Edit
+        const roleBtn = e.target.closest('.edit-role-btn');
+        if (roleBtn) {
+            const userId = roleBtn.getAttribute('data-user-id');
+            const currentRole = roleBtn.getAttribute('data-role');
+            document.getElementById('role_user_id').value = userId;
+            document.getElementById('role_select').value = currentRole;
+            new bootstrap.Modal(document.getElementById('roleModal')).show();
+        }
+
+        // Handle Scope Edit
+        const scopeBtn = e.target.closest('.edit-scope-btn');
+        if (scopeBtn) {
+            const userId = scopeBtn.getAttribute('data-user-id');
+            const currentScope = JSON.parse(scopeBtn.getAttribute('data-scope') || '[]');
+
+            document.getElementById('scope_user_id').value = userId;
+            document.querySelectorAll('#scopeModal input[type="checkbox"]').forEach(cb => cb.checked = false);
+
+            if (currentScope) {
+                currentScope.forEach(hId => {
+                    const chk = document.getElementById('chk_hotel_' + hId);
+                    if (chk) chk.checked = true;
+                });
+            }
+            new bootstrap.Modal(document.getElementById('scopeModal')).show();
+        }
+    });
+</script>
+
+<style>
+    .extra-small {
+        font-size: 0.7rem;
+    }
+</style>
+{% endblock %}

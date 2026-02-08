@@ -9,6 +9,8 @@ from PIL import Image
 from pydantic import ValidationError
 
 from web_app.services import get_db, get_pipeline, get_logger, PROJECT_ROOT
+from web_app.security.security_decorators import require_role, hotel_scoped, financial_access_required
+from flask_login import login_required, current_user
 from web_app.utils import safe_json_parse, ensure_within_project, encode_path
 
 from modules.schemas import DocumentUpdateSchema
@@ -22,6 +24,8 @@ from modules.tasks import huey
 api_bp = Blueprint('api', __name__)
 
 @api_bp.route("/api/document/<int:doc_id>/update", methods=["POST"])
+@login_required
+@hotel_scoped('doc_id')
 def api_update_document(doc_id: int):
     """Update document data with Pydantic validation."""
     try:
@@ -102,6 +106,7 @@ def api_update_document(doc_id: int):
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/create_moodboard", methods=["POST"])
+@login_required
 def api_create_moodboard():
     data = request.json
     doc_ids = data.get("ids", [])
@@ -144,6 +149,8 @@ def serve_moodboard(filename):
     return send_from_directory(PROJECT_ROOT / "data" / "moodboards", filename)
 
 @api_bp.route("/api/duplicates/scan")
+@login_required
+@require_role(['GESTOR', 'DIRECCION', 'ADMIN'])
 def api_scan_duplicates():
     pipeline = get_pipeline()
     if not pipeline.vision_manager:
@@ -186,6 +193,8 @@ def api_scan_duplicates():
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/document/<int:doc_id>/verify", methods=["POST"])
+@login_required
+@hotel_scoped('doc_id')
 def api_verify_document(doc_id):
     db = get_db()
     if db.update_document_state(doc_id, "verified"):
@@ -194,6 +203,8 @@ def api_verify_document(doc_id):
     return jsonify({"error": "Failed to update state"}), 500
 
 @api_bp.route("/api/document/<int:doc_id>/fields", methods=["POST"])
+@login_required
+@hotel_scoped('doc_id')
 def api_update_fields(doc_id):
     db = get_db()
     data = request.json
@@ -281,6 +292,8 @@ def api_dismiss_anomaly(doc_id):
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/document/<int:doc_id>", methods=["DELETE"])
+@login_required
+@hotel_scoped('doc_id')
 def api_delete_document(doc_id):
     db = get_db()
     
@@ -323,6 +336,8 @@ def api_train_model():
         return jsonify({"status": "error", "message": msg}), 500
 
 @api_bp.route("/api/document/<int:doc_id>/enhance", methods=["POST"])
+@login_required
+@hotel_scoped('doc_id')
 def api_enhance_document(doc_id):
     try:
         data = request.json
@@ -396,6 +411,7 @@ def shutdown():
     return "Server shutting down..."
 
 @api_bp.route("/api/visual_search")
+@login_required
 def api_visual_search():
     query = request.args.get("q", "").strip()
     k = int(request.args.get("k", 50))
@@ -467,6 +483,7 @@ def api_visual_search():
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/search")
+@login_required
 def api_search():
     """API endpoint for full-text search."""
     query = request.args.get("q", "")
@@ -492,6 +509,8 @@ def api_search():
     ])
 
 @api_bp.route("/api/search/similar/<int:doc_id>")
+@login_required
+@hotel_scoped('doc_id')
 def api_search_similar(doc_id):
     db = get_db()
     pipeline = get_pipeline()
@@ -607,6 +626,8 @@ def api_delete_template(t_id):
     return jsonify({"error": "Failed to delete"}), 500
 
 @api_bp.route("/api/document/<int:doc_id>/export/dxf", methods=["POST"])
+@login_required
+@hotel_scoped('doc_id')
 def api_export_dxf(doc_id):
     """
     Export a document (image) to DXF format for CAD.
@@ -685,6 +706,8 @@ def api_metrics_history():
         return jsonify([])
 
 @api_bp.route("/api/document/<int:doc_id>/generate_proposal", methods=["POST"])
+@login_required
+@hotel_scoped('doc_id')
 def api_generate_proposal(doc_id):
     """
     Generates a PDF proposal (dossier) for the document.
@@ -745,6 +768,8 @@ def api_generate_proposal(doc_id):
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/document/<int:doc_id>/generate_order", methods=["POST"])
+@login_required
+@hotel_scoped('doc_id')
 def api_generate_order(doc_id):
     """
     Export detected items to an Excel order list ('Del Moodboard al Pedido').

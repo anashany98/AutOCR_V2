@@ -1,0 +1,72 @@
+# AutoOCR Production Configuration
+# Optimized for Docker deployment with PostgreSQL, Redis, and MinIO
+
+app:
+  name: "AutoOCR Production"
+  version: "2.5.0"
+  debug: false
+  secret_key: ${SECRET_KEY}  # Should be set via env var
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4       # Number of Gunicorn workers
+  threads: 2       # Threads per worker
+
+database:
+  type: postgresql
+  url: ${DATABASE_URL}  # e.g., postgresql://user:pass@postgres:5432/autoocr
+  pool_size: 20
+  max_overflow: 10
+
+task_queue:
+  type: celery
+  broker_url: ${CELERY_BROKER_URL}  # e.g., redis://redis:6379/0
+  result_backend: ${CELERY_RESULT_BACKEND}
+  task_routes:
+    ocr.*: ocr
+    default: default
+
+storage:
+  type: minio
+  endpoint: ${MINIO_ENDPOINT}  # e.g., minio:9000
+  access_key: ${MINIO_ACCESS_KEY}
+  secret_key: ${MINIO_SECRET_KEY}
+  bucket: ${MINIO_BUCKET}
+  secure: false  # Set true if using HTTPS for MinIO
+
+ocr:
+  primary_engine: paddlevl
+  secondary_engine: mineru
+  languages: ["spa", "eng"]
+  
+  paddleocr:
+    use_gpu: true
+    enabled: true
+    layout: true
+    tables: false  # Native tables often problematic, use MinerU instead
+    
+  mineru:
+    enabled: true
+    use_gpu: true
+    output_format: markdown
+    extract_tables: true
+    extract_formulas: true
+    auto_detect_complex: true
+
+ocr_pipeline:
+  preprocessing:
+    deskew: true
+    denoise: false
+  output:
+    formats: ["markdown", "json"]
+    save_markdown_in_db: true
+  fusion:
+    strategy: confidence_vote
+    min_confidence: 0.7
+
+llm:
+  enabled: true
+  provider: lmstudio  # Or openai/anthropic
+  base_url: ${LLM_BASE_URL}  # http://host.docker.internal:11434/v1
+  model: deepseek/deepseek-r1-distill-llama-70b
+  vision:
+    enabled: true

@@ -119,20 +119,31 @@ ocr_pipeline:
     priority: []
   poppler_path: /usr/bin
   primary_engine: paddlevl
+  secondary_engine: mineru
+  mineru:
+    enabled: true
+    use_gpu: true
+    output_format: markdown
+    extract_tables: true
+    extract_formulas: true
+    auto_detect_complex: true
 llm:
   enabled: true
-  provider: ollama
+  provider: lmstudio
   base_url: http://localhost:11434/v1
-  model: moondream
+  model: deepseek/deepseek-r1-0528-qwen3-8b
   timeout: 90
   routing:
     enabled: true
     general_chat:
       base_url: http://localhost:11434/v1
-      model: llama3.2
+      model: deepseek/deepseek-r1-0528-qwen3-8b
     document_chat:
       base_url: http://localhost:11434/v1
-      model: llama3.2
+      model: deepseek/deepseek-r1-0528-qwen3-8b
+    reasoning:
+      base_url: http://localhost:11434/v1
+      model: deepseek/deepseek-r1-0528-qwen3-8b
   vision:
     enabled: true
     index_path: data/vision_index.faiss

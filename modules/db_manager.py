@@ -38,8 +38,11 @@ class DBManager:
     ) -> None:
         self.config = config.get("database", {})
         
-        # Auto-detect Production Environment (Docker) -> Force PostgreSQL
-        if os.environ.get("POSTGRES_HOST"):
+        # Auto-detect Production Environment via DATABASE_URL or specific env vars
+        db_url = os.environ.get("DATABASE_URL")
+        if db_url and "postgres" in db_url:
+            self.engine_type = "postgresql"
+        elif os.environ.get("POSTGRES_HOST"):
             self.engine_type = "postgresql"
         else:
             self.engine_type = self.config.get("engine", "sqlite").lower()
@@ -55,15 +58,23 @@ class DBManager:
             self.pg_conf = self.config.get("postgresql", {})
             try:
                 # Initialize ThreadedConnectionPool for Postgres
-                self._pool = pool.ThreadedConnectionPool(
-                    minconn=2,
-                    maxconn=int(os.getenv("DB_POOL_SIZE", self.config.get("pool_size", 10))),
-                    host=os.getenv("DB_HOST", self.pg_conf.get("host", "localhost")),
-                    port=int(os.getenv("DB_PORT", self.pg_conf.get("port", 5432))),
-                    user=os.getenv("DB_USER", self.pg_conf.get("user", "postgres")),
-                    password=os.getenv("DB_PASSWORD", self.pg_conf.get("password", "123")),
-                    dbname=os.getenv("DB_NAME", self.pg_conf.get("dbname", "autocr"))
-                )
+                pool_args = {
+                    "minconn": 2,
+                    "maxconn": int(os.getenv("DB_POOL_SIZE", self.config.get("pool_size", 10))),
+                }
+                
+                if db_url:
+                    pool_args["dsn"] = db_url
+                else:
+                    pool_args.update({
+                        "host": os.getenv("DB_HOST", self.pg_conf.get("host", "localhost")),
+                        "port": int(os.getenv("DB_PORT", self.pg_conf.get("port", 5432))),
+                        "user": os.getenv("DB_USER", self.pg_conf.get("user", "postgres")),
+                        "password": os.getenv("DB_PASSWORD", self.pg_conf.get("password", "123")),
+                        "dbname": os.getenv("DB_NAME", self.pg_conf.get("dbname", "autocr"))
+                    })
+                
+                self._pool = pool.ThreadedConnectionPool(**pool_args)
             except Exception as e:
                  raise RuntimeError(f"Failed to initialize PostgreSQL pool: {e}")
 
@@ -127,7 +138,8 @@ class DBManager:
         """Retrieve full document details including OCR data."""
         query = """
         SELECT d.id, d.filename, d.path, d.type, d.status, d.datetime,
-               d.tags, o.text, o.markdown_text, o.structured_data, o.blocks_json
+                d.tags, o.text, o.markdown_text, o.structured_data, o.blocks_json,
+                d.hotel_id, d.doc_type, d.visibility, d.financial_level
         FROM documents d
         LEFT JOIN ocr_texts o ON d.id = o.id_doc
         WHERE d.id = ?
@@ -158,6 +170,10 @@ class DBManager:
                 "markdown": row[8],
                 "structured_data": parse_json(row[9]) if row[9] else {},
                 "blocks": parse_json(row[10]),
+                "hotel_id": row[11],
+                "doc_type": row[12],
+                "visibility": row[13],
+                "financial_level": row[14],
                 "data": parse_json(row[9]) if row[9] else {"total":0.0, "supplier":"", "date":""}
             }
              
@@ -176,8 +192,26 @@ class DBManager:
         self._ensure_column("documents", "workflow_state", "TEXT DEFAULT 'new'", conn)
         self._ensure_column("documents", "error_message", "TEXT", conn)
         
-        # Phase 3: Auth & Multi-tenancy
+        # Phase 3/4: Auth & Multi-tenancy
         self._ensure_column("documents", "owner_id", "INTEGER", conn)
+        self._ensure_column("documents", "hotel_id", "INTEGER", conn)
+        self._ensure_column("documents", "doc_type", "TEXT DEFAULT 'other'", conn)
+        self._ensure_column("documents", "visibility", "TEXT DEFAULT 'private'", conn)
+        self._ensure_column("documents", "financial_level", "TEXT DEFAULT 'none'", conn)
+        
+        # Phase 4: Users Scope & Roles
+        self._ensure_column("users", "hotel_scope", "TEXT", conn) # JSON list [1, 2, 3]
+        
+        # Create hotels table
+        cursor = self.get_cursor(conn)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS hotels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                code TEXT UNIQUE,
+                description TEXT
+            )
+        """)
         
         # Create users table if not exists
         cursor = self.get_cursor(conn)
@@ -202,6 +236,33 @@ class DBManager:
                 )
             """
         cursor.execute(sql_sqlite if self.engine_type == "sqlite" else sql_pg)
+
+        # Phase 5: Audit Logging
+        cursor = self.get_cursor(conn)
+        if self.engine_type == "sqlite":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    action TEXT,
+                    resource_type TEXT,
+                    resource_id TEXT,
+                    details TEXT,
+                    timestamp TEXT
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    action TEXT,
+                    resource_type TEXT,
+                    resource_id TEXT,
+                    details TEXT,
+                    timestamp TEXT
+                )
+            """)
 
         # Phase 4: Product Catalog (ERP)
         cursor = self.get_cursor(conn)
@@ -310,9 +371,12 @@ class DBManager:
                     price_unit REAL,
                     total REAL,
                     FOREIGN KEY(id_doc) REFERENCES documents(id)
-                );
-                
-                -- Phase II: Design History
+                )
+                """
+            )
+            # Phase II: Design History
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS design_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
@@ -322,7 +386,7 @@ class DBManager:
                     results_json TEXT,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(user_id) REFERENCES users(id)
-                );
+                )
                 """
             )
         else:
@@ -621,6 +685,9 @@ class DBManager:
         workflow_state: str = "new",
         error_message: Optional[str] = None,
         owner_id: Optional[int] = None,
+        hotel_id: Optional[int] = None,
+        visibility: str = "private",
+        financial_level: str = "none",
     ) -> int:
         """Insert a document record and return its ID."""
         tags_json = json.dumps(list(tags)) if tags else None
@@ -628,11 +695,15 @@ class DBManager:
             cursor = self.get_cursor(conn)
             sql = f"""
                 INSERT INTO documents (
-                    filename, path, md5_hash, datetime, duration, status, type, tags, workflow_state, error_message, owner_id
+                    filename, path, md5_hash, datetime, duration, status, type, tags, 
+                    workflow_state, error_message, owner_id, hotel_id, visibility, financial_level
                 ) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, 
-                          {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+                          {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, 
+                          {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder},
+                          {self.placeholder}, {self.placeholder})
             """
-            params = (filename, path, md5_hash, timestamp.isoformat(), float(duration), status, doc_type, tags_json, workflow_state, error_message, owner_id)
+            params = (filename, path, md5_hash, timestamp.isoformat(), float(duration), status, doc_type, tags_json, 
+                      workflow_state, error_message, owner_id, hotel_id, visibility, financial_level)
             
             if self.engine_type == "postgresql":
                 sql += " RETURNING id"
@@ -713,6 +784,28 @@ class DBManager:
                 
             conn.commit()
             return int(log_id)
+
+    def log_audit(self, user_id: Optional[int], action: str, resource_type: str, resource_id: Optional[str], details: Any = None) -> int:
+        """Log a business or security event for auditing."""
+        details_str = json.dumps(details, ensure_ascii=False) if details else None
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            sql = f"""
+                INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details, timestamp)
+                VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+            """
+            params = (user_id, action, resource_type, resource_id, details_str, datetime.datetime.now().isoformat())
+            
+            if self.engine_type == "postgresql":
+                sql += " RETURNING id"
+                cursor.execute(sql, params)
+                audit_id = cursor.fetchone()["id"]
+            else:
+                cursor.execute(sql, params)
+                audit_id = cursor.lastrowid
+                
+            conn.commit()
+            return int(audit_id)
 
     def get_recent_logs(self, limit: int = 100) -> list:
         """Get recent log entries for monitoring."""
@@ -940,14 +1033,55 @@ class DBManager:
         with self.get_connection() as conn:
             cursor = self.get_cursor(conn)
             cursor.execute(query, (name, parent_id, now))
-            
+            conn.commit()
             if self.engine_type == "sqlite":
-                conn.commit()
                 return cursor.lastrowid
             else:
                 row = cursor.fetchone()
+                return row[0] if row else 0
+
+    def get_hotels(self) -> List[Dict[str, Any]]:
+        """List all hotels."""
+        query = "SELECT id, name, code, description FROM hotels ORDER BY name ASC"
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+
+    def create_hotel(self, name: str, code: str, description: str = "") -> int:
+        """Create a new hotel."""
+        query = f"INSERT INTO hotels (name, code, description) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder})"
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(query, (name, code, description))
+            if self.engine_type == "postgresql":
+                 # Postgres needs RETURNING id but I put it in common sql above for simplicity, 
+                 # let's be consistent and fix it.
+                 pass
+            
+            # Refined for both engines
+            if self.engine_type == "postgresql":
+                cursor.execute(query + " RETURNING id", (name, code, description))
+                t_id = cursor.fetchone()[0]
+            else:
+                cursor.execute(query, (name, code, description))
+                t_id = cursor.lastrowid
+            
+            conn.commit()
+            return int(t_id)
+
+    def update_hotel(self, hotel_id: int, name: str, code: str, description: str) -> bool:
+        """Update hotel details."""
+        query = f"UPDATE hotels SET name = {self.placeholder}, code = {self.placeholder}, description = {self.placeholder} WHERE id = {self.placeholder}"
+        try:
+            with self.get_connection() as conn:
+                cursor = self.get_cursor(conn)
+                cursor.execute(query, (name, code, description, hotel_id))
                 conn.commit()
-                return row[0]
+                return True
+        except Exception:
+            return False
 
     def get_folders(self) -> List[Dict[str, Any]]:
         """Get flattened list of folders."""

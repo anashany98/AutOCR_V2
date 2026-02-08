@@ -73,6 +73,7 @@ class PipelineComponents:
     table_manager: Optional[TableManager]
     fusion_manager: FusionManager
     vision_manager: Optional[VisionManager]
+    mineru_engine: Optional[Any]  # MinerUEngine for structured document extraction
     recheck_threshold: float
     output_formats: List[str]
     save_markdown_in_db: bool
@@ -555,12 +556,30 @@ def initialise_pipeline(
     output_formats = [fmt.lower() for fmt in output_conf.get("formats", ["markdown", "json"])]
     save_markdown_in_db = bool(output_conf.get("save_markdown_in_db", True))
 
+    # Initialize MinerU secondary engine if enabled
+    mineru_engine = None
+    mineru_conf = config.get("ocr", {}).get("mineru", {})
+    if mineru_conf.get("enabled", False):
+        try:
+            from modules.engines.mineru_wrapper import MinerUEngine
+            logger.info("Initializing MinerU secondary engine...")
+            mineru_engine = MinerUEngine(mineru_conf, logger=logger)
+            if mineru_engine.initialize():
+                logger.info("MinerU engine initialized successfully.")
+            else:
+                logger.warning("MinerU engine failed to initialize; continuing without it.")
+                mineru_engine = None
+        except Exception as e:
+            logger.warning(f"Failed to load MinerU: {e}; continuing without it.")
+            mineru_engine = None
+
     return PipelineComponents(
         ocr_manager=ocr_manager,
         layout_manager=layout_manager,
         table_manager=table_manager,
         fusion_manager=fusion_manager,
         vision_manager=vision_manager,
+        mineru_engine=mineru_engine,
         recheck_threshold=recheck_threshold,
         output_formats=output_formats,
         save_markdown_in_db=save_markdown_in_db,
@@ -626,7 +645,33 @@ def process_single_file(
         confidences: List[float] = []
         layout_blocks: List[Dict[str, Any]] = []
 
-        if ocr_enabled and is_visual_document(file_path):
+        mineru_result = None
+        if pipeline.mineru_engine and pipeline.mineru_engine.is_complex_document(file_path):
+             try:
+                 logger.info(f"MinerU: Complex document detected. Attempting extraction for {filename}")
+                 mineru_result = pipeline.mineru_engine.process(file_path)
+             except Exception as e:
+                 logger.error(f"MinerU extraction failed: {e}")
+                 mineru_result = None
+
+        if mineru_result and mineru_result.get("text"):
+            # Use MinerU result as primary text
+            logger.info("MinerU: Extraction successful. Using MinerU output.")
+            aggregated_text = mineru_result.get("text", "")
+            markdown_text = mineru_result.get("text", "") # MinerU output is markdown
+            
+            # Populate tables/formulas in structured_data later
+            # We skip standard OCR text extraction but might still want layout blocks if MinerU provides them or we can infer them
+            # MinerU doesn't provide standard blocks easily comparable to Paddle/EasyOCR.
+            # We will use dummy blocks or skip block-based features for this doc.
+            
+            language = "eng" # Todo: detect?
+            confidence = 0.95 # MinerU doesn't give confidence, assume high if success
+            
+            # Map MinerU tables to TableResult objects? Or keep raw HTML?
+            # We'll keep raw HTML in structured_data
+            
+        elif ocr_enabled and is_visual_document(file_path):
             # OPTIMIZATION: Try Native Extraction first
             native_blocks = None
             if file_path.lower().endswith(".pdf"):
@@ -1011,8 +1056,13 @@ def process_single_file(
         if not classification_enabled:
             tags = []
 
-        # Check options first (passed via wrapper) or pipeline_conf
+        # Phase 4 Metadata extraction from pipeline_conf
         owner_id = pipeline_conf.get("owner_id")
+        hotel_id = pipeline_conf.get("hotel_id")
+        # Use user-provided doc_type if valid, otherwise fallback to classifier's doc_type
+        final_doc_type = pipeline_conf.get("doc_type") or doc_type
+        visibility = pipeline_conf.get("visibility", "private")
+        financial_level = pipeline_conf.get("financial_level", "none")
 
         doc_id = db.insert_document(
             filename,
@@ -1021,16 +1071,26 @@ def process_single_file(
             datetime.datetime.now(),
             duration,
             status,
-            doc_type=doc_type,
+            doc_type=final_doc_type,
             tags=tags,
             workflow_state=workflow_state,
-            owner_id=owner_id
+            owner_id=owner_id,
+            hotel_id=hotel_id,
+            visibility=visibility,
+            financial_level=financial_level
         )
 
         # ------------------------------------------------------------------ #
         # Smart Field Extraction & Validation
         # ------------------------------------------------------------------ #
-        structured_data = None
+        structured_data = {}
+        if 'mineru_result' in locals() and mineru_result:
+             structured_data["mineru"] = {
+                 "tables": mineru_result.get("tables", []),
+                 "formulas": mineru_result.get("formulas", []),
+                 "metadata": mineru_result.get("metadata", {})
+             }
+
         if aggregated_text and classification_enabled:
             try:
                 from modules.smart_extractor import FieldExtractor

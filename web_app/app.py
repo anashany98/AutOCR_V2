@@ -95,12 +95,14 @@ from web_app.routes.api_routes import api_bp
 from web_app.routes.chat_routes import chat_bp
 from web_app.routes.error_handlers import errors_bp
 from web_app.routes.auth_routes import auth_bp
+from web_app.routes.admin_routes import admin_bp
 
 app.register_blueprint(main_bp)
 app.register_blueprint(api_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(errors_bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(admin_bp)
 
 # --------------------------------------------------------------------------- #
 # Hot Folder Logic (Kept here or moved to separate background manager)
@@ -180,7 +182,7 @@ def init_app():
             get_classifier()
             get_rag_manager()
             get_tool_manager()
-            get_logger().info("✅ Application singletons pre-warmed and ready.")
+            get_logger().info("Application singletons pre-warmed and ready.")
         else:
             get_logger().info("⚡ DEV MODE: Skipped pre-warming for faster startup (Lazy Loading Enabled)")
     except Exception as exc:

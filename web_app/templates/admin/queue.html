@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h4 fw-bold">Cola de Procesamiento</h1>
+        <p class="text-muted">Estado en tiempo real de los workers de Celery.</p>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <!-- Active Tasks Card -->
+    <div class="col-md-3">
+        <div class="card bg-dark border-primary text-light h-100">
+            <div class="card-body text-center">
+                <h6 class="text-uppercase text-muted small fw-bold">Activas</h6>
+                <h2 class="display-4 fw-bold text-primary">{{ stats.active }}</h2>
+                <span
+                    class="badge bg-primary bg-opacity-25 text-primary border border-primary border-opacity-25">Procesando</span>
+            </div>
+        </div>
+    </div>
+    <!-- Reserved Tasks Card -->
+    <div class="col-md-3">
+        <div class="card bg-dark border-warning text-light h-100">
+            <div class="card-body text-center">
+                <h6 class="text-uppercase text-muted small fw-bold">En Espera (Reservadas)</h6>
+                <h2 class="display-4 fw-bold text-warning">{{ stats.reserved }}</h2>
+                <span class="badge bg-warning bg-opacity-25 text-warning border border-warning border-opacity-25">En
+                    Cola</span>
+            </div>
+        </div>
+    </div>
+    <!-- Scheduled Tasks Card -->
+    <div class="col-md-3">
+        <div class="card bg-dark border-info text-light h-100">
+            <div class="card-body text-center">
+                <h6 class="text-uppercase text-muted small fw-bold">Programadas</h6>
+                <h2 class="display-4 fw-bold text-info">{{ stats.scheduled }}</h2>
+                <span
+                    class="badge bg-info bg-opacity-25 text-info border border-info border-opacity-25">Diferidas</span>
+            </div>
+        </div>
+    </div>
+    <!-- Workers Card -->
+    <div class="col-md-3">
+        <div class="card bg-dark border-success text-light h-100">
+            <div class="card-body text-center">
+                <h6 class="text-uppercase text-muted small fw-bold">Workers Activos</h6>
+                <h2 class="display-4 fw-bold text-success">{{ stats.workers|length }}</h2>
+                <span
+                    class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-25">Online</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Active Tasks -->
+<div class="card border-0">
+    <div class="card-header bg-transparent border-0">
+        <h6 class="fw-bold mb-0">Tareas en Ejecución</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-muted small text-uppercase">Worker</th>
+                        <th class="text-muted small text-uppercase">Tarea</th>
+                        <th class="text-muted small text-uppercase">Argumentos</th>
+                        <th class="text-muted small text-uppercase">Inicio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for worker, tasks in active_tasks.items() %}
+                    {% for task in tasks %}
+                    <tr>
+                        <td><code class="text-success">{{ worker }}</code></td>
+                        <td>{{ task.name }}</td>
+                        <td><small class="text-muted">{{ task.args }}</small></td>
+                        <td>{{ task.time_start }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center py-4 text-muted">
+                            <i class="fas fa-check-circle me-2"></i> No hay tareas activas en este momento.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="mt-4 text-end">
+    <a href="http://localhost:5555" target="_blank" class="btn btn-outline-info">
+        <i class="fas fa-external-link-alt me-2"></i> Abrir Flower Dashboard Completo
+    </a>
+</div>
+{% endblock %}

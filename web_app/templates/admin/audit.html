@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Auditoría de Seguridad - AutOCR{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="mb-4">
+        <h1 class="h3 mb-0">Auditoría de Seguridad</h1>
+        <p class="text-muted">Registro de eventos críticos y accesos al sistema.</p>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-dark-subtle">
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 700px; overflow-y: auto;">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="bg-dark text-muted small text-uppercase sticky-top" style="z-index: 10;">
+                        <tr>
+                            <th class="ps-4">Timestamp</th>
+                            <th>Usuario</th>
+                            <th>Acción</th>
+                            <th>Recurso</th>
+                            <th>Detalles</th>
+                        </tr>
+                    </thead>
+                    <tbody class="small">
+                        {% for log in logs %}
+                        <tr>
+                            <td class="ps-4 text-muted">{{ log.timestamp|truncate(19, True, '') }}</td>
+                            <td>
+                                <span class="fw-bold">{{ log.username or 'SISTEMA' }}</span>
+                                <span class="text-muted extra-small d-block">ID: {{ log.user_id }}</span>
+                            </td>
+                            <td>
+                                <span
+                                    class="badge border border-{{ 'danger' if 'block' in log.action or 'denied' in log.action else 'info' }} text-white">
+                                    {{ log.action|upper }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="text-uppercase extra-small text-muted">{{ log.resource_type }}</span>
+                                <span class="d-block">#{{ log.resource_id or 'N/A' }}</span>
+                            </td>
+                            <td>
+                                <div class="text-break" style="max-width: 400px;">
+                                    {{ log.details }}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .extra-small {
+        font-size: 0.7rem;
+    }
+
+    .sticky-top {
+        transition: top 0.2s;
+    }
+</style>
+{% endblock %}

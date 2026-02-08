@@ -1,5 +1,12 @@
 import os
 import sys
+import codecs
+
+# Force UTF-8 for Windows Console
+if sys.platform == "win32":
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
+    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
+
 from pathlib import Path
 print("DEBUG: serve.py loaded", flush=True)
 
@@ -41,7 +48,7 @@ def kill_zombies(port=8000):
     
     for proc in psutil.process_iter(['pid', 'name']):
         try:
-            for conn in proc.connections(kind='inet'):
+            for conn in proc.net_connections(kind='inet'):
                 if conn.laddr.port == port:
                     if proc.pid != current_pid:
                         try:

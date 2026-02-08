@@ -183,6 +183,12 @@
                             type="button">Inteligencia Visual</button>
                     </li>
                     {% endif %}
+                    {% if document.structured_data and document.structured_data.mineru %}
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#mineru-view"
+                            type="button">Estructura (MinerU)</button>
+                    </li>
+                    {% endif %}
                     <!-- Structured Data Tab Hidden by User Request
                     {% if document.type != 'Imagen' and document.structured_data %}
                     <li class="nav-item">
@@ -374,6 +380,44 @@
                             </div>
                         </div>
 
+                        <!-- MinerU Tab -->
+                        {% if document.structured_data and document.structured_data.mineru %}
+                        <div class="tab-pane fade" id="mineru-view">
+                            <div class="mb-3">
+                                <h6 class="text-muted small fw-bold text-uppercase mb-2">Tablas Extraídas</h6>
+                                {% if document.structured_data.mineru.tables %}
+                                <div class="p-3 bg-white rounded text-dark overflow-auto" style="max-height: 40vh;">
+                                    {% for table in document.structured_data.mineru.tables %}
+                                    <div class="mb-4 border-bottom pb-2">
+                                        <strong class="d-block mb-2 text-primary">Tabla #{{ loop.index }}</strong>
+                                        <div class="table-responsive">
+                                            {{ table|safe }}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <p class="text-muted small">No se detectaron tablas complejas.</p>
+                                {% endif %}
+                            </div>
+
+                            <div class="mb-3">
+                                <h6 class="text-muted small fw-bold text-uppercase mb-2">Fórmulas (LaTeX)</h6>
+                                {% if document.structured_data.mineru.formulas %}
+                                <div class="p-3 bg-dark bg-opacity-50 rounded overflow-auto" style="max-height: 30vh;">
+                                    {% for formula in document.structured_data.mineru.formulas %}
+                                    <div class="mb-2 p-2 border border-secondary rounded bg-black">
+                                        <!-- MathJax will render this -->
+                                        $$ {{ formula }} $$
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <p class="text-muted small">No se detectaron fórmulas.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
 
                     </div>
                 </form>
@@ -672,6 +716,7 @@
 <!-- Libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
 <script>
     // Configuration

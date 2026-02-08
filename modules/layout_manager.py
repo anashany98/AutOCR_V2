@@ -180,8 +180,6 @@ class LayoutManager:
             self._engine = None
             return
 
-        self._engine = engine
-
     def _load_document_images(self, path: str) -> List[Image.Image]:
         ext = os.path.splitext(path)[1].lower()
         if ext == ".pdf":

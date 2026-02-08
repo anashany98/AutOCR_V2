@@ -49,6 +49,9 @@
                         <i class="fas fa-camera"></i>
                         <input type="file" id="image-input" accept="image/*" class="d-none">
                     </label>
+                    <button type="button" id="mic-btn" class="btn btn-outline-info">
+                        <i class="fas fa-microphone"></i>
+                    </button>
                     <input type="text" id="user-input" class="form-control bg-dark text-light border-secondary"
                         placeholder="Escriba su pregunta o suba una imagen..." autocomplete="off">
                     <button type="submit" id="send-btn" class="btn btn-info px-4">
@@ -72,6 +75,7 @@
         const removeImageBtn = document.getElementById('remove-image-btn');
         const history = document.getElementById('chat-history');
         const rebuildBtn = document.getElementById('rebuild-btn');
+        const micBtn = document.getElementById('mic-btn');
 
         let selectedFile = null;
 
@@ -169,6 +173,123 @@
         }
         loadHistory();
 
+        // --- Voice Recording ---
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        micBtn.addEventListener('click', async () => {
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = (event) => {
+                        audioChunks.push(event.data);
+                    };
+
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        sendVoiceChat(audioBlob);
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    micBtn.classList.add('btn-danger', 'animate-pulse');
+                    micBtn.classList.remove('btn-outline-info');
+                    input.placeholder = "Grabando... haz clic de nuevo para enviar";
+                } catch (err) {
+                    console.error("No se pudo acceder al micrófono:", err);
+                    alert("Error: No se pudo acceder al micrófono.");
+                }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                micBtn.classList.remove('btn-danger', 'animate-pulse');
+                micBtn.classList.add('btn-outline-info');
+                input.placeholder = "Escriba su pregunta o suba una imagen...";
+            }
+        });
+
+        async function sendVoiceChat(blob) {
+            appendMessage('user', '🎤 Comandando de voz...', false);
+
+            const formData = new FormData();
+            formData.append('audio', blob, 'voice.wav');
+            formData.append('session_id', sessionId);
+
+            input.disabled = true;
+            micBtn.disabled = true;
+
+            try {
+                const res = await fetch('/api/chat/voice', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (data.transcription) {
+                    // Update the placeholder message if needed, or just show the bot answer
+                }
+
+                handleAssistantResponse(data);
+            } catch (err) {
+                appendMessage('bot', 'Error al procesar voz.');
+                console.error(err);
+            } finally {
+                input.disabled = false;
+                micBtn.disabled = false;
+            }
+        }
+
+        function handleAssistantResponse(data) {
+            function formatCitations(text) {
+                if (!text) return "";
+                return text.replace(/\[ID:\s*(\d+)\]/g, (match, id) => {
+                    return `<a href="/document/${id}" target="_blank" class="badge bg-info text-decoration-none mx-1 hover-shadow" title="Ver documento fuente" style="cursor: pointer; vertical-align: text-bottom;"><i class="fas fa-file-alt me-1"></i>${match}</a>`;
+                });
+            }
+
+            if (data.answer) {
+                const formattedAnswer = formatCitations(data.answer);
+                const answerHtml = `
+                    <div class="mb-3">
+                        ${data.transcription ? `<p class="small text-muted mb-2 fst-italic">Transcripción: "${data.transcription}"</p>` : ''}
+                        <h6 class="fw-bold text-info mb-2"><i class="fas fa-robot me-2"></i>Respuesta Inteligente:</h6>
+                        <div class="text-light" style="white-space: pre-wrap;">${formattedAnswer}</div>
+                    </div>
+                    <hr class="border-secondary mb-3">
+                `;
+                appendMessage('bot', answerHtml, true);
+            }
+
+            if (data.results && data.results.length > 0) {
+                let html = '<h6 class="fw-bold mb-2 small text-muted"><i class="fas fa-search-location me-2"></i>Fuentes utilizadas:</h6>';
+                data.results.forEach(item => {
+                    const score = (item.score || 0).toFixed(2);
+                    const filename = item.filename || "Desconocido";
+                    const docId = item.doc_id || item.id;
+                    const text = item.text || item.snippet || "";
+                    const link = `/document/${docId}`;
+                    html += `
+                        <div class="mb-2 p-2 rounded bg-dark border border-secondary border-opacity-25">
+                            <div class="d-flex justify-content-between small text-info mb-1">
+                                <span><i class="fas fa-file-alt me-1"></i> ${filename}</span>
+                                <span class="badge bg-secondary bg-opacity-25">${score}</span>
+                            </div>
+                            <p class="mb-1 small text-white-50 fst-italic">"...${text.substring(0, 150)}..."</p>
+                            <a href="${link}" target="_blank" class="btn btn-xs btn-outline-light py-0" style="font-size: 0.7rem;">Ver documento</a>
+                        </div>
+                    `;
+                });
+                appendMessage('bot', html, true);
+            } else if (!data.answer) {
+                appendMessage('bot', 'No encontré información relevante.');
+            }
+        }
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const query = input.value.trim();
@@ -179,12 +300,11 @@
 
             const formData = new FormData();
             formData.append('query', query);
-            formData.append('session_id', sessionId); // Send Session ID
+            formData.append('session_id', sessionId);
             if (selectedFile) {
                 formData.append('image', selectedFile);
             }
 
-            // Reset input
             input.value = '';
             input.disabled = true;
             removeImageBtn.click();
@@ -196,54 +316,7 @@
                     body: formData
                 });
                 const data = await res.json();
-
-                function formatCitations(text) {
-                    if (!text) return "";
-                    // Regex searches for [ID: 123] patterns
-                    return text.replace(/\[ID:\s*(\d+)\]/g, (match, id) => {
-                        return `<a href="/document/${id}" target="_blank" class="badge bg-info text-decoration-none mx-1 hover-shadow" title="Ver documento fuente" style="cursor: pointer; vertical-align: text-bottom;"><i class="fas fa-file-alt me-1"></i>${match}</a>`;
-                    });
-                }
-
-                // 1. Show AI Answer if available
-                if (data.answer) {
-                    const formattedAnswer = formatCitations(data.answer);
-                    const answerHtml = `
-                        <div class="mb-3">
-                            <h6 class="fw-bold text-info mb-2"><i class="fas fa-robot me-2"></i>Respuesta Inteligente:</h6>
-                            <div class="text-light" style="white-space: pre-wrap;">${formattedAnswer}</div>
-                        </div>
-                        <hr class="border-secondary mb-3">
-                     `;
-                    appendMessage('bot', answerHtml, true);
-                }
-
-                // 2. Show Sources (Snippets)
-                if (data.results && data.results.length > 0) {
-                    let html = '<h6 class="fw-bold mb-2 small text-muted"><i class="fas fa-search-location me-2"></i>Fuentes utilizadas:</h6>';
-                    data.results.forEach(item => {
-                        const score = (item.score || 0).toFixed(2);
-                        const filename = item.filename || "Desconocido";
-                        const docId = item.doc_id || item.id;
-                        const text = item.text || item.snippet || "";
-                        const link = `/document/${docId}`;
-
-                        html += `
-                        <div class="mb-2 p-2 rounded bg-dark border border-secondary border-opacity-25">
-                            <div class="d-flex justify-content-between small text-info mb-1">
-                                <span><i class="fas fa-file-alt me-1"></i> ${filename}</span>
-                                <span class="badge bg-secondary bg-opacity-25">${score}</span>
-                            </div>
-                            <p class="mb-1 small text-white-50 fst-italic">"...${text.substring(0, 150)}..."</p>
-                            <a href="${link}" target="_blank" class="btn btn-xs btn-outline-light py-0" style="font-size: 0.7rem;">Ver documento</a>
-                        </div>
-                    `;
-                    });
-                    appendMessage('bot', html, true); // Append as part of bot message or separate? Usually separate is clearer but appending to bot "role" works visually.
-                } else if (!data.answer) {
-                    appendMessage('bot', 'No encontré información relevante en los documentos.');
-                }
-
+                handleAssistantResponse(data);
             } catch (err) {
                 appendMessage('bot', 'Error al consultar el servicio.');
                 console.error(err);

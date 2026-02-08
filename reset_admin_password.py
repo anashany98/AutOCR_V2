@@ -26,9 +26,9 @@ def reset_password(username, new_password):
             print(f"❌ User '{username}' not found.")
             return
 
-        # Update password
+        # Update password and ensure ADMIN role
         password_hash = generate_password_hash(new_password)
-        update_query = "UPDATE users SET password_hash = ? WHERE username = ?"
+        update_query = "UPDATE users SET password_hash = ?, role = 'ADMIN' WHERE username = ?"
         cursor.execute(update_query.replace('?', db.placeholder), (password_hash, username))
         conn.commit()
         print(f"✅ Password for user '{username}' has been reset to '{new_password}'.")

@@ -8,6 +8,7 @@ from flask_login import login_required, current_user
 import tempfile
 
 from web_app.services import get_db, get_pipeline, get_logger, get_classifier, load_configuration, save_configuration, PROJECT_ROOT
+from web_app.security.security_decorators import require_role, hotel_scoped, financial_access_required
 from web_app.utils import safe_json_parse, resolve_path, ensure_within_project, encode_path, decode_path
 from modules.file_utils import ensure_directories
 from modules.tasks import process_document_task
@@ -18,44 +19,78 @@ ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".jfif", ".avif"
 
 @main_bp.route("/")
 @login_required
+@require_role(['GESTOR', 'DIRECCION', 'ADMIN'])
 def index():
-    if current_user.role == 'client':
+    if current_user.role == 'CLIENTE':
         return redirect(url_for('main.client_dashboard'))
     return redirect(url_for('main.dashboard'))
 
 @main_bp.route("/client/dashboard")
 @login_required
 def client_dashboard():
-    if current_user.role != 'client':
+    if current_user.role != 'CLIENTE':
         return redirect(url_for('main.dashboard'))
     return render_template("client_dashboard.html")
 
 @main_bp.route("/dashboard")
 @login_required
 def dashboard():
-    if current_user.role == 'client':
+    if current_user.role == 'CLIENTE':
         return redirect(url_for('main.client_dashboard'))
         
     db = get_db()
+    hotel_id = request.args.get('hotel_id')
+    
+    # Validation of requested hotel_id
+    if hotel_id and current_user.role != 'ADMIN':
+        if str(hotel_id) not in [str(h) for h in current_user.hotel_scope]:
+            hotel_id = None # Ignore unauthorized filter
+    
+    # Filter by hotel_scope
+    scope_filter = ""
+    scope_params = []
+    
+    if hotel_id:
+        scope_filter = f" WHERE hotel_id = {db.placeholder}"
+        scope_params = [hotel_id]
+    elif current_user.role != 'ADMIN':
+        if not current_user.hotel_scope:
+            return render_template("dashboard.html", total_docs=0, status_stats={}, type_stats=[], recent_docs=[], metrics=[], recent_logs=[], pending_count=0, selected_hotel=None, available_hotels=[])
+        
+        placeholders = ",".join([db.placeholder] * len(current_user.hotel_scope))
+        scope_filter = f" WHERE hotel_id IN ({placeholders})"
+        scope_params = list(current_user.hotel_scope)
+
+    # For the UI selector
+    available_hotels = []
+    if current_user.role == 'ADMIN':
+        available_hotels = db.get_hotels()
+    elif current_user.hotel_scope:
+        all_hotels = db.get_hotels()
+        available_hotels = [h for h in all_hotels if str(h['id']) in [str(s) for s in current_user.hotel_scope]]
+
+    # Re-calculate placeholders for pending/type queries if needed
+    p_holders = ",".join([db.placeholder] * len(scope_params)) if scope_params else ""
+
     with db.get_connection() as conn:
         cursor = db.get_cursor(conn)
 
-        cursor.execute("SELECT COUNT(*) FROM documents")
+        cursor.execute(f"SELECT COUNT(*) FROM documents{scope_filter}", scope_params)
         total_docs = cursor.fetchone()[0]
 
-        cursor.execute("SELECT status, COUNT(*) FROM documents GROUP BY status")
+        cursor.execute(f"SELECT status, COUNT(*) FROM documents{scope_filter} GROUP BY status", scope_params)
         status_stats = {row[0]: row[1] for row in cursor.fetchall()}
 
-        cursor.execute("SELECT COUNT(*) FROM documents WHERE workflow_state = 'pending'")
+        pending_where = " WHERE workflow_state = 'pending'"
+        if scope_filter:
+            pending_where += f" AND hotel_id IN ({placeholders})"
+        cursor.execute(f"SELECT COUNT(*) FROM documents{pending_where}", scope_params)
         pending_count = cursor.fetchone()[0]
 
-        cursor.execute(
-            """
-            SELECT type, COUNT(*) FROM documents
-            WHERE type IS NOT NULL
-            GROUP BY type
-            """
-        )
+        type_where = " WHERE type IS NOT NULL"
+        if scope_filter:
+            type_where += f" AND hotel_id IN ({placeholders})"
+        cursor.execute(f"SELECT type, COUNT(*) FROM documents{type_where} GROUP BY type", scope_params)
         raw_type_stats = cursor.fetchall()
         
         normalized_stats = {}
@@ -66,12 +101,13 @@ def dashboard():
         type_stats = sorted(normalized_stats.items(), key=lambda x: x[1], reverse=True)[:10]
 
         cursor.execute(
-            """
+            f"""
             SELECT id, filename, type, status, datetime, duration, error_message
             FROM documents
+            {scope_filter}
             ORDER BY datetime DESC
             LIMIT 10
-            """
+            """, scope_params
         )
         recent_docs = cursor.fetchall()
 
@@ -85,15 +121,19 @@ def dashboard():
         )
         metrics = cursor.fetchall()
 
+        tables_where = ""
+        if scope_filter:
+            tables_where = f" AND d.hotel_id IN ({placeholders})"
         cursor.execute(
-            """
+            f"""
             SELECT d.id, d.filename, d.datetime, o.tables_json
             FROM documents d
             JOIN ocr_texts o ON d.id = o.id_doc
             WHERE o.tables_json IS NOT NULL
+            {tables_where}
             ORDER BY d.datetime DESC
             LIMIT 10
-            """
+            """, scope_params
         )
         tables_rows = cursor.fetchall()
         recent_tables: List[Dict[str, Any]] = []
@@ -136,6 +176,8 @@ def dashboard():
         vision_enabled=vision_enabled,
         recent_logs=recent_logs,
         pending_count=pending_count,
+        selected_hotel=hotel_id,
+        available_hotels=available_hotels,
     )
 
 @main_bp.route("/verify")
@@ -145,16 +187,27 @@ def verify_queue():
         return redirect(url_for('main.client_dashboard'))
 
     db = get_db()
+    # Filter by hotel_scope
+    scope_filter = ""
+    scope_params = []
+    if current_user.role != 'ADMIN':
+        if not current_user.hotel_scope:
+            return render_template("documents.html", documents=[], title="Cola de Verificación", is_verification_list=True, total_pages=1, page=1, status_filter="", type_filter="", search="")
+        placeholders = ",".join([db.placeholder] * len(current_user.hotel_scope))
+        scope_filter = f" AND d.hotel_id IN ({placeholders})"
+        scope_params = list(current_user.hotel_scope)
+
     with db.get_connection() as conn:
         cursor = db.get_cursor(conn)
         cursor.execute(
-            """
+            f"""
             SELECT d.id, d.filename, d.datetime, o.confidence, d.type
             FROM documents d
             LEFT JOIN ocr_texts o ON d.id = o.id_doc
             WHERE d.workflow_state = 'pending'
+            {scope_filter}
             ORDER BY d.datetime ASC
-            """
+            """, scope_params
         )
         pending_docs = cursor.fetchall()
     
@@ -173,12 +226,15 @@ def verify_queue():
 def documents():
     db = get_db()
     
-    # Filter for clients
-    user_filter = ""
-    user_params: List[Any] = []
-    if current_user.role == 'client':
-        user_filter = f" AND owner_id = {db.placeholder}"
-        user_params.append(current_user.id)
+    # Filter by hotel_scope
+    scope_filter = ""
+    scope_params = []
+    if current_user.role != 'ADMIN':
+        if not current_user.hotel_scope:
+             return render_template("documents.html", documents=[], page=1, total_pages=1)
+        placeholders = ",".join([db.placeholder] * len(current_user.hotel_scope))
+        scope_filter = f" AND hotel_id IN ({placeholders})"
+        scope_params = list(current_user.hotel_scope)
 
     with db.get_connection() as conn:
         cursor = db.get_cursor(conn)
@@ -196,10 +252,10 @@ def documents():
             FROM documents
             WHERE 1=1
         """
-        query += user_filter
+        query += scope_filter
 
         params: List[Any] = []
-        params.extend(user_params)
+        params.extend(scope_params)
 
         if status_filter:
             query += f" AND status = {db.placeholder}"
@@ -217,9 +273,9 @@ def documents():
         documents_rows = cursor.fetchall()
         
         count_query = "SELECT COUNT(*) FROM documents WHERE 1=1"
-        count_query += user_filter
+        count_query += scope_filter
         count_params: List[Any] = []
-        count_params.extend(user_params)
+        count_params.extend(scope_params)
         
         if status_filter:
             count_query += f" AND status = {db.placeholder}"
@@ -271,7 +327,8 @@ def document_detail(doc_id: int):
             f"""
             SELECT d.id, d.filename, d.path, d.type, d.status, d.datetime, d.duration,
                    d.tags, d.workflow_state, o.text, o.markdown_text, o.language, o.confidence,
-                   o.blocks_json, o.tables_json, o.structured_data
+                   o.blocks_json, o.tables_json, o.structured_data,
+                   d.hotel_id, d.doc_type, d.visibility, d.financial_level
             FROM documents d
             LEFT JOIN ocr_texts o ON d.id = o.id_doc
             WHERE d.id = {db.placeholder}
@@ -299,6 +356,16 @@ def document_detail(doc_id: int):
     document["blocks"] = safe_json_parse(row[13], [])
     document["tables"] = safe_json_parse(row[14], [])
     document["structured_data"] = safe_json_parse(row[15], None)
+    
+    document["hotel_id"] = row[16]
+    document["doc_type"] = row[17]
+    document["visibility"] = row[18]
+    document["financial_level"] = row[19]
+
+    # Security: Restrict financial data
+    if document["financial_level"] != 'none' and current_user.role not in ['DIRECCION', 'ADMIN']:
+        document["tables"] = []
+        document["structured_data"] = {"msg": "Acceso financiero restringido"}
 
     return render_template("document_detail.html", document=document)
 
@@ -356,6 +423,12 @@ def upload():
         ocr_enabled = "ocr_enabled" in request.form if request.form else post_conf.get("ocr_enabled", True)
         classification_enabled = "classification_enabled" in request.form if request.form else post_conf.get("classification_enabled", True)
         handwriting_mode = "handwriting_mode" in request.form
+        
+        # Phase 4 Metadata
+        hotel_id = request.form.get("hotel_id")
+        doc_type = request.form.get("doc_type", "other")
+        visibility = request.form.get("visibility", "private")
+        financial_level = request.form.get("financial_level", "none")
 
         for temp_path in saved_files:
             options = {
@@ -364,7 +437,11 @@ def upload():
                 "classification_enabled": classification_enabled,
                 "input_root": upload_dir,
                 "handwriting_mode": handwriting_mode,
-                "owner_id": current_user.id # Pass owner_id here!
+                "owner_id": current_user.id,
+                "hotel_id": hotel_id,
+                "doc_type": doc_type,
+                "visibility": visibility,
+                "financial_level": financial_level
             }
             # Important: Inject owner_id into config temporarily or pass via options
             # Since process_single_file takes pipeline_conf, we can inject it there if needed, 
@@ -404,6 +481,7 @@ def duplicates_page():
 
 @main_bp.route("/settings", methods=["GET", "POST"])
 @login_required
+@require_role(['GESTOR', 'DIRECCION', 'ADMIN'])
 def settings():
     if current_user.role == 'client':
         flash("Acceso denegado.", "error")

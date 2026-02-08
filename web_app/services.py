@@ -65,6 +65,9 @@ _rag_lock = threading.Lock()
 _tool_instance: Optional[ToolManager] = None
 _tool_lock = threading.Lock()
 
+_voice_instance: Optional["VoiceManager"] = None
+_voice_lock = threading.Lock()
+
 def get_db() -> DBManager:
     """Get database manager singleton with thread-safe initialization."""
     global _db_instance
@@ -136,6 +139,26 @@ def get_tool_manager() -> ToolManager:
                 vision = pipeline.vision_manager if pipeline else None
                 _tool_instance = ToolManager(get_db(), str(PROJECT_ROOT), vision_manager=vision)
     return _tool_instance
+
+def get_voice_manager() -> Optional["VoiceManager"]:
+    """Get voice manager singleton with thread-safe initialization."""
+    global _voice_instance
+    if _voice_instance is None:
+        with _voice_lock:
+            if _voice_instance is None:
+                try:
+                    from modules.voice_manager import VoiceManager
+                    config = load_configuration()
+                    v_conf = config.get("app", {}).get("voice", {})
+                    model_size = v_conf.get("model_size", "base")
+                    # Auto-detect device (use GPU if available)
+                    gpu = config.get("app", {}).get("gpu_enabled", True)
+                    device = "cuda" if gpu else "cpu"
+                    _voice_instance = VoiceManager(model_size=model_size, device=device)
+                except Exception as e:
+                    get_logger().error(f"Failed to load Voice Manager: {e}")
+                    _voice_instance = None
+    return _voice_instance
 def reload_classifier():
     """Force reload of the classifier instance."""
     global _classifier_instance
@@ -145,6 +168,12 @@ def reload_classifier():
 
 _llm_instance: Optional["LLMClient"] = None
 _llm_lock = threading.Lock()
+
+_prompt_instance: Optional["PromptManager"] = None
+_prompt_lock = threading.Lock()
+
+_orchestrator_instance: Optional["AIOrchestrator"] = None
+_orchestrator_lock = threading.Lock()
 
 def get_llm_client():
     """Get LLM Client singleton with thread-safe initialization."""
@@ -161,3 +190,29 @@ def get_llm_client():
                     get_logger().error(f"Failed to load LLM Client: {e}")
                     _llm_instance = None
     return _llm_instance
+
+def get_prompt_manager():
+    """Get Prompt Manager singleton."""
+    global _prompt_instance
+    if _prompt_instance is None:
+        with _prompt_lock:
+            if _prompt_instance is None:
+                from modules.prompt_manager import PromptManager
+                _prompt_instance = PromptManager(str(PROJECT_ROOT / "data" / "prompts"))
+    return _prompt_instance
+
+def get_orchestrator():
+    """Get AI Orchestrator singleton."""
+    global _orchestrator_instance
+    if _orchestrator_instance is None:
+        with _orchestrator_lock:
+            if _orchestrator_instance is None:
+                from modules.ai_orchestrator import AIOrchestrator
+                llm = get_llm_client()
+                prompts = get_prompt_manager()
+                tools = get_tool_manager()
+                if llm and prompts:
+                    _orchestrator_instance = AIOrchestrator(llm, prompts, tool_manager=tools)
+                else:
+                    get_logger().error("Failed to initialize AI Orchestrator: LLM or Prompts missing.")
+    return _orchestrator_instance

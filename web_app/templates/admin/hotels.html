@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Gestión de Hoteles - AutOCR{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0">Gestión de Hoteles</h1>
+            <p class="text-muted">Administra las entidades y ubicaciones del sistema.</p>
+        </div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addHotelModal">
+            <i class="fas fa-plus me-2"></i> Nuevo Hotel
+        </button>
+    </div>
+
+    <div class="card shadow-sm border-0 bg-dark-subtle">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-dark text-muted small text-uppercase">
+                        <tr>
+                            <th class="ps-4">Nombre</th>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th class="text-end pe-4">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for hotel in hotels %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="fw-bold">{{ hotel.name }}</div>
+                            </td>
+                            <td><span class="badge bg-secondary">{{ hotel.code }}</span></td>
+                            <td class="text-muted small">{{ hotel.description }}</td>
+                            <td class="text-end pe-4">
+                                <button class="btn btn-sm btn-outline-info me-2 edit-hotel-btn"
+                                    data-hotel='{{ hotel|tojson|safe }}'>
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Añadir Hotel -->
+<div class="modal fade" id="addHotelModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary">
+            <form method="POST">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Registrar Nuevo Hotel</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="create">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre del Hotel</label>
+                        <input type="text" name="name" class="form-control bg-dark text-white border-secondary"
+                            required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Código (Único)</label>
+                        <input type="text" name="code" class="form-control bg-dark text-white border-secondary"
+                            placeholder="EJ: H001" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea name="description" class="form-control bg-dark text-white border-secondary"
+                            rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Hotel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Hotel -->
+<div class="modal fade" id="editHotelModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary">
+            <form method="POST">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Editar Hotel</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="update">
+                    <input type="hidden" name="hotel_id" id="edit_hotel_id">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre del Hotel</label>
+                        <input type="text" name="name" id="edit_hotel_name"
+                            class="form-control bg-dark text-white border-secondary" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Código</label>
+                        <input type="text" name="code" id="edit_hotel_code"
+                            class="form-control bg-dark text-white border-secondary" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea name="description" id="edit_hotel_desc"
+                            class="form-control bg-dark text-white border-secondary" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-info">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.edit-hotel-btn');
+        if (btn) {
+            const hotel = JSON.parse(btn.getAttribute('data-hotel'));
+            document.getElementById('edit_hotel_id').value = hotel.id;
+            document.getElementById('edit_hotel_name').value = hotel.name;
+            document.getElementById('edit_hotel_code').value = hotel.code;
+            document.getElementById('edit_hotel_desc').value = hotel.description;
+            new bootstrap.Modal(document.getElementById('editHotelModal')).show();
+        }
+    });
+</script>
+{% endblock %}

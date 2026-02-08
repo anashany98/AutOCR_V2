@@ -4,261 +4,215 @@ import yaml
 import requests
 import tempfile
 import threading
+from typing import Optional
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
-from web_app.services import get_db, get_pipeline, get_rag_manager, get_tool_manager, get_logger, load_configuration, PROJECT_ROOT
+from web_app.services import get_db, get_pipeline, get_rag_manager, get_tool_manager, get_voice_manager, get_logger, load_configuration, PROJECT_ROOT
 
 chat_bp = Blueprint('chat', __name__)
 
 @chat_bp.route("/api/chat", methods=["POST"])
+@login_required
 def api_chat_post():
-    """Semantic search chat endpoint for documents."""
-    query = ""
+    """Chat endpoint for text queries. Accepts both JSON and FormData."""
+    # Handle both JSON and FormData
     image_file = None
-    session_id = "default_session"
-
-    if request.content_type and 'multipart/form-data' in request.content_type:
-        query = request.form.get("query", "")
-        image_file = request.files.get("image")
-        session_id = request.form.get("session_id", "default_session")
-    else:
+    if request.is_json:
         data = request.json or {}
         query = data.get("query", "")
         session_id = data.get("session_id", "default_session")
-        image_file = None
-
-    if not query and not image_file:
-        return jsonify({"error": "Empty query"}), 400
+        hotel_id = data.get("hotel_id")
+    else:
+        # FormData (for image uploads)
+        query = request.form.get("query", "")
+        session_id = request.form.get("session_id", "default_session")
+        hotel_id = request.form.get("hotel_id")
+        image_file = request.files.get("image")
     
-    db = get_db()
-    # Save User Query
-    db.insert_chat_message(session_id, "user", query)
+    if not query:
+        return jsonify({"error": "Query required"}), 400
+        
+    return process_chat_query(query, session_id, hotel_id, image_file=image_file)
 
-    results = []
-    visual_context = ""
-
-    # 1. Visual Search if image provided
-    if image_file:
-        pipeline = get_pipeline()
-        vision_manager = pipeline.vision_manager
-        if vision_manager and vision_manager.config.enabled:
-            suffix = Path(image_file.filename).suffix.lower()
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                image_file.save(tmp.name)
-                tmp_path = tmp.name
-            
-            try:
-                # Search visually
-                vision_results = vision_manager.search_similar(tmp_path, k=5)
-                for vr in vision_results:
-                    path_obj = Path(vr["path"])
-                    # Use a new connection for specific query
-                    with db.get_connection() as conn:
-                        cursor = db.get_cursor(conn)
-                        # Parameterized query for path
-                        cursor.execute(f"SELECT id, filename, text FROM documents WHERE path = {db.placeholder}", (str(path_obj),))
-                        row = cursor.fetchone()
-                        if row:
-                            results.append({
-                                "id": row[0],
-                                "filename": row[1],
-                                "snippet": (row[2] or "")[:300],
-                                "score": vr["score"],
-                                "type": "visual"
-                            })
-                
-                if results:
-                    visual_context = "He encontrado documentos similares mediante análisis visual. "
-            finally:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-
-    # 2. RAG Search (Textual)
-    rag_manager = get_rag_manager()
-    if query and rag_manager:
-        text_results = rag_manager.search(query, k=5)
-        for r in text_results:
-            if isinstance(r, dict):
-                results.append({
-                    "id": r.get("doc_id"),
-                    "filename": r.get("filename"),
-                    "snippet": r.get("text"),
-                    "score": 1.0, 
-                    "type": "text"
-                })
-            else:
-                results.append({
-                    "id": r[0],
-                    "filename": r[1],
-                    "snippet": r[2],
-                    "score": 1.0,
-                    "type": "text"
-                })
-
-    if not results and not query:
-         return jsonify({"error": "No results found"}), 404
-
-    context_response = results
-
-    # 1.5. Tools Setup
-    tool_manager = get_tool_manager()
-    tools = tool_manager.get_tool_definitions()
-
-    # 2. Check LLM Config
-    full_config = load_configuration()
-    # 3. Call Chat LLM
-    # Use dedicated chat config
-    llm_conf = full_config.get("llm", {})
-    routing_conf = llm_conf.get("routing", {})
-    chat_conf = routing_conf.get("general_chat", {})
+@chat_bp.route("/api/chat/voice", methods=["POST"])
+@login_required
+def api_chat_voice():
+    """Endpoint for voice queries."""
+    if 'audio' not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
+        
+    audio_file = request.files['audio']
+    session_id = request.form.get("session_id", "default_session")
+    hotel_id = request.form.get("hotel_id")
     
-    # Check if Chat is enabled? 
-    # For now, we assume if LLM is enabled globally, we try. 
-    # Or strict check? The UI has a global "Interpretation Enabled" toggle in the Pipeline card.
-    # The Chat card doesn't have an explicit 'Enabled' toggle, implied enabled if configured?
-    # Let's check global enabled or just proceed if base_url is present.
-    if not llm_conf.get("enabled", False):
-         # If global switch is off, maybe we disable chat too? 
-         # User asked for separation. Maybe Chat should be always on if configured?
-         # Let's respect the ID 3584 config structure: routing enabled separate??
-         # config.yaml had routing.enabled. 
-         # My UI didn't touch routing.enabled. 
-         # Let's rely on global 'enabled' for safety OR just existence of config.
-         # For safety, if llm global is off, we might want to kill chat too?
-         # No, user wants separation. Let's assume Chat is always active if configured.
-         pass 
-
-    base_url = chat_conf.get("base_url", "http://host.docker.internal:1234/v1").rstrip("/")
-    model = chat_conf.get("model", "mistral-small-24b")
-    timeout = int(chat_conf.get("timeout", 60))
+    # Save temp file
+    temp_dir = Path(tempfile.gettempdir())
+    audio_path = temp_dir / f"voice_{current_user.id}_{os.urandom(4).hex()}.wav"
+    audio_file.save(str(audio_path))
     
-    # Fallback to pipeline setting if chat specific is missing/empty (optional safety)
-    if not base_url or "localhost" in base_url and "1235" not in base_url and not chat_conf:
-         # Fallback logic if needed, but let's trust the new UI.
-         pass
     try:
-        max_context_chars = 10000 
-        context_str = ""
-        for i, item in enumerate(context_response):
-            addition = f"[ID: {item['id']} Archivo: {item['filename']}]:\n{item['snippet']}\n\n"
-            if len(context_str) + len(addition) > max_context_chars:
-                break
-            context_str += addition
-        
-        if not base_url: 
-             base_url = "http://localhost:1234/v1" # Ultimate fallback
-
-        # 1. RAG Search (Documents)
-        # ---------------------------------------------------------
-        # Retrieve relevant chunks from vector store based on query
-        # Filter by owner_id to ensure privacy
-        user_owner_id = current_user.id if current_user.role == 'client' else None
-        
-        # We need to initialize the RAG manager properly if not global
-        # Assuming get_pipeline().rag_manager or similar, but chat_routes imports it?
-        # Let's inspect imports. We need a way to get the rag_manager instance.
-        # Usually it's in the app context or we create one.
-        # For performance, it should be a singleton.
-        
-        # FIX: The original code didn't seem to have the retrieval call in the snippet I viewed.
-        # I need to see the FULL api_chat_post to integrate correctly.
-        # But I recall `context_str` being passed or generated.
-        
-        # Let's assume standard instantiation for now, or use the one from pipeline if avail.
-        from web_app.services import get_pipeline, get_db
-        pipeline = get_pipeline()
-        rag = pipeline.vision_manager # Wait, rag_manager is separate. 
-        # In `app.py`, where is rag_manager? 
-        # Usually we might need to load it. 
-        # Let's verify `web_app/services.py` if needed.
-        # For now, I will use the `RagManager` class directly if needed, but better to check if it's cached.
-        
-        # 2. Product Search (Catalog)
-        # ---------------------------------------------------------
-        from modules.product_manager import ProductManager
-        pm = ProductManager(get_db()) # Lightweight init
-        product_results = pm.search_products(user_message, k=4)
-        
-        product_context = ""
-        if product_results:
-            product_context = "\nCATÁLOGO DE PRODUCTOS DISPONIBLES:\n"
-            for p in product_results:
-                product_context += f"- {p['name']} (SKU: {p['sku']}): {p['price']}€. {p['description'][:100]}...\n"
-        
-        # 3. Construct System Prompt
-        # ---------------------------------------------------------
-        system_prompt = (
-            "Eres un asistente híbrido: GESTOR DOCUMENTAL y ASESOR DE COMPRAS para una empresa.\n"
-            "TU OBJETIVO: Ayudar al usuario a encontrar información en sus documentos Y sugerir compras inteligentes.\n\n"
-            f"{visual_context}"
-            "Responde a la pregunta basándote en el CONTEXTO proporcionado.\n\n"
-            "ROLES:\n"
-            "1. BIBLIOTECARIO: Si preguntan por datos, facturas o fechas, responde con precisión citando la fuente.\n"
-            "2. VENDEDOR: Si preguntan 'qué comprar', 'tienes sillas', 'recomiéndame' o 'stock', actúa como un experto decorador/vendedor. "
-            "Usa el CATÁLOGO DE PRODUCTOS para sugerir items concretos. Vende los beneficios (confort, diseño, ahorro).\n\n"
-            "REGLAS:\n"
-            "- Cita siempre la fuente documental usando [ID: <id>] (ej: 'Compraste 5 sillas [ID: 12]').\n"
-            "- Si sugieres productos del catálogo, menciona el Precio y por qué encaja con lo que busca.\n"
-            "- Se proactivo: 'Veo que compraste cortinas baratas antes, ¿te interesan nuestras Cortinas Opacas Premium?'\n\n"
-            f"CONTEXTO DOCUMENTAL (Lo que el usuario tiene):\n{context_str or 'No hay documentos relevantes.'}\n\n"
-            f"{product_context}\n"
-        )
-
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": query}
-            ],
-            "tools": tools,
-            "tool_choice": "auto",
-            "temperature": 0.7,
-            "stream": False
-        }
-        
-        response = requests.post(
-            f"{base_url}/chat/completions", 
-            json=payload, 
-            timeout=timeout
-        )
-        
-        if response.status_code == 200:
-            llm_data = response.json()
-            choice = llm_data["choices"][0]
-            message = choice["message"]
+        voice_mgr = get_voice_manager()
+        if not voice_mgr or not voice_mgr.enabled:
+            return jsonify({"error": "Servicio de voz no disponible localmente."}), 503
             
-            # Check for tool/function calls
-            tool_calls = message.get("tool_calls", [])
-            if tool_calls:
-                results_of_tools = []
-                for tool_call in tool_calls:
-                    func_name = tool_call["function"]["name"]
-                    func_args = json.loads(tool_call["function"]["arguments"])
-                    tool_output = tool_manager.execute_tool(func_name, func_args)
-                    results_of_tools.append(tool_output)
-                
-                tool_summary = "\n".join(results_of_tools)
-                return jsonify({
-                    "results": context_response, 
-                    "answer": f"He ejecutado las acciones solicitadas:\n{tool_summary}"
-                })
+        # Transcribe
+        query = voice_mgr.transcribe(str(audio_path))
+        if not query or query.startswith("Error"):
+             return jsonify({"error": query or "Could not transcribe audio"}), 500
+             
+        # Process as normal chat
+        response = process_chat_query(query, session_id, hotel_id)
+        
+        # Add the transcribed text to the response
+        res_data = response.get_json()
+        res_data["transcription"] = query
+        return jsonify(res_data)
+        
+    finally:
+        if audio_path.exists():
+            os.remove(str(audio_path))
 
-            # Save Assistant Response
-            db.insert_chat_message(session_id, "assistant", message.get("content", ""))
-            return jsonify({"results": context_response, "answer": message.get("content", "")})
+def process_chat_query(query: str, session_id: str, hotel_id: Optional[str], image_file=None):
+    """Helper to process a chat query through the AI Orchestrator or Vision Engine."""
+    from web_app.services import get_orchestrator, get_db, get_rag_manager, get_prompt_manager, get_pipeline, load_configuration, get_logger
+    from PIL import Image
+    
+    orchestrator = get_orchestrator()
+    db = get_db()
+    
+    # --- Vision Flow ---
+    if image_file:
+        try:
+            pipeline = get_pipeline()
+            # Ensure engine is initialized
+            if not pipeline.engine.enabled:
+                 return jsonify({"results": [], "answer": "El motor de visión está desactivado."})
+            
+            # Check if engine supports chat (e.g. PaddleVLOCHEngine)
+            vision_engine = pipeline.engine
+            
+            if not hasattr(pipeline.engine, 'chat'):
+                # Fallback: Try to use PaddleVLOCHEngine explicitly for VQA
+                try:
+                    from modules.engines.paddle_vl_wrapper import PaddleVLOCHEngine
+                    # We use a simple config for the VQA engine
+                    vqa_config = load_configuration().get("ocr", {})
+                    # Ensure path is set to download/load model
+                    if not vqa_config.get("model_id"):
+                         vqa_config["model_id"] = "PaddlePaddle/PaddleOCR-VL-1.5"
+                    
+                    # Singleton-like or new instance? New instance for safety/simplicity here, 
+                    # ideally should be cached in app context, but let's try.
+                    # Warning: This might be slow on first load.
+                    get_logger().info("Initializing fallback PaddleVLOCHEngine for Vision Chat...")
+                    vision_engine = PaddleVLOCHEngine(vqa_config, logger=get_logger())
+                    if not vision_engine.initialize():
+                         return jsonify({"results": [], "answer": "Error inicializando el motor de visión (PaddleOCR-VL)."})
+                except Exception as e:
+                    get_logger().error(f"Fallback VQA init failed: {e}")
+                    return jsonify({
+                        "results": [], 
+                        "answer": f"El motor principal ({pipeline.engine.__class__.__name__}) no soporta chat y el fallback falló: {e}"
+                    })
+
+            if hasattr(vision_engine, 'chat'):
+                # Load image
+                try:
+                    img = Image.open(image_file)
+                    # Handle image mode and logic
+                    answer = vision_engine.chat(img, query)
+                    
+                    db.insert_chat_message(session_id, "user", f"[Imagen] {query}")
+                    db.insert_chat_message(session_id, "assistant", answer)
+                    
+                    return jsonify({
+                        "results": [],
+                        "answer": answer,
+                        "tool_output": "Vision Analysis",
+                        "orchestration": {"action": "VISION_CHAT"}
+                    })
+                except Exception as e:
+                    import traceback
+                    tb = traceback.format_exc()
+                    get_logger().error(f"Vision Chat failed: {e}\n{tb}")
+                    return jsonify({"results": [], "answer": f"Error procesando la imagen: {str(e)}"})
+            else:
+                 return jsonify({"results": [], "answer": "Motor de visión no disponible."})
+        except Exception as e:
+             get_logger().error(f"Vision Flow Error: {e}")
+             return jsonify({"results": [], "answer": "Error interno en flujo de visión."})
+
+    # --- Text / Orchestrator Flow ---
+    user_context = {
+        "role": current_user.role,
+        "hotel_scope": current_user.hotel_scope,
+        "current_hotel": hotel_id
+    }
+    
+    route = orchestrator.route_request(query, user_context)
+    if route["action"] == "DENIED":
+        return jsonify({"results": [], "answer": route["message"]})
+
+    try:
+        target_tool = route["tool"]
+        results = []
+        tool_output = None
+        
+        if hotel_id and str(hotel_id) not in [str(h) for h in current_user.hotel_scope] and current_user.role != 'ADMIN':
+             return jsonify({"error": "Hotel access denied"}), 403
+
+        if target_tool == "TOOL_CALL" and route.get("tool_name"):
+            res_tool = orchestrator.execute_tool(route["tool_name"], route["params"])
+            tool_output = res_tool.get("output", "")
+            answer = f"Acción ejecutada: {route['tool_name']}. \n\nResultado: {tool_output}"
         else:
-            get_logger().error(f"LLM Error {response.status_code}: {response.text}")
-            return jsonify({"results": context_response, "answer": "Error conectando con el cerebro local (LM Studio)."})
+            rag = get_rag_manager()
+            if target_tool in ["RAG_TEXT", "RAG_FINANCIAL", "CHAT_GENERAL"]:
+                results = rag.search(query, k=5, db_manager=db, hotel_id=hotel_id)
+                
+            context_str = ""
+            for item in results:
+                context_str += f"[Doc ID: {item.get('doc_id')}] Contenido: {item.get('text')}\n\n"
+
+            
+            system_prompt = get_prompt_manager().get_prompt(current_user.role)
+            if not system_prompt:
+                system_prompt = get_prompt_manager().get_prompt("v1", key="CLIENTE")
+
+            instruction = f"Contexto encontrado:\n{context_str}\n\nUsuario: {query}"
+            
+            llm = orchestrator.llm
+            res = llm._client.chat.completions.create(
+                model=llm.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": instruction}
+                ],
+                temperature=0.3
+            )
+            answer = res.choices[0].message.content
+        
+        db.insert_chat_message(session_id, "user", query)
+        db.insert_chat_message(session_id, "assistant", answer)
+
+        return jsonify({
+            "results": results,
+            "answer": answer,
+            "tool_output": tool_output,
+            "orchestration": route
+        })
 
     except requests.exceptions.ConnectionError:
         return jsonify({
-            "results": context_response, 
+            "results": [], 
             "answer": "⚠️ No detecto LM Studio ejecutándose. Por favor inicia el servidor local en el puerto 1234."
         })
     except Exception as e:
-        get_logger().error(f"LLM Exception: {e}")
-        return jsonify({"results": context_response, "answer": "Ocurrió un error inesperado al generar la respuesta."})
+        import traceback
+        tb = traceback.format_exc()
+        get_logger().error(f"LLM Exception: {e}\n{tb}")
+        return jsonify({"results": [], "answer": f"Ocurrió un error inesperado: {str(e)}"})
 
 
 @chat_bp.route("/api/chat/history", methods=["GET"])

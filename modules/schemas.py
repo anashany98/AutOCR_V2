@@ -53,3 +53,11 @@ def get_schema_for_type(doc_type: str):
     if 'receipt' in doc_type or 'ticket' in doc_type:
         return ReceiptSchema
     return BaseDocument
+
+class DocumentUpdateSchema(BaseModel):
+    """Schema for updating document metadata."""
+    doc_type: Optional[str] = None
+    tags: Optional[List[str]] = None
+    workflow_state: Optional[str] = None
+    visibility: Optional[str] = None
+    financial_level: Optional[str] = None

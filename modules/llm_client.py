@@ -89,6 +89,53 @@ class LLMClient:
             self.logger.error(f"Error en llamada al LLM: {e}")
             return {"success": False, "error": str(e)}
 
+    def chat(self, user_prompt: str, system_prompt: Optional[str] = None, profile: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Generic chat call. If profile is provided, it uses the specific routing config.
+        """
+        if not self.enabled:
+            return {"error": "LLM disabled"}
+            
+        # Determine model and client settings
+        model = self.model
+        base_url = self.base_url
+        
+        if profile and "routing" in self.config:
+            routing = self.config["routing"]
+            if profile in routing:
+                prof_conf = routing[profile]
+                model = prof_conf.get("model", model)
+                base_url = prof_conf.get("base_url", base_url)
+        
+        # We might need a temporary client if base_url is different
+        client = self._client
+        if base_url != self.base_url:
+            try:
+                client = OpenAI(base_url=base_url, api_key=self.api_key, timeout=self.timeout)
+            except Exception as e:
+                self.logger.error(f"Failed to create temp client for profile {profile}: {e}")
+                return {"success": False, "error": str(e)}
+
+        sys_p = system_prompt or "You are a helpful assistant for AutOCR V2."
+        
+        try:
+            self.logger.info(f"LLM Chat (Profile: {profile or 'default'}, Model: {model})...")
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": sys_p},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1
+            )
+            content = response.choices[0].message.content
+            if content.startswith("```json"):
+                content = content.replace("```json", "").replace("```", "")
+            return {"success": True, "analysis": content, "model": model}
+        except Exception as e:
+            self.logger.error(f"LLM Chat failed: {e}")
+            return {"success": False, "error": str(e)}
+
     def analyze_sketch_ocr(self, text: str) -> Dict[str, Any]:
         """
         Specialized prompt for interpreting messy OCR from architectural sketches.

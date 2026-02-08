@@ -74,7 +74,7 @@ class RAGManager:
         with open(self.meta_path, "wb") as f:
             pickle.dump(self.metadata, f)
 
-    def add_document(self, doc_id: int, filename: str, text: str, db_manager=None, owner_id: Optional[int] = None):
+    def add_document(self, doc_id: int, filename: str, text: str, db_manager=None, owner_id: Optional[int] = None, hotel_id: Optional[int] = None):
         """Chunk and index a document."""
         self.ensure_loaded()
         if not self.model:
@@ -83,24 +83,21 @@ class RAGManager:
         # Use db_manager from argument or self
         db = db_manager or self.db_manager
 
-        # Improved chunking: split by paragraphs, then by max length
+        # Improved chunking
         raw_chunks = [c.strip() for c in text.split('\n\n') if len(c.strip()) > 20]
         chunks = []
-        max_chunk_chars = 1500 # Approx 300-400 tokens
+        max_chunk_chars = 1500
         
         for rc in raw_chunks:
             if len(rc) <= max_chunk_chars:
                 chunks.append(rc)
             else:
-                # Sub-split large paragraphs
                 for i in range(0, len(rc), max_chunk_chars):
                     chunks.append(rc[i:i+max_chunk_chars])
         
         if not chunks and text:
              chunks = [text[:max_chunk_chars]]
-        
-        if not chunks: 
-            return
+        if not chunks: return
 
         embeddings = self.model.encode(chunks)
         
@@ -111,20 +108,16 @@ class RAGManager:
             use_pgvector = pg_conf.get("use_pgvector", False)
 
         if db and db.engine_type == "postgresql" and use_pgvector:
-            # Store in Postgres document_embeddings table
             with db.get_connection() as conn:
                 cursor = db.get_cursor(conn)
                 for i, chunk in enumerate(chunks):
                     emb = list(embeddings[i].astype('float32'))
-                    # Assuming table 'document_embeddings' exists with 'embedding' column of type 'vector'
-                    # and 'chunk_text' for RAG
                     cursor.execute(
                         "INSERT INTO document_embeddings (doc_id, embedding, chunk_text) VALUES (%s, %s, %s)",
                         (doc_id, emb, chunk)
                     )
                 conn.commit()
         else:
-            # Fallback to FAISS
             if not self.index: return
             self.index.add(np.array(embeddings).astype('float32'))
             for chunk in chunks:
@@ -132,11 +125,11 @@ class RAGManager:
                     "doc_id": doc_id,
                     "filename": filename,
                     "owner_id": owner_id,
+                    "hotel_id": hotel_id,
                     "text": chunk
                 })
-            # self.save_index() # Save manually or periodically
 
-    def search(self, query: str, k: int = 5, db_manager=None, owner_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    def search(self, query: str, k: int = 5, db_manager=None, owner_id: Optional[int] = None, hotel_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """Retrieve most relevant chunks."""
         self.ensure_loaded()
         if not self.model:
@@ -154,36 +147,31 @@ class RAGManager:
             vec = list(self.model.encode([query])[0].astype('float32'))
             with db.get_connection() as conn:
                 cursor = db.get_cursor(conn)
-                # Proper pgvector search using <=> (cosine distance) or <-> (L2 distance)
-                # Assuming IndexFlatL2 in FAISS, we use <-> here
+                where_clauses = []
+                params = [vec]
                 
-                # Filter by owner_id if provided via JOIN or subquery
-                # This assumes document_embeddings has doc_id FK to documents
                 if owner_id is not None:
-                     query_sql = """
-                        SELECT e.doc_id, e.chunk_text as text, e.embedding <-> %s as score 
-                        FROM document_embeddings e
-                        JOIN documents d ON e.doc_id = d.id
-                        WHERE d.owner_id = %s
-                        ORDER BY score LIMIT %s
-                     """
-                     cursor.execute(query_sql, (vec, owner_id, k))
-                else:
-                     query_sql = """
-                        SELECT doc_id, chunk_text as text, embedding <-> %s as score 
-                        FROM document_embeddings 
-                        ORDER BY score LIMIT %s
-                     """
-                     cursor.execute(query_sql, (vec, k))
-
+                    where_clauses.append("d.owner_id = %s")
+                    params.append(owner_id)
+                if hotel_id is not None:
+                    where_clauses.append("d.hotel_id = %s")
+                    params.append(hotel_id)
+                
+                where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+                params.append(k)
+                
+                query_sql = f"""
+                    SELECT e.doc_id, e.chunk_text as text, e.embedding <-> %s as score 
+                    FROM document_embeddings e
+                    JOIN documents d ON e.doc_id = d.id
+                    {where_sql}
+                    ORDER BY score LIMIT %s
+                """
+                cursor.execute(query_sql, tuple(params))
                 rows = cursor.fetchall()
                 results = []
                 for row in rows:
-                    results.append({
-                        "doc_id": row[0],
-                        "text": row[1],
-                        "score": float(row[2])
-                    })
+                    results.append({"doc_id": row[0], "text": row[1], "score": float(row[2])})
                 return results
         else:
             if not self.index or self.index.ntotal == 0:
@@ -191,29 +179,28 @@ class RAGManager:
             vec = self.model.encode([query])
             
             # Fetch more candidates to allow for filtering
-            search_k = k * 10 if owner_id is not None else k
+            search_k = k * 20 if (owner_id is not None or hotel_id is not None) else k
             D, I = self.index.search(np.array(vec).astype('float32'), search_k)
             
             results = []
             count = 0
             for i, idx in enumerate(I[0]):
-                if idx == -1 or idx >= len(self.metadata):
-                    continue
+                if idx == -1 or idx >= len(self.metadata): continue
                 item = self.metadata[idx].copy()
                 
-                # Privacy Barrier
+                # Isolation filtering
                 if owner_id is not None:
-                    # If item has no owner_id (public) or matches user
-                    # Assuming items without owner_id are PUBLIC/SYSTEM docs
                     doc_owner = item.get("owner_id")
-                    if doc_owner is not None and int(doc_owner) != int(owner_id):
-                        continue
+                    if doc_owner is not None and int(doc_owner) != int(owner_id): continue
+                
+                if hotel_id is not None:
+                    doc_hotel = item.get("hotel_id")
+                    if doc_hotel is not None and int(doc_hotel) != int(hotel_id): continue
                 
                 item["score"] = float(D[0][i])
                 results.append(item)
                 count += 1
-                if count >= k:
-                    break
+                if count >= k: break
                 
             return results
 
@@ -224,7 +211,7 @@ class RAGManager:
         # Need to fetch all docs
         # Need to fetch all docs
         cursor = db_manager.execute("""
-            SELECT d.id, d.filename, o.text, d.owner_id 
+            SELECT d.id, d.filename, o.text, d.owner_id, d.hotel_id
             FROM documents d 
             JOIN ocr_texts o ON d.id = o.id_doc 
             WHERE o.text IS NOT NULL
@@ -233,12 +220,12 @@ class RAGManager:
         
         logger.info(f"Rebuilding RAG index for {len(rows)} documents...")
         for row in rows:
-            # Flexible access for both SQLite Row and dict-like Postgre Row
             id_val = row[0] if isinstance(row, (tuple, list)) else row['id']
             fname_val = row[1] if isinstance(row, (tuple, list)) else row['filename']
             text_val = row[2] if isinstance(row, (tuple, list)) else row['text']
             owner_val = row[3] if isinstance(row, (tuple, list)) else row.get('owner_id')
-            self.add_document(id_val, fname_val, text_val, db_manager, owner_id=owner_val)
+            hotel_val = row[4] if isinstance(row, (tuple, list)) else row.get('hotel_id')
+            self.add_document(id_val, fname_val, text_val, db_manager, owner_id=owner_val, hotel_id=hotel_val)
             
         if db_manager.engine_type == "sqlite":
             self.save_index()

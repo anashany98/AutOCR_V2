@@ -1,0 +1,211 @@
+version: '3.8'
+
+# AutoOCR Production Stack
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  # =============================================================
+  # DATABASE - PostgreSQL
+  # =============================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: autoocr_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: autoocr
+      POSTGRES_USER: autoocr
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-autoocr_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoocr -d autoocr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - autoocr_network
+
+  # =============================================================
+  # MESSAGE BROKER - Redis
+  # =============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: autoocr_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - autoocr_network
+
+  # =============================================================
+  # FILE STORAGE - MinIO (S3-compatible)
+  # =============================================================
+  minio:
+    image: minio/minio:latest
+    container_name: autoocr_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-autoocr}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-autoocr_secure_password}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - autoocr_network
+
+  # =============================================================
+  # WEB APPLICATION - Flask + Gunicorn
+  # =============================================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: autoocr_web
+    restart: unless-stopped
+    command: gunicorn -w 4 -b 0.0.0.0:8000 --timeout 300 wsgi:app
+    environment:
+      - AUTOOCR_ENV=production
+      - DATABASE_URL=postgresql://autoocr:${DB_PASSWORD:-autoocr_secure_password}@postgres:5432/autoocr
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_USER:-autoocr}
+      - MINIO_SECRET_KEY=${MINIO_PASSWORD:-autoocr_secure_password}
+      - MINIO_BUCKET=autoocr-documents
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./config_production.yaml:/app/config.yaml:ro
+      - ./models:/app/models
+    networks:
+      - autoocr_network
+
+  # =============================================================
+  # OCR WORKERS - Celery (Scalable)
+  # =============================================================
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    restart: unless-stopped
+    command: celery -A celery_app worker -l info -c 4 -Q ocr_fast,ocr_batch,ocr_default
+    environment:
+      - AUTOOCR_ENV=production
+      - DATABASE_URL=postgresql://autoocr:${DB_PASSWORD:-autoocr_secure_password}@postgres:5432/autoocr
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_USER:-autoocr}
+      - MINIO_SECRET_KEY=${MINIO_PASSWORD:-autoocr_secure_password}
+    depends_on:
+      - redis
+      - postgres
+      - minio
+    volumes:
+      - ./config_production.yaml:/app/config.yaml:ro
+      - ./models:/app/models
+    deploy:
+      replicas: 3  # Adjust based on hardware
+    networks:
+      - autoocr_network
+
+  # =============================================================
+  # SCHEDULER - Celery Beat (Daily Watchdog)
+  # =============================================================
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: autoocr_beat
+    restart: unless-stopped
+    command: celery -A celery_app beat -l info
+    environment:
+      - AUTOOCR_ENV=production
+      - DATABASE_URL=postgresql://autoocr:${DB_PASSWORD:-autoocr_secure_password}@postgres:5432/autoocr
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - ./config_production.yaml:/app/config.yaml:ro
+    networks:
+      - autoocr_network
+
+  # =============================================================
+  # REVERSE PROXY - Nginx (Optional)
+  # =============================================================
+  nginx:
+    image: nginx:alpine
+    container_name: autoocr_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - web
+    networks:
+      - autoocr_network
+    profiles:
+      - with-nginx  # Only start with: docker-compose --profile with-nginx up
+
+# =============================================================
+# VOLUMES
+# =============================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+
+# =============================================================
+# NETWORKS
+# =============================================================
+networks:
+  autoocr_network:
+    driver: bridge
+
+  # =============================================================
+  # MONITORING - Flower (Celery Dashboard)
+  # =============================================================
+  flower:
+    image: mher/flower:0.9.7
+    container_name: autoocr_flower
+    restart: unless-stopped
+    command: celery flower -A celery_app --port=5555
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    ports:
+      - '5555:5555'
+    depends_on:
+      - redis
+    networks:
+      - autoocr_network
+

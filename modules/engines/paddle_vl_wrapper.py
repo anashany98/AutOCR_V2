@@ -240,6 +240,44 @@ class PaddleVLOCHEngine(OCREngine):
                 self.logger.error(f"VLM Validation failed: {e}")
             return {"success": False, "error": str(e), "is_valid": False, "score": 0.0}
 
+    def chat(self, image: Image.Image, question: str) -> str:
+        """
+        Perform Visual Question Answering (VQA) on the image.
+        """
+        if not self.model or not self.processor:
+            if not self.initialize():
+                return "Error: Vision model could not be initialized."
+        
+        try:
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+                
+            prompt = f"User: <|IMAGE_PLACEHOLDER|>\n{question}\nAssistant: "
+            
+            inputs = self.processor(text=prompt, images=image, return_tensors="pt").to(self.device)
+            
+            with torch.no_grad():
+                output = self.model.generate(
+                    **inputs,
+                    max_new_tokens=1024,
+                    do_sample=False,
+                    temperature=0.0
+                )
+            
+            response = self.tokenizer.decode(output[0], skip_special_tokens=True)
+            # Remove the prompt from the response if included (model dependent)
+            if response.startswith(prompt):
+                 response = response[len(prompt):]
+            elif "Assistant: " in response:
+                 response = response.split("Assistant: ")[-1]
+                 
+            return response.strip()
+
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"VLM Chat failed: {e}")
+            return f"Error analyzing image: {str(e)}"
+
     def shutdown(self):
         if self.model:
             del self.model

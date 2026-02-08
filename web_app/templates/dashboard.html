@@ -6,14 +6,39 @@
 <!-- WRAPPER -->
 <div class="container-fluid p-0">
 
-    <div class="row mb-5 animate-fade-in align-items-end">
-        <div class="col-md-8">
+    <div class="row mb-5 animate-fade-in align-items-center">
+        <div class="col-md-6">
             <h1 class="display-6 fw-bold mb-1" style="color: var(--primary-color); letter-spacing: -1px;">
                 <i class="fas fa-chart-line me-2"></i>Dashboard
             </h1>
             <p class="text-muted mb-0 opacity-75">Inteligencia Documental & Procesamiento en Tiempo Real</p>
         </div>
-        <div class="col-md-4 text-md-end">
+        <div class="col-md-6 text-md-end d-flex align-items-center justify-content-end gap-3">
+            {% if available_hotels|length > 1 or current_user.role == 'ADMIN' %}
+            <div class="dropdown">
+                <button class="btn btn-outline-secondary dropdown-toggle rounded-pill px-4" type="button"
+                    data-bs-toggle="dropdown">
+                    <i class="fas fa-hotel me-2"></i>
+                    {% if selected_hotel %}
+                    {% set sel_h = available_hotels|selectattr('id', 'equalto', selected_hotel|int)|first %}
+                    {{ sel_h.name if sel_h else 'Hotel' }}
+                    {% else %}
+                    Todos los Hoteles
+                    {% endif %}
+                </button>
+                <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow">
+                    <li><a class="dropdown-item" href="{{ url_for('main.dashboard') }}">Todos los Hoteles</a></li>
+                    <li>
+                        <hr class="dropdown-divider">
+                    </li>
+                    {% for h in available_hotels %}
+                    <li><a class="dropdown-item {{ 'active' if selected_hotel|string == h.id|string else '' }}"
+                            href="{{ url_for('main.dashboard', hotel_id=h.id) }}">{{ h.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
             <div
                 class="d-inline-flex align-items-center bg-success bg-opacity-10 border border-success border-opacity-25 px-4 py-2 rounded-pill">
                 <span class="pulse-dot me-2"></span>
@@ -203,62 +228,68 @@
         </div>
     </div>
 
+    <!-- Hidden data for JS -->
+    <script id="chart-data" type="application/json">
+        {{ type_stats | tojson | safe }}
+    </script>
     {% endblock %}
 
     {% block extra_js %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            const typeStats = {{ type_stats | tojson | safe
-        }};
-        if (typeStats && typeStats.length) {
-            const ctx = document.getElementById('typeChart').getContext('2d');
+            const chartData = document.getElementById('chart-data');
+            if (!chartData) return;
 
-            // Custom plugin for center text (optional, kept simple for now)
+            const typeStats = JSON.parse(chartData.textContent);
+            if (typeStats && typeStats.length) {
+                const ctx = document.getElementById('typeChart').getContext('2d');
 
-            new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: typeStats.map(item => item[0] || 'Otros'),
-                    datasets: [{
-                        data: typeStats.map(item => item[1]),
-                        backgroundColor: [
-                            'rgba(226, 176, 76, 0.85)', // Gold
-                            'rgba(50, 215, 75, 0.85)',  // Green
-                            'rgba(255, 69, 58, 0.85)',  // Red
-                            'rgba(100, 210, 255, 0.85)', // Blue
-                            'rgba(191, 90, 242, 0.85)', // Purple
-                            'rgba(255, 159, 10, 0.85)'  // Orange
-                        ],
-                        hoverBackgroundColor: [
-                            '#e2b04c',
-                            '#32d74b',
-                            '#ff453a',
-                            '#64d2ff',
-                            '#bf5af2',
-                            '#ff9f0a'
-                        ],
-                        borderWidth: 2,
-                        borderColor: 'rgba(0,0,0,0.5)',
-                        hoverOffset: 15
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    cutout: '70%',
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: {
-                                color: '#a0a0a0',
-                                font: { family: 'Inter', size: 12 },
-                                boxWidth: 15
+                // Custom plugin for center text (optional, kept simple for now)
+
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: typeStats.map(item => item[0] || 'Otros'),
+                        datasets: [{
+                            data: typeStats.map(item => item[1]),
+                            backgroundColor: [
+                                'rgba(226, 176, 76, 0.85)', // Gold
+                                'rgba(50, 215, 75, 0.85)',  // Green
+                                'rgba(255, 69, 58, 0.85)',  // Red
+                                'rgba(100, 210, 255, 0.85)', // Blue
+                                'rgba(191, 90, 242, 0.85)', // Purple
+                                'rgba(255, 159, 10, 0.85)'  // Orange
+                            ],
+                            hoverBackgroundColor: [
+                                '#e2b04c',
+                                '#32d74b',
+                                '#ff453a',
+                                '#64d2ff',
+                                '#bf5af2',
+                                '#ff9f0a'
+                            ],
+                            borderWidth: 2,
+                            borderColor: 'rgba(0,0,0,0.5)',
+                            hoverOffset: 15
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        cutout: '70%',
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    color: '#a0a0a0',
+                                    font: { family: 'Inter', size: 12 },
+                                    boxWidth: 15
+                                }
                             }
                         }
                     }
-                }
-            });
-        }
-    });
+                });
+            }
+        });
     </script>
     {% endblock %}
