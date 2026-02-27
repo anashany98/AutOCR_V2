@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 import pickle
 import logging
+import json # Added json import
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
@@ -43,6 +44,14 @@ class DocumentClassifier:
     def __init__(self, keywords: Optional[dict] = None, model_path: Optional[str] = None) -> None:
         self.keywords = keywords or KEYWORDS
         self.model = None
+        self.llm_client = None
+        
+        # Try to get LLM Client
+        try:
+            from web_app.services import get_llm_client
+            self.llm_client = get_llm_client()
+        except ImportError:
+            pass
         
         if model_path:
             p = Path(model_path)
@@ -98,5 +107,18 @@ class DocumentClassifier:
 
         if not found_type:
             found_type = "Unknown"
+
+        # 3. LLM Fallback (if enabled)
+        if found_type == "Unknown" and self.llm_client and self.llm_client.enabled:
+            logger.info("Keywords failed, asking LLM to classify...")
+            llm_result = self.llm_client.classify_document(text)
+            if llm_result.get("success"):
+                try:
+                    analysis = json.loads(llm_result.get("analysis", "{}"))
+                    ai_category = analysis.get("category")
+                    if ai_category and ai_category != "Other":
+                        return ai_category, ["LLM"]
+                except Exception as e:
+                    logger.error(f"Failed to parse LLM classification: {e}")
 
         return found_type, found_tags

@@ -1,9 +1,14 @@
 import logging
-import torch
 import gc
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+try:
+    import torch  # type: ignore
+except (ImportError, OSError):
+    # Optional dependency: keep the orchestrator importable even without torch/CUDA.
+    torch = None  # type: ignore
 
 class ResourceOrchestrator:
     """
@@ -37,7 +42,7 @@ class ResourceOrchestrator:
         if self.active_model_name == name:
             return
 
-        logger.info(f"🔄 Orchestrator: Switching active model to '{name}'...")
+        logger.info("Orchestrator: Switching active model to '%s'...", name)
         
         # Unload current active model if different
         if self.active_model_name and self.active_model_name in self.models:
@@ -47,7 +52,7 @@ class ResourceOrchestrator:
         self.clear_vram()
         
         self.active_model_name = name
-        logger.info(f"✅ Orchestrator: '{name}' is now active.")
+        logger.info("Orchestrator: '%s' is now active.", name)
 
     def _unload_model(self, name: str):
         """Moves model to CPU or deletes reference to free VRAM."""
@@ -55,7 +60,7 @@ class ResourceOrchestrator:
         if not model_obj:
             return
 
-        logger.info(f"📥 Orchestrator: Relieving '{name}' from VRAM...")
+        logger.info("Orchestrator: Relieving '%s' from VRAM...", name)
         try:
             # Check if it has a custom unload method
             if hasattr(model_obj, 'unload'):
@@ -72,15 +77,18 @@ class ResourceOrchestrator:
     def clear_vram(self):
         """Force garbage collection and CUDA cache clearing."""
         gc.collect()
-        if torch.cuda.is_available():
+        if torch is not None and torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
-            logger.debug(f"🧹 VRAM Cleared. Allocated: {torch.cuda.memory_allocated() / 1024**3:.2f}GB")
+            logger.debug(
+                "VRAM cleared. Allocated: %.2fGB",
+                torch.cuda.memory_allocated() / 1024**3,
+            )
 
     def get_vram_status(self) -> Dict[str, float]:
         """Provides current VRAM stats."""
         status = {"available": False, "allocated_gb": 0.0, "reserved_gb": 0.0}
-        if torch.cuda.is_available():
+        if torch is not None and torch.cuda.is_available():
             status["available"] = True
             status["allocated_gb"] = round(torch.cuda.memory_allocated() / 1024**3, 2)
             status["reserved_gb"] = round(torch.cuda.memory_reserved() / 1024**3, 2)

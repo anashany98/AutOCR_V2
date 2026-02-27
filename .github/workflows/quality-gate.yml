@@ -1,0 +1,44 @@
+name: Quality Gate
+
+'on':
+  pull_request:
+    branches:
+      - main
+      - master
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  field-quality-gate:
+    name: Field Quality Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pydantic pytest
+
+      - name: Run gate tests
+        run: python -m pytest tests/test_field_quality_baseline.py -q
+
+      - name: Run quality gate
+        run: python scripts/field_quality_baseline.py --gate
+
+      - name: Upload quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: field-quality-baseline-report
+          path: data/reports/field_quality_baseline.json
+          if-no-files-found: ignore

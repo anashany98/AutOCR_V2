@@ -40,6 +40,11 @@ def list_scannable_files(input_folder: str, file_types: Iterable[str]) -> List[s
         for name in filenames:
             if name.startswith("."):
                 continue
+            lower_name = name.lower()
+            # Avoid re-ingesting pipeline outputs when `.json` is included as an input type.
+            # This keeps batch runs idempotent even when outputs are written near inputs.
+            if lower_name.endswith(".ocr.json") or lower_name.endswith(".ocr.md"):
+                continue
             _, ext = os.path.splitext(name)
             if ext.lower() in allowed_exts:
                 file_list.append(os.path.join(root, name))
@@ -79,19 +84,36 @@ def move_file(
     """
     base_folder = dest_folder
     filename = new_filename if new_filename else os.path.basename(src_path)
+    # Ensure callers cannot smuggle path separators via `new_filename`.
+    filename = os.path.basename(filename)
 
 
     if relative_to:
         try:
             rel_path = os.path.relpath(src_path, relative_to)
             rel_dir = os.path.dirname(rel_path)
-            base_folder = os.path.join(dest_folder, rel_dir) if rel_dir else dest_folder
+            # If relpath escapes the root, refuse to recreate that structure under dest.
+            if rel_dir and (rel_dir.startswith("..") or os.path.isabs(rel_dir)):
+                base_folder = dest_folder
+            else:
+                base_folder = os.path.join(dest_folder, rel_dir) if rel_dir else dest_folder
         except ValueError:
             base_folder = dest_folder
 
     ensure_directories(base_folder)
     dest_path = os.path.normpath(os.path.join(base_folder, filename))
     src_path = os.path.normpath(src_path)
+
+    # Security: ensure destination remains within dest_folder (prevents path traversal).
+    dest_folder_abs = os.path.abspath(dest_folder)
+    dest_path_abs = os.path.abspath(dest_path)
+    try:
+        if os.path.commonpath([dest_folder_abs, dest_path_abs]) != dest_folder_abs:
+            raise ValueError(f"Refusing to move file outside destination folder: {dest_path_abs}")
+    except ValueError:
+        # On Windows, commonpath can raise if drives differ; fall back to safe default.
+        dest_path = os.path.normpath(os.path.join(dest_folder, filename))
+        dest_path_abs = os.path.abspath(dest_path)
     
     if src_path == dest_path:
         return dest_path

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h1>Debug Test</h1>
+    
+    {% set test_value = None %}
+    <p>Test value: {{ test_value }}</p>
+    <p>Type: {{ test_value|string }}</p>
+    
+    {% if test_value and test_value is not none and test_value != '' and test_value != 'None' %}
+        {% if test_value is number %}
+            {{ test_value|string|replace('.', ',') }}s
+        {% elif test_value is string and test_value|length > 0 %}
+            {{ test_value }}s
+        {% else %}
+            N/A
+        {% endif %}
+    {% else %}
+        N/A
+    {% endif %}
+</div>
+{% endblock %}

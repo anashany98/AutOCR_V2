@@ -12,12 +12,12 @@
 
         const data = {
             "title": "Informe de Diseño de Interiores - AutOCR",
-            "original_image": "{{ image_url }}",
-            "render_image": "{{ results.render_url if results.render_url else '' }}",
+            "original_token": "{{ image_token }}",
+            "render_token": "{{ results.render_token if results.render_token else '' }}",
             "furniture": {{ results.objects | tojson if results.objects else '[]'
     }},
     "advice": "{{ results.ai_advice | safe | replace('"', '\\"') if results.ai_advice else '' }}",
-        "colors": { { results.colors | tojson if results.colors else '[]' } }
+        "colors": {{ results.colors | tojson if results.colors else '[]' }}
         };
 
     try {
@@ -67,7 +67,7 @@
                     <h5 class="mb-0 fw-bold">Imagen Original</h5>
                 </div>
                 <div class="card-body p-4 text-center">
-                    <img src="{{ url_for('static', filename=image_url) }}" class="img-fluid rounded shadow-lg"
+                    <img src="{{ image_src }}" class="img-fluid rounded shadow-lg"
                         style="max-height: 500px;">
                 </div>
             </div>
@@ -146,15 +146,15 @@
                     <h5 class="mb-0 fw-bold">Propuesta de Render (ControlNet)</h5>
                 </div>
                 <div class="card-body p-4 text-center">
-                    {% if results.render_url %}
+                    {% if results.render_src %}
                     <div class="card border-0 bg-dark bg-opacity-25 shadow-lg overflow-hidden">
-                        <img src="{{ url_for('static', filename=results.render_url) }}" class="img-fluid w-100">
+                        <img src="{{ results.render_src }}" class="img-fluid w-100">
                         <div
                             class="card-footer bg-transparent border-top border-secondary border-opacity-25 p-3 d-flex justify-content-between">
                             <span class="text-warning small"><i class="fas fa-check-circle me-1"></i>Render
                                 Generado</span>
                             <div class="d-flex gap-2">
-                                <a href="{{ url_for('static', filename=results.render_url) }}" download
+                                <a href="{{ results.render_src }}?download=1" download
                                     class="btn btn-outline-warning btn-sm rounded-pill">
                                     <i class="fas fa-download me-1"></i> Imagen
                                 </a>

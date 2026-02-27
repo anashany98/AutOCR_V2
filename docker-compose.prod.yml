@@ -77,7 +77,11 @@ services:
       dockerfile: Dockerfile.prod
     container_name: autoocr_web
     restart: unless-stopped
-    command: gunicorn -w 4 -b 0.0.0.0:8000 --timeout 300 wsgi:app
+    # Optimized for Ryzen 9 (High core count) + 100GB RAM
+    # Workers: 8 (Utilize cores)
+    # Threads: 4 (Handle concurrent I/O waits)
+    # Total Capacity: ~32 concurrent requests processing simultaneously
+    command: gunicorn -w 8 --threads 4 -b 0.0.0.0:8000 --timeout 300 wsgi:app
     environment:
       - AUTOOCR_ENV=production
       - DATABASE_URL=postgresql://autoocr:${DB_PASSWORD:-autoocr_secure_password}@postgres:5432/autoocr
@@ -99,6 +103,8 @@ services:
     volumes:
       - ./config_production.yaml:/app/config.yaml:ro
       - ./models:/app/models
+      # Shared RW storage so the web container and OCR workers see the same files.
+      - ./data:/app/data
     networks:
       - autoocr_network
 
@@ -110,8 +116,10 @@ services:
       context: .
       dockerfile: Dockerfile.prod
     restart: unless-stopped
-    restart: unless-stopped
-    command: celery -A celery_app worker -l info -c 4 -Q ocr_fast,ocr_batch,ocr_default
+    # IMPORTANT:
+    # - PaddleOCR GPU is process-global and VRAM heavy; multi-process concurrency can OOM.
+    # - Default to 1 and scale via replicas, or override via CELERY_CONCURRENCY if CPU-only.
+    command: celery -A celery_app worker -l info -c ${CELERY_CONCURRENCY:-1} -Q ocr_fast,ocr_batch,ocr_default
     environment:
       - AUTOOCR_ENV=production
       - DATABASE_URL=postgresql://autoocr:${DB_PASSWORD:-autoocr_secure_password}@postgres:5432/autoocr
@@ -127,6 +135,7 @@ services:
     volumes:
       - ./config_production.yaml:/app/config.yaml:ro
       - ./models:/app/models
+      - ./data:/app/data
     deploy:
       replicas: 3  # Adjust based on hardware
     networks:
@@ -151,8 +160,28 @@ services:
       - postgres
     volumes:
       - ./config_production.yaml:/app/config.yaml:ro
+      - ./data:/app/data
     networks:
       - autoocr_network
+
+  # =============================================================
+  # MONITORING - Flower (Celery Dashboard)
+  # =============================================================
+  flower:
+    image: mher/flower:0.9.7
+    container_name: autoocr_flower
+    restart: unless-stopped
+    command: celery flower -A celery_app --port=5555
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    networks:
+      - autoocr_network
+    profiles:
+      - monitoring  # Start with: docker-compose --profile monitoring up
 
   # =============================================================
   # REVERSE PROXY - Nginx (Optional)
@@ -191,21 +220,4 @@ volumes:
 networks:
   autoocr_network:
     driver: bridge
-
-  # =============================================================
-  # MONITORING - Flower (Celery Dashboard)
-  # =============================================================
-  flower:
-    image: mher/flower:0.9.7
-    container_name: autoocr_flower
-    restart: unless-stopped
-    command: celery flower -A celery_app --port=5555
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-    ports:
-      - '5555:5555'
-    depends_on:
-      - redis
-    networks:
-      - autoocr_network
 

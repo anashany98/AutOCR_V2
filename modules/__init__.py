@@ -1,11 +1,12 @@
 ﻿"""
-AutOCR modular package consolidating reusable components.
+AutOCR modular package consolidating reusable components. 
 
 Available submodules:
 
 * `classifier` - keyword-based document classification helpers.
 * `content_extractor` - unified content loading for multiple formats.
 * `db_manager` - database access layer for SQLite/SQL Server.
+* `extraction_agent` - AI agent that decides WHAT to extract based on document type.
 * `file_utils` - file system helpers for hashing, moving and scanning.
 * `fusion_manager` - fusion helpers for PaddleOCR/EasyOCR outputs.
 * `inactivity_monitor` - idle detection before batch processing.
@@ -21,6 +22,7 @@ __all__ = [
     "classifier",
     "content_extractor",
     "db_manager",
+    "extraction_agent",
     "file_utils",
     "fusion_manager",
     "inactivity_monitor",

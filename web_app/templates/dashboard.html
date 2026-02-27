@@ -39,10 +39,10 @@
             </div>
             {% endif %}
 
-            <div
-                class="d-inline-flex align-items-center bg-success bg-opacity-10 border border-success border-opacity-25 px-4 py-2 rounded-pill">
-                <span class="pulse-dot me-2"></span>
-                <span class="text-success fw-bold small">SISTEMA ACTIVO</span>
+            <div id="system-status-badge"
+                class="d-inline-flex align-items-center bg-secondary bg-opacity-10 border border-secondary border-opacity-25 px-4 py-2 rounded-pill">
+                <span class="pulse-dot me-2 bg-secondary"></span>
+                <span class="fw-bold small text-secondary">CONECTANDO...</span>
             </div>
         </div>
     </div>
@@ -147,8 +147,22 @@
             </div>
         </div>
 
-        <!-- Recent List -->
+        <!-- Activity Chart -->
         <div class="col-lg-6">
+            <div class="card h-100 border-0">
+                <div class="card-header bg-transparent border-0 pt-4 px-4">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-chart-line me-2 text-primary"></i>Actividad (7 días)</h5>
+                </div>
+                <div class="card-body p-4">
+                    <canvas id="activityChart" style="max-height: 250px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <!-- Recent List -->
+        <div class="col-12">
             <div class="card h-100 border-0">
                 <div class="card-header bg-transparent border-0 pt-4 px-4">
                     <h5 class="mb-0 fw-bold"><i class="fas fa-history me-2 text-secondary"></i>Actividad Reciente</h5>
@@ -169,26 +183,52 @@
                                 <div>
                                     <h6 class="mb-0 fw-semibold text-truncate" style="max-width: 200px;">{{ doc[1] }}
                                     </h6>
-                                    <small class="text-muted d-flex align-items-center gap-2">
-                                        {{ doc[2] or 'Sin clasificar' }}
-                                        {% if doc[3] == 'OK' %}
-                                        <span
-                                            class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 rounded-pill"
+                                    <div class="d-flex align-items-center gap-1 mt-1">
+                                        <!-- Type Badge -->
+                                        {% if doc[2] %}
+                                        <span class="badge rounded-pill 
+                                            {{ 'bg-primary' if 'factura' in doc[2]|lower else 
+                                               'bg-success' if 'recibo' in doc[2]|lower else 
+                                               'bg-warning text-dark' if 'presupuesto' in doc[2]|lower else 
+                                               'bg-info text-dark' if 'contrato' in doc[2]|lower else 
+                                               'bg-secondary' }} bg-opacity-25 border border-opacity-25 text-body"
                                             style="font-size: 0.65rem;">
-                                            <i class="fas fa-shield-alt me-1"></i>PYDANTIC
+                                            {{ doc[2]|upper }}
                                         </span>
                                         {% endif %}
+
+                                        <!-- Smart Tags (JSON) -->
+                                        {% if doc[7] %}
+                                        {% set tags = doc[7] if doc[7] is iterable and doc[7] is not string else [] %}
+                                        {% if tags is string %}
+                                        {# Auto-fix if stringified JSON #}
+                                        {# Jinja limits usage, assume list or empty #}
+                                        {% endif %}
+
+                                        {% for tag in tags %}
+                                        <span class="badge bg-dark border border-secondary text-secondary rounded-pill"
+                                            style="font-size: 0.6rem;">
+                                            <i class="fas fa-tag me-1"></i>{{ tag }}
+                                        </span>
+                                        {% endfor %}
+                                        {% endif %}
+                                    </div>
+                                    {% if doc[3] == 'OK' %}
+                                    <span
+                                        class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 rounded-pill"
+                                        style="font-size: 0.65rem;">
+                                        <i class="fas fa-shield-alt me-1"></i>PYDANTIC
+                                    </span>
+                                    {% endif %}
                                     </small>
                                 </div>
                             </div>
 
-                            <div class="text-end">
+                             <div class="text-end">
                                 <div
                                     class="small fw-bold {{ 'text-success' if doc[3] == 'OK' else 'text-danger' if doc[3] == 'FAILED' else 'text-warning' }}">
                                     {{ doc[3] }}
                                 </div>
-                                <small class="text-muted" style="font-size: 0.75rem;">{{ "%.2f"|format(doc[5])
-                                    }}s</small>
                             </div>
                         </a>
                         {% endfor %}
@@ -223,14 +263,62 @@
                         class="btn btn-outline-light rounded-pill px-4 text-muted">
                         <i class="fas fa-search me-2"></i> Buscar
                     </a>
+
+                    <button class="btn btn-outline-warning rounded-pill px-4" onclick="triggerEmailCheck(this)">
+                        <i class="fas fa-envelope me-2"></i> Comprobar Email
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
+    <script>
+        async function triggerEmailCheck(btn) {
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin me-2"></i> Comprobando...';
+
+            try {
+                const res = await fetch('/api/check-email', { method: 'POST' });
+                const data = await res.json();
+
+                if (data.status === 'ok') {
+                    // Show small success toast or alert
+                    const toast = document.createElement('div');
+                    toast.className = 'position-fixed bottom-0 end-0 p-3';
+                    toast.style.zIndex = '5000';
+                    toast.innerHTML = `
+                        <div class="toast show align-items-center text-white bg-success border-0" role="alert">
+                            <div class="d-flex">
+                                <div class="toast-body"><i class="fas fa-check-circle me-2"></i> ${data.message}</div>
+                                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                            </div>
+                        </div>`;
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+                } else {
+                    alert("Error: " + data.message);
+                }
+            } catch (e) {
+                alert("Error de conexión");
+            } finally {
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }, 2000);
+            }
+        }
+    </script>
+
     <!-- Hidden data for JS -->
     <script id="chart-data" type="application/json">
         {{ type_stats | tojson | safe }}
+    </script>
+    <script id="activity-dates" type="application/json">
+        {{ activity_dates | tojson | safe }}
+    </script>
+    <script id="activity-counts" type="application/json">
+        {{ activity_counts | tojson | safe }}
     </script>
     {% endblock %}
 
@@ -290,6 +378,81 @@
                     }
                 });
             }
+
+            // Activity Chart
+            const activityDatesData = document.getElementById('activity-dates');
+            const activityCountsData = document.getElementById('activity-counts');
+
+            if (activityDatesData) {
+                try {
+                    const activityDates = JSON.parse(activityDatesData.textContent);
+                    const activityCounts = JSON.parse(activityCountsData.textContent);
+
+                    const ctxActivity = document.getElementById('activityChart');
+                    if (ctxActivity && activityDates && activityDates.length > 0) {
+                        new Chart(ctxActivity, {
+                            type: 'line',
+                            data: {
+                                labels: activityDates,
+                                datasets: [{
+                                    label: 'Documentos',
+                                    data: activityCounts,
+                                    borderColor: '#0d6efd',
+                                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                                    fill: true,
+                                    tension: 0.4
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { display: false }
+                                },
+                                scales: {
+                                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                                    x: { grid: { display: false } }
+                                }
+                            }
+                        });
+                    } else if (ctxActivity) {
+                        ctxActivity.parentElement.innerHTML = '<div class="text-center py-5"><i class="fas fa-chart-line fa-3x text-muted opacity-25 mb-3"></i><p class="text-muted">Sin actividad suficiente</p></div>';
+                    }
+                } catch (e) { console.error("Error parsing activity data", e); }
+            }
+
+            // System Status Polling
+            function checkStatus() {
+                fetch('/api/status')
+                    .then(response => {
+                        const badge = document.getElementById('system-status-badge');
+                        const dot = badge.querySelector('.pulse-dot');
+                        const text = badge.querySelector('span:last-child');
+
+                        if (response.ok) {
+                            badge.className = "d-inline-flex align-items-center bg-success bg-opacity-10 border border-success border-opacity-25 px-4 py-2 rounded-pill transition-all";
+                            dot.className = "pulse-dot me-2 bg-success";
+                            text.className = "text-success fw-bold small";
+                            text.innerText = "SISTEMA ACTIVO";
+                        } else {
+                            throw new Error('Network response was not ok');
+                        }
+                    })
+                    .catch(error => {
+                        const badge = document.getElementById('system-status-badge');
+                        const dot = badge.querySelector('.pulse-dot');
+                        const text = badge.querySelector('span:last-child');
+
+                        badge.className = "d-inline-flex align-items-center bg-danger bg-opacity-10 border border-danger border-opacity-25 px-4 py-2 rounded-pill transition-all";
+                        dot.className = "pulse-dot me-2 bg-danger";
+                        text.className = "text-danger fw-bold small";
+                        text.innerText = "DESCONECTADO";
+                    });
+            }
+
+            // Check immediately and then every 30s
+            checkStatus();
+            setInterval(checkStatus, 30000);
         });
     </script>
     {% endblock %}

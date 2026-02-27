@@ -4,6 +4,7 @@ from PIL import Image
 from transformers import AutoProcessor, AutoModelForCausalLM
 from typing import Dict, Any, List, Optional
 import os
+from modules.torch_compat import torch_cuda_usable
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,10 @@ class FlorenceOCREngine:
         if device:
             self.device = device
         else:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            cuda_ok, cuda_reason = torch_cuda_usable(torch, smoke_test=False)
+            self.device = "cuda" if cuda_ok else "cpu"
+            if not cuda_ok:
+                logger.warning("Florence GPU disabled: %s. Falling back to CPU.", cuda_reason)
         
         self.processor = None
         self.model = None

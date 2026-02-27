@@ -49,6 +49,11 @@ class EmailImporter:
                     break
                 time.sleep(1)
 
+    def check_now(self):
+        """Manual trigger to check emails immediately."""
+        self.logger.info("Manual email check triggered.")
+        self._check_email()
+
     def _check_email(self):
         host = self.config.get("host")
         port = self.config.get("port", 993)

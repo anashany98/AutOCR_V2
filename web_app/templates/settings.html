@@ -70,6 +70,7 @@
                 </div>
                 <div class="p-4">
                     <form method="post">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="directories">
 
                         <div class="mb-3">
@@ -123,6 +124,7 @@
                 </div>
                 <div class="p-4">
                     <form method="post">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="pipeline">
 
                         <div
@@ -194,6 +196,7 @@
                 </div>
                 <div class="p-4">
                     <form method="post">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="hot_folder">
 
                         <div class="d-flex align-items-center justify-content-between mb-3">
@@ -238,6 +241,7 @@
                 <div class="p-4">
                     <!-- LLM Config -->
                     <form method="post" class="mb-4 pb-4 border-bottom border-secondary border-opacity-25">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="llm_pipeline_config">
 
                         <div class="d-flex align-items-center justify-content-between mb-3">
@@ -271,6 +275,7 @@
                             </div>
                         </div>
                         <form method="post">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="action" value="rebuild_index">
                             <button type="submit" class="btn btn-outline-light btn-sm rounded-pill" {% if not
                                 config.vision_enabled %}disabled{% endif %}>

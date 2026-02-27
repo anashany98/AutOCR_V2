@@ -17,7 +17,7 @@ class DataNormalizer:
     
     # Legal entity suffixes to remove
     LEGAL_SUFFIXES = [
-        r'\bS\.?L\.?', r'\bS\.?A\.?', r'\bLtd\.?', r'\bInc\.?',
+        r'\bS\.?L\.?U\.?', r'\bS\.?A\.?U\.?', r'\bS\.?L\.?', r'\bS\.?A\.?', r'\bLtd\.?', r'\bInc\.?',
         r'\bCorp\.?', r'\bGmbH', r'\bLLC', r'\bLimited'
     ]
     
@@ -25,7 +25,7 @@ class DataNormalizer:
         """Initialize normalizer with optional configuration."""
         self.config = config or {}
         
-    def normalize(self,fields: Dict[str, Dict]) -> Dict[str, Dict]:
+    def normalize(self, fields: Dict[str, Dict]) -> Dict[str, Dict]:
         """
         Normalize all extracted fields.
         
@@ -35,17 +35,31 @@ class DataNormalizer:
         Returns:
             Normalized fields dictionary
         """
-        normalized = {}
-        
-        if 'date' in fields:
-            normalized['date'] = self._normalize_date(fields['date'])
-            
-        if 'total' in fields:
-            normalized['total'] = self._normalize_amount(fields['total'])
-            
-        if 'vendor' in fields:
-            normalized['vendor'] = self._normalize_vendor(fields['vendor'])
-            
+        normalized: Dict[str, Dict] = {}
+
+        # Preserve pass-through metadata that is not part of the core fields.
+        for key, value in (fields or {}).items():
+            if key not in {"date", "total", "vendor", "supplier"}:
+                normalized[key] = value
+
+        if "date" in fields:
+            normalized["date"] = self._normalize_date(dict(fields["date"]))
+
+        if "total" in fields:
+            normalized["total"] = self._normalize_amount(dict(fields["total"]))
+
+        if "vendor" in fields:
+            normalized["vendor"] = self._normalize_vendor(dict(fields["vendor"]))
+
+        if "supplier" in fields:
+            normalized["supplier"] = self._normalize_vendor(dict(fields["supplier"]))
+
+        # Keep aliases synchronized for UI compatibility.
+        if "vendor" in normalized and "supplier" not in normalized:
+            normalized["supplier"] = dict(normalized["vendor"])
+        if "supplier" in normalized and "vendor" not in normalized:
+            normalized["vendor"] = dict(normalized["supplier"])
+
         return normalized
     
     def _normalize_date(self, date_field: Dict) -> Dict:
@@ -64,18 +78,36 @@ class DataNormalizer:
         """Ensure amount is numeric with currency code."""
         # Amount should already be normalized by FieldExtractor
         # Ensure value is float
-        if isinstance(amount_field.get('value'), (int, float)):
-            amount_field['value'] = round(float(amount_field['value']), 2)
+        value = amount_field.get("value")
+        if isinstance(value, (int, float)):
+            amount_field["value"] = round(float(value), 2)
+        elif isinstance(value, str):
+            cleaned = value.replace(" ", "")
+            # Handle both EU and US decimal separators safely.
+            if "," in cleaned and "." in cleaned:
+                if cleaned.rfind(",") > cleaned.rfind("."):
+                    cleaned = cleaned.replace(".", "").replace(",", ".")
+                else:
+                    cleaned = cleaned.replace(",", "")
+            elif "," in cleaned and "." not in cleaned:
+                if re.search(r",\d{2}$", cleaned):
+                    cleaned = cleaned.replace(".", "").replace(",", ".")
+                else:
+                    cleaned = cleaned.replace(",", "")
+            try:
+                amount_field["value"] = round(float(cleaned), 2)
+            except ValueError:
+                logger.warning("Could not normalize amount value: %s", value)
         
         # Ensure currency code exists
-        if 'currency' not in amount_field:
-            amount_field['currency'] = 'EUR'  # Default
+        if "currency" not in amount_field:
+            amount_field["currency"] = "EUR"  # Default
             
         return amount_field
     
     def _normalize_vendor(self, vendor_field: Dict) -> Dict:
         """Normalize vendor name by removing legal suffixes and standardizing format."""
-        value = vendor_field.get('value', '')
+        value = str(vendor_field.get("value", "") or "")
         
         # Remove legal suffixes
         for suffix in self.LEGAL_SUFFIXES:
@@ -88,8 +120,8 @@ class DataNormalizer:
         if value.isupper():
             value = value.title()
         
-        vendor_field['value'] = value.strip()
-        vendor_field['normalized'] = True
+        vendor_field["value"] = value.strip()
+        vendor_field["normalized"] = True
         
         return vendor_field
 

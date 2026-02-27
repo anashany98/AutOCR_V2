@@ -5,10 +5,14 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+# Shared path helper (used by background tasks).
+from web_app.utils import resolve_path
+
 # Dependencies
 from modules.db_manager import DBManager
 from modules.logger_manager import setup_logger
 from modules.file_utils import ensure_directories
+from modules.config_normalizer import normalize_config
 from postbatch_processor import PipelineComponents, initialise_pipeline
 from modules.classifier import DocumentClassifier
 from modules.rag_manager import RAGManager
@@ -31,20 +35,50 @@ def load_configuration(reload: bool = False) -> Dict[str, Any]:
     if reload or getattr(local, "config", None) is None:
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
-                local.config = yaml.safe_load(handle) or {}
+                raw = yaml.safe_load(handle) or {}
+                local.config = normalize_config(raw if isinstance(raw, dict) else {})
         else:
             local.config = {}
     return local.config
 
 def save_configuration(config: Dict[str, Any]) -> None:
+    global _pipeline_instance
+    global _classifier_instance
+    global _rag_instance
+    global _tool_instance
+    global _vision_instance
+    global _voice_instance
+    global _llm_instance
+    global _prompt_instance
+    global _orchestrator_instance
+    global _product_manager_instance
+
+    config = normalize_config(config if isinstance(config, dict) else {})
     with open(CONFIG_PATH, "w", encoding="utf-8") as handle:
         yaml.safe_dump(config, handle, sort_keys=False, allow_unicode=True)
     local.config = config
     
-    # Invalidate expensive resources if config changes (naive approach)
-    # real invalidation might require more logic, but this matches original app.py intent
-    if hasattr(local, "pipeline"):
-        delattr(local, "pipeline")
+    # Invalidate heavy singletons so updated config applies without restart.
+    with _pipeline_lock:
+        _pipeline_instance = None
+    with _classifier_lock:
+        _classifier_instance = None
+    with _rag_lock:
+        _rag_instance = None
+    with _tool_lock:
+        _tool_instance = None
+    with _vision_lock:
+        _vision_instance = None
+    with _voice_lock:
+        _voice_instance = None
+    with _llm_lock:
+        _llm_instance = None
+    with _prompt_lock:
+        _prompt_instance = None
+    with _orchestrator_lock:
+        _orchestrator_instance = None
+    with _product_manager_lock:
+        _product_manager_instance = None
 
 # --------------------------------------------------------------------------- #
 # Singletons
@@ -135,10 +169,60 @@ def get_tool_manager() -> ToolManager:
     if _tool_instance is None:
         with _tool_lock:
             if _tool_instance is None:
+                config = load_configuration()
+                post_conf = config.get("postbatch", {})
+                allowed_doc_roots = [
+                    resolve_path(post_conf.get("processed_folder"), "processed"),
+                    resolve_path(post_conf.get("failed_folder"), "errors"),
+                    resolve_path(post_conf.get("input_folder"), "input"),
+                    str(PROJECT_ROOT / "data" / "uploads"),
+                ]
                 pipeline = get_pipeline()
                 vision = pipeline.vision_manager if pipeline else None
-                _tool_instance = ToolManager(get_db(), str(PROJECT_ROOT), vision_manager=vision)
+                products = get_product_manager()
+                _tool_instance = ToolManager(
+                    get_db(),
+                    str(PROJECT_ROOT),
+                    vision_manager=vision,
+                    product_manager=products,
+                    allowed_doc_roots=allowed_doc_roots,
+                )
     return _tool_instance
+
+_vision_instance: Optional["VisionManager"] = None
+_vision_lock = threading.Lock()
+
+def get_vision_manager():
+    """Get vision manager singleton with thread-safe initialization."""
+    global _vision_instance
+    if _vision_instance is None:
+        with _vision_lock:
+            if _vision_instance is None:
+                try:
+                    from modules.vision_manager import VisionManager
+                    config = load_configuration()
+                    from modules.vision_manager import VisionManagerConfig
+
+                    v_conf = config.get("vision", {}) or {}
+                    model_name = (
+                        v_conf.get("model_name")
+                        or v_conf.get("model")
+                        or "ViT-B-32"
+                    )
+                    vm_conf = VisionManagerConfig(
+                        enabled=v_conf.get("enabled", True),
+                        model_name=model_name,
+                        pretrained=v_conf.get("pretrained", "laion2b_s34b_b79k"),
+                        index_path=resolve_path(v_conf.get("index_path"), "data/vision_index.faiss"),
+                        embeddings_dir=resolve_path(v_conf.get("embeddings_dir"), "data/vision_embeddings"),
+                        use_gpu=bool(config.get("app", {}).get("gpu_enabled", False)),
+                    )
+                    
+                    _vision_instance = VisionManager(config=vm_conf, logger=get_logger())
+                except Exception as e:
+                    get_logger().error(f"Failed to load Vision Manager: {e}")
+                    _vision_instance = None
+    return _vision_instance
 
 def get_voice_manager() -> Optional["VoiceManager"]:
     """Get voice manager singleton with thread-safe initialization."""
@@ -201,6 +285,27 @@ def get_prompt_manager():
                 _prompt_instance = PromptManager(str(PROJECT_ROOT / "data" / "prompts"))
     return _prompt_instance
 
+_product_manager_instance: Optional["ProductManager"] = None
+_product_manager_lock = threading.Lock()
+
+def get_product_manager() -> Optional["ProductManager"]:
+    """Get Product Manager singleton."""
+    global _product_manager_instance
+    if _product_manager_instance is None:
+        with _product_manager_lock:
+            if _product_manager_instance is None:
+                try:
+                    from modules.product_manager import ProductManager
+                    # Try to get VisionManager for multimodal support
+                    vision = get_vision_manager()
+                    _product_manager_instance = ProductManager(get_db(), vision_manager=vision)
+                except Exception as e:
+                    get_logger().warning(
+                        f"Product Manager unavailable; continuing without product tools: {e}"
+                    )
+                    _product_manager_instance = None
+    return _product_manager_instance
+
 def get_orchestrator():
     """Get AI Orchestrator singleton."""
     global _orchestrator_instance
@@ -211,8 +316,9 @@ def get_orchestrator():
                 llm = get_llm_client()
                 prompts = get_prompt_manager()
                 tools = get_tool_manager()
+                products = get_product_manager()
                 if llm and prompts:
-                    _orchestrator_instance = AIOrchestrator(llm, prompts, tool_manager=tools)
+                    _orchestrator_instance = AIOrchestrator(llm, prompts, tool_manager=tools, product_manager=products)
                 else:
                     get_logger().error("Failed to initialize AI Orchestrator: LLM or Prompts missing.")
     return _orchestrator_instance

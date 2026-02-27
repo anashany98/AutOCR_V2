@@ -234,9 +234,52 @@ class MinerUEngine:
         if ext != ".pdf":
             return False
         
-        # TODO: Add heuristics based on PDF analysis
-        # For now, assume all PDFs could benefit from MinerU
-        return True
+        # 1. Check file size (heuristics: complex manuals often > 2MB)
+        size_mb: float = 0.0
+        try:
+            size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            if size_mb > 50: # Too large might timeout on CPU
+                self.logger.info(f"PDF too large for MinerU ({size_mb:.2f}MB), skipping class check.")
+                return False
+        except Exception:
+            pass
+
+        # 2. Analyze content with PyMuPDF (fitz) if available
+        try:
+            import fitz  # PyMuPDF
+            with fitz.open(file_path) as doc:
+                # Check first 3 pages
+                pages_to_check = min(3, len(doc))
+                
+                has_vector_graphics = False
+                has_tables_keywords = False
+                
+                for i in range(pages_to_check):
+                    page = doc[i]
+                    # Check for vector drawings (often tables/diagrams)
+                    drawings = page.get_drawings()
+                    if len(drawings) > 20: # Arbitrary threshold for "complex layout"
+                        has_vector_graphics = True
+                    
+                    # Check for keywords
+                    text = page.get_text().lower()
+                    if any(x in text for x in ["table", "tabla", "cuadro", "figura", "figure", "equation", "formula"]):
+                        has_tables_keywords = True
+
+                if has_vector_graphics or has_tables_keywords:
+                    self.logger.info(f"MinerU Heuristic: Complex PDF detected (Graphics={has_vector_graphics}, Keywords={has_tables_keywords})")
+                    return True
+
+        except ImportError:
+            self.logger.debug("PyMuPDF not installed, falling back to simple heuristics.")
+            # Fallback: All PDFs > 1MB are "complex"
+            if size_mb > 1.0:
+                 return True
+
+        except Exception as e:
+            self.logger.warning(f"Error in MinerU heuristics: {e}")
+            
+        return False
 
 
 # Singleton instance

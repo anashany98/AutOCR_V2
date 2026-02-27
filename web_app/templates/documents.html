@@ -117,13 +117,14 @@
                             </div>
                         </td>
                         <td>
+                            {% set type_value = doc[4] if is_verification_list else doc[3] %}
                             {% set badge_color = 'secondary' %}
-                            {% if doc[3] == 'Invoice' %}{% set badge_color = 'primary' %}{% endif %}
-                            {% if doc[3] == 'Receipt' %}{% set badge_color = 'success' %}{% endif %}
-                            {% if doc[3] == 'Contract' %}{% set badge_color = 'info' %}{% endif %}
+                            {% if type_value == 'Invoice' %}{% set badge_color = 'primary' %}{% endif %}
+                            {% if type_value == 'Receipt' %}{% set badge_color = 'success' %}{% endif %}
+                            {% if type_value == 'Contract' %}{% set badge_color = 'info' %}{% endif %}
                             <span
                                 class="badge bg-{{ badge_color }} bg-opacity-25 text-light border border-{{ badge_color }} border-opacity-25 px-3 py-2 rounded-pill">
-                                {{ doc[3]|string if doc[3] and (doc[3]|string).strip() != '' else 'Desconocido' }}
+                                {{ type_value|string if type_value and (type_value|string).strip() != '' else 'Desconocido' }}
                             </span>
                         </td>
                         <td>
@@ -148,7 +149,8 @@
                             {% endif %}
                         </td>
                         <td class="text-muted small">
-                            {{ doc[5][:16].replace('T', ' ') if doc[5] else '-' }}
+                            {% set date_value = doc[2] if is_verification_list else doc[5] %}
+                            {{ date_value[:16].replace('T', ' ') if date_value else '-' }}
                         </td>
                         <td class="text-end pe-4 text-nowrap">
                             <a href="{{ url_for('main.document_detail', doc_id=doc[0]) }}"
@@ -264,6 +266,7 @@
     <div class="vr bg-white opacity-25"></div>
 
     <form id="batch-form" method="POST" action="{{ url_for('main.batch_action') }}" class="d-flex gap-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="doc_ids" id="batch-doc-ids">
         <input type="hidden" name="action" id="batch-action-type">
 

@@ -161,7 +161,7 @@ class TableManager:
 
     def _initialise_engine(self) -> None:
         try:
-            engine = get_paddle_ocr()
+            engine = get_ppstructure_v3_instance()
         except Exception as exc:  # pragma: no cover - Paddle runtime errors
             self.logger.warning(
                 "Failed to initialise PaddleOCR table engine (%s); disabling table extraction.",

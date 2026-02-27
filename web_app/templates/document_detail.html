@@ -164,6 +164,11 @@
                             OCR</button>
                     </li>
                     {% endif %}
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#chat-pane" type="button">
+                            <i class="fas fa-comments me-1"></i> Chat
+                        </button>
+                    </li>
                     {% else %}
                     <li class="nav-item">
                         <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#edit-ocr"
@@ -210,6 +215,33 @@
                                 style="height: 60vh; resize: none;">{{ document.text }}</textarea>
                         </div>
 
+                        <!-- Chat Tab -->
+                        <div class="tab-pane fade h-100" id="chat-pane">
+                            <div class="d-flex flex-column h-100">
+                                <div id="doc-chat-history"
+                                    class="flex-grow-1 overflow-auto p-3 mb-3 bg-dark bg-opacity-25 rounded border border-secondary border-opacity-25"
+                                    style="height: 50vh;">
+                                    <div class="text-center text-muted mt-5">
+                                        <i class="fas fa-robot fa-2x mb-3 opacity-50"></i>
+                                        <p class="small">Pregunta sobre este documento.</p>
+                                        <small class="d-block fst-italic">El contexto se limita a este archivo.</small>
+                                    </div>
+                                </div>
+                                <div class="input-group">
+                                    <button class="btn btn-outline-secondary" type="button" id="doc-chat-mic"
+                                        title="Hablar">
+                                        <i class="fas fa-microphone"></i>
+                                    </button>
+                                    <input type="text" class="form-control bg-dark text-light border-secondary"
+                                        id="doc-chat-input" placeholder="Pregunta sobre el documento..."
+                                        aria-label="Chat input" autocomplete="off">
+                                    <button class="btn btn-info" type="button" id="doc-chat-send">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Markdown Tab -->
                         <div class="tab-pane fade h-100" id="edit-md">
                             <textarea class="form-control bg-dark text-light border-secondary font-monospace"
@@ -251,7 +283,7 @@
                                             class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-3 py-2 w-100">
                                             <i class="fas fa-check-circle me-1"></i> Verificado
                                         </span>
-                                        {% elif document.workflow_state == 'pending' %}
+                                        {% elif document.workflow_state == 'pending_review' %}
                                         <span
                                             class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 px-3 py-2 w-100">
                                             <i class="fas fa-exclamation-triangle me-1"></i> Pendiente
@@ -1246,4 +1278,368 @@
         </div>
     </div>
 </div>
+<script>
+    // --- Document Chat Logic ---
+    const chatInput = document.getElementById('doc-chat-input');
+    const chatSendBtn = document.getElementById('doc-chat-send');
+    const chatHistory = document.getElementById('doc-chat-history');
+    const docMicBtn = document.getElementById('doc-chat-mic');
+    const docId = "{{ document.id }}";
+    const currentUserId = "{{ current_user.id if current_user.is_authenticated else 'anon' }}";
+
+    const localSessionKey = `chat_session_u${currentUserId}_d${docId}`;
+    let currentSessionId = localStorage.getItem(localSessionKey);
+    if (!currentSessionId) {
+        currentSessionId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+        localStorage.setItem(localSessionKey, currentSessionId);
+    }
+
+    let isDocChatSending = false;
+    let activeDocPoll = null;
+
+    function escapeDocHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderAssistantText(text) {
+        const safe = escapeDocHtml(text);
+        return safe
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n/g, '<br>');
+    }
+
+    function appendDocMessage(role, text, options = {}) {
+        const div = document.createElement('div');
+        div.className = `d-flex mb-2 ${role === 'user' ? 'justify-content-end' : 'justify-content-start'}`;
+
+        const bubble = document.createElement('div');
+        bubble.className = `p-2 rounded-3 text-break ${role === 'user' ? 'bg-info text-dark' : 'bg-secondary bg-opacity-50 text-light'}`;
+        bubble.style.maxWidth = '85%';
+        bubble.style.fontSize = '0.9rem';
+
+        if (options.allowHtml) {
+            bubble.innerHTML = text;
+        } else if (role === 'assistant') {
+            bubble.innerHTML = renderAssistantText(String(text || ''));
+        } else {
+            bubble.textContent = String(text || '');
+        }
+
+        div.appendChild(bubble);
+        chatHistory.appendChild(div);
+
+        const placeholder = chatHistory.querySelector('.text-center.text-muted');
+        if (placeholder) placeholder.remove();
+
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+        return div;
+    }
+
+    function appendDocTyping(message) {
+        const safeMsg = escapeDocHtml(message || 'Escribiendo...');
+        return appendDocMessage(
+            'assistant',
+            `<i class="fas fa-circle-notch fa-spin me-2"></i>${safeMsg}`,
+            { allowHtml: true }
+        );
+    }
+
+    function setDocChatInputState(disabled) {
+        chatInput.disabled = disabled;
+        chatSendBtn.disabled = disabled;
+        if (docMicBtn) docMicBtn.disabled = disabled;
+    }
+
+    function clearDocPollingState() {
+        if (!activeDocPoll) return;
+        clearInterval(activeDocPoll.intervalId);
+        clearTimeout(activeDocPoll.timeoutId);
+        if (activeDocPoll.typingEl && activeDocPoll.typingEl.isConnected) {
+            activeDocPoll.typingEl.remove();
+        }
+        activeDocPoll = null;
+    }
+
+    function pollChatTask(taskId, options = {}) {
+        const intervalMs = options.intervalMs || 1500;
+        const timeoutMs = options.timeoutMs || 120000;
+
+        clearDocPollingState();
+
+        return new Promise((resolve, reject) => {
+            const typingEl = appendDocTyping('Escribiendo...');
+            let settled = false;
+
+            const finish = (callback) => {
+                if (settled) return;
+                settled = true;
+                clearInterval(intervalId);
+                clearTimeout(timeoutId);
+                if (typingEl && typingEl.isConnected) typingEl.remove();
+                activeDocPoll = null;
+                callback();
+            };
+
+            const checkStatus = async () => {
+                try {
+                    const statusRes = await fetch(`/api/chat/status/${encodeURIComponent(taskId)}`);
+                    if (!statusRes.ok) {
+                        if (statusRes.status === 404) {
+                            finish(() => reject(new Error('La tarea ya no esta disponible.')));
+                        }
+                        return;
+                    }
+
+                    const statusData = await statusRes.json();
+                    const status = String(statusData.status || '').toLowerCase();
+
+                    if (status === 'completed') {
+                        finish(() => resolve(statusData.result || {}));
+                    } else if (status === 'failed' || status === 'error') {
+                        finish(() => reject(new Error(statusData.error || 'Fallo el procesamiento.')));
+                    }
+                } catch (err) {
+                    console.error('Polling error', err);
+                }
+            };
+
+            const intervalId = setInterval(checkStatus, intervalMs);
+            const timeoutId = setTimeout(() => {
+                finish(() => reject(new Error('Tiempo de espera agotado para la respuesta del chat.')));
+            }, timeoutMs);
+
+            activeDocPoll = { intervalId, timeoutId, typingEl };
+            checkStatus();
+        });
+    }
+
+    async function sendDocChat() {
+        if (isDocChatSending) return;
+
+        const query = chatInput.value.trim();
+        if (!query) return;
+
+        isDocChatSending = true;
+        appendDocMessage('user', query);
+        chatInput.value = '';
+        setDocChatInputState(true);
+
+        try {
+            const formData = new FormData();
+            formData.append('query', query);
+            formData.append('session_id', currentSessionId);
+            formData.append('doc_id', docId);
+            formData.append('async', 'true');
+
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+
+            if (data.status === 'processing' && data.task_id) {
+                const result = await pollChatTask(data.task_id, { intervalMs: 1500, timeoutMs: 120000 });
+                if (result.answer) {
+                    appendDocMessage('assistant', result.answer);
+                } else {
+                    appendDocMessage('assistant', 'Error: respuesta vacia.');
+                }
+            } else if (data.answer) {
+                appendDocMessage('assistant', data.answer);
+            } else {
+                appendDocMessage('assistant', 'Error: no se recibio respuesta.');
+            }
+        } catch (err) {
+            console.error(err);
+            appendDocMessage('assistant', `Error: ${err.message || 'conexion fallida.'}`);
+        } finally {
+            isDocChatSending = false;
+            setDocChatInputState(false);
+            chatInput.focus();
+        }
+    }
+
+    if (chatSendBtn && chatInput && chatHistory) {
+        chatSendBtn.addEventListener('click', sendDocChat);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendDocChat();
+            }
+        });
+
+        // --- Voice Logic ---
+        let mediaRecorder = null;
+        let mediaStream = null;
+        let audioChunks = [];
+
+        if (docMicBtn) {
+            docMicBtn.addEventListener('click', async () => {
+                if (isDocChatSending) return;
+
+                if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                    try {
+                        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        mediaRecorder = new MediaRecorder(mediaStream);
+                        audioChunks = [];
+
+                        mediaRecorder.ondataavailable = (event) => {
+                            audioChunks.push(event.data);
+                        };
+
+                        mediaRecorder.onstop = async () => {
+                            const statusEl = appendDocTyping('Procesando voz...');
+                            setDocChatInputState(true);
+                            try {
+                                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                                const formData = new FormData();
+                                formData.append('audio', audioBlob, 'voice.wav');
+                                formData.append('session_id', currentSessionId);
+                                formData.append('hotel_id', "{{ document.hotel_id }}");
+
+                                const res = await fetch('/api/chat/voice', {
+                                    method: 'POST',
+                                    body: formData
+                                });
+                                const data = await res.json();
+
+                                if (statusEl && statusEl.isConnected) statusEl.remove();
+
+                                if (data.error) {
+                                    appendDocMessage('assistant', `Error de voz: ${data.error}`);
+                                } else {
+                                    if (data.transcription) {
+                                        appendDocMessage('user', `Audio: ${data.transcription}`);
+                                    }
+                                    appendDocMessage('assistant', data.answer || 'No se recibio respuesta de voz.');
+                                }
+                            } catch (e) {
+                                if (statusEl && statusEl.isConnected) statusEl.remove();
+                                appendDocMessage('assistant', 'Error enviando audio.');
+                            } finally {
+                                setDocChatInputState(false);
+                                chatInput.focus();
+                                if (mediaStream) {
+                                    mediaStream.getTracks().forEach((track) => track.stop());
+                                    mediaStream = null;
+                                }
+                            }
+                        };
+
+                        mediaRecorder.start();
+                        docMicBtn.classList.remove('btn-outline-secondary');
+                        docMicBtn.classList.add('btn-danger', 'animate__animated', 'animate__pulse', 'animate__infinite');
+                    } catch (err) {
+                        console.error('Mic Error:', err);
+                        alert('No se pudo acceder al microfono.');
+                    }
+                } else {
+                    mediaRecorder.stop();
+                    docMicBtn.classList.remove('btn-danger', 'animate__animated', 'animate__pulse', 'animate__infinite');
+                    docMicBtn.classList.add('btn-outline-secondary');
+                }
+            });
+        }
+
+        async function loadDocHistory() {
+            try {
+                const res = await fetch(`/api/chat/history?session_id=${currentSessionId}`);
+                const data = await res.json();
+                if (Array.isArray(data.history) && data.history.length > 0) {
+                    const placeholder = chatHistory.querySelector('.text-center.text-muted');
+                    if (placeholder) placeholder.remove();
+                    data.history.forEach((msg) => appendDocMessage(msg.role, msg.content || ''));
+                }
+            } catch (err) {
+                console.error('Failed to load history:', err);
+            }
+        }
+
+        loadDocHistory();
+    }
+    // --- Decor Advisor Logic ---
+    async function getDecorAdvice() {
+        const btn = document.getElementById('btn-decor-advice');
+        const container = document.getElementById('decor-advice-container');
+        const content = document.getElementById('decor-advice-content');
+        const loader = document.getElementById('decor-loading');
+
+        btn.disabled = true;
+        loader.classList.remove('d-none');
+        container.classList.add('d-none');
+
+        try {
+            const res = await fetch(`/api/document/${docId}/advice`, { method: 'POST' });
+            const data = await res.json();
+
+            if (data.advice) {
+                // Check if advice is object (JSON) or string (HTML/Text)
+                if (typeof data.advice === 'object') {
+                    // Render Structured Shop the Look
+                    const json = data.advice;
+                    let html = `
+                        <div class="mb-3">
+                            <span class="badge bg-secondary me-2">${json.style || 'Estilo Detectado'}</span>
+                            <div class="d-inline-flex gap-1 align-items-center">
+                                ${(json.palette || []).map(c => `<span class="d-inline-block rounded-circle border border-light" style="width: 15px; height: 15px; background-color: ${c};" title="${c}"></span>`).join('')}
+                            </div>
+                        </div>
+                        <h6 class="text-white small fw-bold mb-3">Recomendaciones:</h6>
+                        <div class="row g-2">
+                    `;
+
+                    if (json.recommendations && Array.isArray(json.recommendations)) {
+                        json.recommendations.forEach(rec => {
+                            html += `
+                                <div class="col-12 col-md-4">
+                                    <div class="card bg-dark border-secondary h-100">
+                                        <div class="card-body p-2 d-flex flex-column">
+                                            <h6 class="card-title text-info small fw-bold mb-1 text-truncate" title="${rec.item}">
+                                                <i class="fas fa-tag me-1"></i>${rec.item}
+                                            </h6>
+                                            <p class="card-text text-muted small flex-grow-1" style="font-size: 0.75rem;">${rec.reason}</p>
+                                            <div class="mt-2 d-flex gap-1">
+                                                <a href="https://www.google.com/search?tbm=shop&q=${encodeURIComponent(rec.query || rec.item)}" target="_blank" class="btn btn-xs btn-outline-light w-100" title="Buscar en Shopping">
+                                                    <i class="fab fa-google"></i>
+                                                </a>
+                                                <a href="https://www.amazon.es/s?k=${encodeURIComponent(rec.query || rec.item)}" target="_blank" class="btn btn-xs btn-outline-warning w-100" title="Buscar en Amazon">
+                                                    <i class="fab fa-amazon"></i>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+                    html += `</div>`;
+                    content.innerHTML = html;
+                } else {
+                    // Fallback string/legacy
+                    content.innerHTML = data.advice;
+                }
+
+                container.classList.remove('d-none');
+            } else {
+                alert(data.error || "No se pudo generar el consejo.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error de conexión al solicitar consejo.");
+        } finally {
+            loader.classList.add('d-none');
+            btn.disabled = false;
+        }
+    }
+</script>
 {% endblock %}
+

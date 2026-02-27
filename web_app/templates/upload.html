@@ -37,6 +37,7 @@
                 </div>
 
                 <form method="post" enctype="multipart/form-data" id="upload-form" onsubmit="showLoading()">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <!-- Dual Inputs: One for Files, One for Camera -->
                     <input type="file" id="file_input" name="files" multiple class="d-none"
                         accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp" onchange="updateFileName(this)">

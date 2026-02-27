@@ -13,8 +13,9 @@ import logging
 import os
 import threading
 import queue
+from pathlib import Path
 from contextlib import contextmanager
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 try:  # pragma: no cover - standard library
     import sqlite3
@@ -34,9 +35,10 @@ class DBManager:
 
     def __init__(
         self,
-        config: Dict[str, Any]
+        config: Optional[Dict[str, Any]] = None
     ) -> None:
-        self.config = config.get("database", {})
+        root_config: Dict[str, Any] = config if isinstance(config, dict) else {}
+        self.config = root_config.get("database", {})
         
         # Auto-detect Production Environment via DATABASE_URL or specific env vars
         db_url = os.environ.get("DATABASE_URL")
@@ -88,10 +90,14 @@ class DBManager:
             for _ in range(pool_size):
                 self._sqlite_pool.put(self._create_connection())
 
-        # Initialize schema using a temporary connection
-        with self.get_connection() as conn:
-             self.initialize_schema(conn)
-             self.upgrade_schema(conn)
+        # SQLite/local tests rely on auto schema bootstrap.
+        # For PostgreSQL, keep it opt-in to avoid interfering with SQL migrations.
+        auto_init_default = self.engine_type == "sqlite"
+        auto_init_schema = bool(self.config.get("auto_init_schema", auto_init_default))
+        if auto_init_schema:
+            with self.get_connection() as conn:
+                self.initialize_schema(conn)
+                self.upgrade_schema(conn)
 
     def _create_connection(self):
         """Create a new raw database connection."""
@@ -105,8 +111,16 @@ class DBManager:
             )
             return conn
         else:
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            # SQLite concurrency tuning: reduce "database is locked" during parallel ingestion.
+            conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30)
             conn.row_factory = sqlite3.Row
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute("PRAGMA synchronous=NORMAL;")
+                conn.execute("PRAGMA foreign_keys=ON;")
+                conn.execute("PRAGMA busy_timeout=5000;")
+            except Exception:
+                pass
             return conn
 
     @contextmanager
@@ -136,27 +150,51 @@ class DBManager:
 
     def get_document(self, doc_id: int) -> Optional[Dict[str, Any]]:
         """Retrieve full document details including OCR data."""
-        query = """
-        SELECT d.id, d.filename, d.path, d.type, d.status, d.datetime,
-                d.tags, o.text, o.markdown_text, o.structured_data, o.blocks_json,
-                d.hotel_id, d.doc_type, d.visibility, d.financial_level
-        FROM documents d
-        LEFT JOIN ocr_texts o ON d.id = o.id_doc
-        WHERE d.id = ?
-        """
-        
+        queries = [
+            """
+            SELECT d.id, d.filename, d.path, d.type, d.status, d.datetime,
+                   d.tags, o.text, o.markdown_text, o.structured_data, o.blocks_json,
+                   d.hotel_id, d.doc_type, d.visibility, d.financial_level,
+                   d.duration, d.workflow_state, o.confidence
+            FROM documents d
+            LEFT JOIN ocr_texts o ON d.id = o.id_doc
+            WHERE d.id = ?
+            """,
+            """
+            SELECT d.id, d.filename, d.file_path, d.doc_type, d.status, d.created_at,
+                   d.tags, o.text, o.markdown_text, o.structured_data, o.blocks_json,
+                   d.hotel_id, d.doc_type, d.visibility, d.financial_level,
+                   d.duration, d.workflow_state, o.confidence
+            FROM documents d
+            LEFT JOIN ocr_texts o ON d.id = o.id_doc
+            WHERE d.id = ?
+            """,
+        ]
+
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query.replace('?', self.placeholder), (doc_id,))
-            row = cursor.fetchone()
-            
+            cursor = self.get_cursor(conn)
+            row = None
+            for query in queries:
+                try:
+                    cursor.execute(query.replace("?", self.placeholder), (doc_id,))
+                    row = cursor.fetchone()
+                    if row:
+                        break
+                except Exception:
+                    continue
+
             if not row:
                 return None
-            
-            def parse_json(val):
-                if not val: return []
-                try: return json.loads(val)
-                except: return []
+
+            def parse_json(val, default):
+                if val in (None, ""):
+                    return default
+                if isinstance(val, (dict, list)):
+                    return val
+                try:
+                    return json.loads(val)
+                except Exception:
+                    return default
 
             return {
                 "id": row[0],
@@ -165,16 +203,19 @@ class DBManager:
                 "type": row[3],
                 "status": row[4],
                 "date": row[5],
-                "tags": parse_json(row[6]),
+                "tags": parse_json(row[6], []),
                 "text": row[7],
                 "markdown": row[8],
-                "structured_data": parse_json(row[9]) if row[9] else {},
-                "blocks": parse_json(row[10]),
+                "structured_data": parse_json(row[9], {}),
+                "blocks": parse_json(row[10], []),
                 "hotel_id": row[11],
                 "doc_type": row[12],
                 "visibility": row[13],
                 "financial_level": row[14],
-                "data": parse_json(row[9]) if row[9] else {"total":0.0, "supplier":"", "date":""}
+                "duration": row[15] if len(row) > 15 else 0.0,
+                "workflow_state": row[16] if len(row) > 16 else "new",
+                "confidence": row[17] if len(row) > 17 else 0.0,
+                "data": parse_json(row[9], {"total": 0.0, "supplier": "", "date": ""}),
             }
              
     def _upgrade_schema_internal(self, conn):
@@ -193,29 +234,37 @@ class DBManager:
         self._ensure_column("documents", "error_message", "TEXT", conn)
         
         # Phase 3/4: Auth & Multi-tenancy
+        # Keep both `type` and `doc_type` for backwards compatibility.
+        self._ensure_column("documents", "type", "TEXT", conn)
         self._ensure_column("documents", "owner_id", "INTEGER", conn)
         self._ensure_column("documents", "hotel_id", "INTEGER", conn)
         self._ensure_column("documents", "doc_type", "TEXT DEFAULT 'other'", conn)
         self._ensure_column("documents", "visibility", "TEXT DEFAULT 'private'", conn)
         self._ensure_column("documents", "financial_level", "TEXT DEFAULT 'none'", conn)
         
-        # Phase 4: Users Scope & Roles
-        self._ensure_column("users", "hotel_scope", "TEXT", conn) # JSON list [1, 2, 3]
-        
         # Create hotels table
         cursor = self.get_cursor(conn)
-        cursor.execute("""
+        sql_sqlite_hotels = """
             CREATE TABLE IF NOT EXISTS hotels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 code TEXT UNIQUE,
                 description TEXT
             )
-        """)
+        """
+        sql_pg_hotels = """
+            CREATE TABLE IF NOT EXISTS hotels (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                code TEXT UNIQUE,
+                description TEXT
+            )
+        """
+        cursor.execute(sql_sqlite_hotels if self.engine_type == "sqlite" else sql_pg_hotels)
         
         # Create users table if not exists
         cursor = self.get_cursor(conn)
-        sql_sqlite = """
+        sql_sqlite_users = """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
@@ -225,17 +274,36 @@ class DBManager:
                 created_at TEXT
             )
         """
-        sql_pg = """
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    role TEXT DEFAULT 'client',
-                    client_id TEXT,
-                    created_at TEXT
-                )
-            """
-        cursor.execute(sql_sqlite if self.engine_type == "sqlite" else sql_pg)
+        sql_pg_users = """
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'client',
+                client_id TEXT,
+                created_at TEXT
+            )
+        """
+        cursor.execute(sql_sqlite_users if self.engine_type == "sqlite" else sql_pg_users)
+
+        # Phase 4: Users Scope & Roles
+        # Ensure the users table exists before adding columns.
+        self._ensure_column("users", "hotel_scope", "TEXT", conn) # JSON list [1, 2, 3]
+
+        # Phase 5: Auth Enhancements (Email, Verification, Recovery)
+        email_def = "TEXT UNIQUE" if self.engine_type != "sqlite" else "TEXT"
+        self._ensure_column("users", "email", email_def, conn)
+        if self.engine_type == "sqlite":
+            # SQLite cannot add a UNIQUE column via ALTER TABLE; use a unique index instead.
+            try:
+                cursor = self.get_cursor(conn)
+                cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)")
+            except Exception:
+                logger.debug("Failed to create users(email) unique index.", exc_info=True)
+        self._ensure_column("users", "is_verified", "INTEGER DEFAULT 0", conn)
+        self._ensure_column("users", "verification_token", "TEXT", conn)
+        self._ensure_column("users", "reset_token", "TEXT", conn)
+        self._ensure_column("users", "token_expiry", "TEXT", conn)
 
         # Phase 5: Audit Logging
         cursor = self.get_cursor(conn)
@@ -276,7 +344,10 @@ class DBManager:
                     price REAL,
                     stock INTEGER DEFAULT 0,
                     image_url TEXT,
-                    embedding TEXT
+                    embedding TEXT,
+                    attributes TEXT,
+                    category TEXT,
+                    tags TEXT
                 )
             """)
         else:
@@ -289,9 +360,17 @@ class DBManager:
                     price REAL,
                     stock INTEGER DEFAULT 0,
                     image_url TEXT,
-                    embedding TEXT
+                    embedding TEXT,
+                    attributes TEXT,
+                    category TEXT,
+                    tags TEXT
                 )
             """)
+
+        # Phase 4.1: Product Attributes (Migration)
+        self._ensure_column("products", "attributes", "TEXT", conn) # JSON
+        self._ensure_column("products", "category", "TEXT", conn)
+        self._ensure_column("products", "tags", "TEXT", conn) # JSON list
 
     def get_cursor(self, conn=None):
         """Get a cursor from the provided connection or raise error if no connection."""
@@ -389,6 +468,24 @@ class DBManager:
                 )
                 """
             )
+
+            # OCR text storage (SQLite)
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ocr_texts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id_doc INTEGER NOT NULL,
+                    text TEXT,
+                    markdown_text TEXT,
+                    language TEXT,
+                    confidence REAL,
+                    blocks_json TEXT,
+                    tables_json TEXT,
+                    structured_data TEXT,
+                    FOREIGN KEY(id_doc) REFERENCES documents(id)
+                )
+                """
+            )
         else:
             cursor.execute(
                 """
@@ -400,7 +497,8 @@ class DBManager:
                     language TEXT,
                     confidence REAL,
                     blocks_json TEXT,
-                    tables_json TEXT
+                    tables_json TEXT,
+                    structured_data TEXT
                 )
                 """
             )
@@ -529,6 +627,133 @@ class DBManager:
                 """
             )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_history(session_id)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_user_session ON chat_history(user_id, session_id)"
+        )
+
+        # Chat Task Registry (for secure async status polling per user)
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_tasks (
+                    task_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    session_id TEXT,
+                    backend TEXT,
+                    status TEXT NOT NULL DEFAULT 'processing',
+                    result_json TEXT,
+                    error_text TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_tasks (
+                    task_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    session_id TEXT,
+                    backend TEXT,
+                    status TEXT NOT NULL DEFAULT 'processing',
+                    result_json TEXT,
+                    error_text TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_tasks_user ON chat_tasks(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_tasks_created ON chat_tasks(created_at)")
+
+        # Chat request telemetry (latency/error/queue depth for observability).
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT,
+                    endpoint TEXT NOT NULL,
+                    status_code INTEGER NOT NULL,
+                    duration_ms REAL NOT NULL,
+                    queue_depth INTEGER,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_metrics (
+                    id SERIAL PRIMARY KEY,
+                    user_id TEXT,
+                    endpoint TEXT NOT NULL,
+                    status_code INTEGER NOT NULL,
+                    duration_ms REAL NOT NULL,
+                    queue_depth INTEGER,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_metrics_created ON chat_metrics(created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_metrics_endpoint ON chat_metrics(endpoint)")
+
+        # Persisted alerts emitted by chat SLO checks.
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    level TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    metric_value REAL,
+                    threshold_value REAL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_alerts (
+                    id SERIAL PRIMARY KEY,
+                    level TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    metric_value REAL,
+                    threshold_value REAL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_alerts_created ON chat_alerts(created_at)")
+
+        # Incremental RAG indexing state (doc fingerprint -> last indexed hash).
+        if self.engine_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS rag_index_state (
+                    doc_id INTEGER PRIMARY KEY,
+                    content_hash TEXT NOT NULL,
+                    metadata_hash TEXT,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS rag_index_state (
+                    doc_id INTEGER PRIMARY KEY,
+                    content_hash TEXT NOT NULL,
+                    metadata_hash TEXT,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_rag_index_state_updated ON rag_index_state(updated_at)")
 
         if self.engine_type == "sqlite":
             cursor.execute(
@@ -666,11 +891,28 @@ class DBManager:
         """Return the stored path for a given document ID."""
         with self.get_connection() as conn:
             cursor = self.get_cursor(conn)
-            cursor.execute(f"SELECT path FROM documents WHERE id = {self.placeholder}", (doc_id,))
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return str(row[0] if isinstance(row, (tuple, list)) else row["path"])
+            queries = [
+                f"SELECT path FROM documents WHERE id = {self.placeholder}",
+                f"SELECT file_path FROM documents WHERE id = {self.placeholder}",
+            ]
+            for query in queries:
+                try:
+                    cursor.execute(query, (doc_id,))
+                    row = cursor.fetchone()
+                    if not row:
+                        return None
+                    if isinstance(row, (tuple, list)):
+                        return str(row[0])
+                    try:
+                        return str(row["path"])
+                    except Exception:
+                        try:
+                            return str(row["file_path"])
+                        except Exception:
+                            return str(row[0])
+                except Exception:
+                    continue
+            return None
 
     def insert_document(
         self,
@@ -790,32 +1032,65 @@ class DBManager:
         details_str = json.dumps(details, ensure_ascii=False) if details else None
         with self.get_connection() as conn:
             cursor = self.get_cursor(conn)
-            sql = f"""
-                INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details, timestamp)
-                VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
-            """
-            params = (user_id, action, resource_type, resource_id, details_str, datetime.datetime.now().isoformat())
-            
-            if self.engine_type == "postgresql":
-                sql += " RETURNING id"
-                cursor.execute(sql, params)
-                audit_id = cursor.fetchone()["id"]
-            else:
-                cursor.execute(sql, params)
-                audit_id = cursor.lastrowid
-                
-            conn.commit()
-            return int(audit_id)
+            params = (
+                user_id,
+                action,
+                resource_type,
+                resource_id,
+                details_str,
+                datetime.datetime.now().isoformat(),
+            )
+            last_error = None
+
+            # Support both schema variants:
+            # - legacy/local: audit_logs.timestamp
+            # - migrated/postgres: audit_logs.created_at
+            for time_col in ("timestamp", "created_at"):
+                sql = f"""
+                    INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details, {time_col})
+                    VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+                """
+                try:
+                    if self.engine_type == "postgresql":
+                        cursor.execute(sql + " RETURNING id", params)
+                        row = cursor.fetchone()
+                        audit_id = row["id"] if isinstance(row, dict) else row[0]
+                    else:
+                        cursor.execute(sql, params)
+                        audit_id = cursor.lastrowid
+                    conn.commit()
+                    return int(audit_id)
+                except Exception as exc:
+                    last_error = exc
+                    conn.rollback()
+
+            logger.error("Failed to write audit log: %s", last_error)
+            return 0
 
     def get_recent_logs(self, limit: int = 100) -> list:
         """Get recent log entries for monitoring."""
-        with self.get_connection() as conn:
-            cursor = self.get_cursor(conn)
-            cursor.execute(
-                f"SELECT datetime, event, detail, level FROM logs ORDER BY datetime DESC LIMIT {self.placeholder}",
-                (limit,),
-            )
-            return cursor.fetchall()
+        try:
+            with self.get_connection() as conn:
+                cursor = self.get_cursor(conn)
+                queries = [
+                    (
+                        f"SELECT created_at AS created_at, action, details, resource_type "
+                        f"FROM audit_logs ORDER BY created_at DESC LIMIT {self.placeholder}"
+                    ),
+                    (
+                        f"SELECT timestamp AS created_at, action, details, resource_type "
+                        f"FROM audit_logs ORDER BY timestamp DESC LIMIT {self.placeholder}"
+                    ),
+                ]
+                for query in queries:
+                    try:
+                        cursor.execute(query, (limit,))
+                        return cursor.fetchall()
+                    except Exception:
+                        continue
+                return []
+        except Exception:
+            return []
 
     def insert_metrics(
         self,
@@ -845,35 +1120,80 @@ class DBManager:
             conn.commit()
             return int(m_id)
 
-    def search_documents(self, query_text: str, limit: int = 50) -> list:
-        """Perform a full-text search."""
+    def search_documents(
+        self,
+        query_text: str,
+        limit: int = 50,
+        *,
+        hotel_ids: Optional[Iterable[int]] = None,
+        owner_id: Optional[int] = None,
+    ) -> list:
+        """Perform a full-text search, optionally scoped by hotel_ids/owner_id."""
         if not query_text.strip():
             return []
-        
+
+        hotel_ids_list = list(hotel_ids) if hotel_ids else []
+
         with self.get_connection() as conn:
             cursor = self.get_cursor(conn)
             if self.engine_type == "sqlite":
                 try:
-                    cursor.execute(
-                        """
-                        SELECT doc_id, filename, snippet(documents_search, 2, '<b>', '</b>', '...', 20) as snippet, rank
+                    sql = """
+                        SELECT documents_search.doc_id,
+                               documents_search.filename,
+                               snippet(documents_search, 2, '<b>', '</b>', '...', 20) as snippet,
+                               rank
                         FROM documents_search
-                        WHERE documents_search MATCH ?
+                    """
+                    params = [query_text]
+                    where = f"WHERE documents_search MATCH {self.placeholder}"
+
+                    if hotel_ids_list or owner_id is not None:
+                        sql += " JOIN documents d ON d.id = documents_search.doc_id"
+                        if hotel_ids_list:
+                            placeholders = ",".join([self.placeholder] * len(hotel_ids_list))
+                            where += f" AND d.hotel_id IN ({placeholders})"
+                            params.extend(hotel_ids_list)
+                        if owner_id is not None:
+                            where += f" AND d.owner_id = {self.placeholder}"
+                            params.append(owner_id)
+
+                    sql += f"""
+                        {where}
                         ORDER BY rank
-                        LIMIT ?
-                        """,
-                        (query_text, limit),
-                    )
+                        LIMIT {self.placeholder}
+                    """
+                    params.append(limit)
+                    cursor.execute(sql, tuple(params))
                     return cursor.fetchall()
                 except Exception as e:
                     logger.error(f"Search error: {e}")
                     return []
             else:
                 # Basic PostgreSQL ILIKE search as fallback for full FTS implementation
-                cursor.execute(
-                    f"SELECT id as doc_id, filename, content as snippet FROM ocr_texts WHERE text ILIKE {self.placeholder} LIMIT {self.placeholder}",
-                    (f"%{query_text}%", limit)
-                )
+                sql = f"""
+                    SELECT d.id as doc_id,
+                           d.filename,
+                           LEFT(COALESCE(o.text, ''), 250) as snippet
+                    FROM documents d
+                    LEFT JOIN ocr_texts o ON d.id = o.id_doc
+                    WHERE (d.filename ILIKE {self.placeholder}
+                       OR o.text ILIKE {self.placeholder})
+                """
+                params = [f"%{query_text}%", f"%{query_text}%"]
+
+                if hotel_ids_list:
+                    placeholders = ",".join([self.placeholder] * len(hotel_ids_list))
+                    sql += f" AND d.hotel_id IN ({placeholders})"
+                    params.extend(hotel_ids_list)
+                if owner_id is not None:
+                    sql += f" AND d.owner_id = {self.placeholder}"
+                    params.append(owner_id)
+
+                sql += f" ORDER BY d.datetime DESC LIMIT {self.placeholder}"
+                params.append(limit)
+
+                cursor.execute(sql, tuple(params))
                 return cursor.fetchall()
 
     def update_document_metadata(self, doc_id: int, text: str, markdown: str, doc_type: str, status: str) -> bool:
@@ -913,6 +1233,21 @@ class DBManager:
                 return True
             except Exception as e:
                 logger.error(f"Failed to update document state {doc_id}: {e}")
+                return False
+
+    def update_document_status(self, doc_id: int, status: str) -> bool:
+        """Update the processing status field of a document."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(
+                    f"UPDATE documents SET status = {self.placeholder} WHERE id = {self.placeholder}",
+                    (status, doc_id),
+                )
+                conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to update document status {doc_id}: {e}")
                 return False
 
     def update_document_type(self, doc_id: int, doc_type: str) -> bool:
@@ -1054,13 +1389,6 @@ class DBManager:
         query = f"INSERT INTO hotels (name, code, description) VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder})"
         with self.get_connection() as conn:
             cursor = self.get_cursor(conn)
-            cursor.execute(query, (name, code, description))
-            if self.engine_type == "postgresql":
-                 # Postgres needs RETURNING id but I put it in common sql above for simplicity, 
-                 # let's be consistent and fix it.
-                 pass
-            
-            # Refined for both engines
             if self.engine_type == "postgresql":
                 cursor.execute(query + " RETURNING id", (name, code, description))
                 t_id = cursor.fetchone()[0]
@@ -1241,20 +1569,580 @@ class DBManager:
             conn.commit()
             return int(msg_id)
 
-    def get_chat_history(self, session_id: str, limit: int = 50) -> list:
-        """Retrieve recent chat history for a specific session."""
+    def register_chat_task(
+        self,
+        task_id: str,
+        user_id: str,
+        session_id: Optional[str] = None,
+        backend: Optional[str] = None,
+    ) -> bool:
+        """Register an async chat task for secure status polling."""
+        now = datetime.datetime.now().isoformat()
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                if self.engine_type == "postgresql":
+                    cursor.execute(
+                        f"""
+                        INSERT INTO chat_tasks (
+                            task_id, user_id, session_id, backend, status, result_json, error_text, created_at, updated_at
+                        ) VALUES (
+                            {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder},
+                            {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder}
+                        )
+                        ON CONFLICT (task_id) DO UPDATE SET
+                            user_id = EXCLUDED.user_id,
+                            session_id = EXCLUDED.session_id,
+                            backend = EXCLUDED.backend,
+                            status = EXCLUDED.status,
+                            result_json = EXCLUDED.result_json,
+                            error_text = EXCLUDED.error_text,
+                            updated_at = EXCLUDED.updated_at
+                        """,
+                        (task_id, str(user_id), session_id, backend, "processing", None, None, now, now),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO chat_tasks (
+                            task_id, user_id, session_id, backend, status, result_json, error_text, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """.replace("?", self.placeholder),
+                        (task_id, str(user_id), session_id, backend, "processing", None, None, now, now),
+                    )
+                conn.commit()
+                return True
+            except Exception as exc:
+                logger.error("Failed to register chat task %s: %s", task_id, exc)
+                conn.rollback()
+                return False
+
+    def get_chat_task(self, task_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Retrieve a chat task, optionally enforcing ownership via user_id."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                params = [task_id]
+                where_sql = f"WHERE task_id = {self.placeholder}"
+                if user_id is not None:
+                    where_sql += f" AND user_id = {self.placeholder}"
+                    params.append(str(user_id))
+                cursor.execute(
+                    f"""
+                    SELECT task_id, user_id, session_id, backend, status, result_json, error_text, created_at, updated_at
+                    FROM chat_tasks
+                    {where_sql}
+                    LIMIT 1
+                    """,
+                    tuple(params),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None
+
+                def _field(key: str, idx: int):
+                    if isinstance(row, (tuple, list)):
+                        return row[idx]
+                    try:
+                        return row[key]
+                    except Exception:
+                        return row[idx]
+
+                result_json = _field("result_json", 5)
+                parsed_result = None
+                if result_json:
+                    try:
+                        parsed_result = json.loads(result_json)
+                    except Exception:
+                        parsed_result = None
+
+                return {
+                    "task_id": _field("task_id", 0),
+                    "user_id": _field("user_id", 1),
+                    "session_id": _field("session_id", 2),
+                    "backend": _field("backend", 3),
+                    "status": _field("status", 4),
+                    "result": parsed_result,
+                    "error": _field("error_text", 6),
+                    "created_at": _field("created_at", 7),
+                    "updated_at": _field("updated_at", 8),
+                }
+            except Exception as exc:
+                logger.error("Failed to fetch chat task %s: %s", task_id, exc)
+                return None
+
+    def update_chat_task_status(
+        self,
+        task_id: str,
+        status: str,
+        result: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+    ) -> bool:
+        """Update status/result metadata for a chat task."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(
+                    f"""
+                    UPDATE chat_tasks
+                    SET status = {self.placeholder},
+                        result_json = {self.placeholder},
+                        error_text = {self.placeholder},
+                        updated_at = {self.placeholder}
+                    WHERE task_id = {self.placeholder}
+                    """,
+                    (
+                        str(status),
+                        json.dumps(result) if result is not None else None,
+                        str(error) if error is not None else None,
+                        datetime.datetime.now().isoformat(),
+                        task_id,
+                    ),
+                )
+                conn.commit()
+                return True
+            except Exception as exc:
+                logger.error("Failed to update chat task %s: %s", task_id, exc)
+                conn.rollback()
+                return False
+
+    def get_chat_history(
+        self, session_id: str, limit: int = 50, user_id: Optional[str] = None
+    ) -> list:
+        """Retrieve recent chat history for a specific session, optionally scoped by user_id."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+
+            params = [session_id]
+            where_sql = f"WHERE session_id = {self.placeholder}"
+            if user_id is not None:
+                where_sql += f" AND user_id = {self.placeholder}"
+                params.append(str(user_id))
+
+            # Fetch last N messages then return them in chronological order.
+            sql = f"""
+                SELECT role, content, timestamp
+                FROM (
+                    SELECT id, role, content, timestamp
+                    FROM chat_history
+                    {where_sql}
+                    ORDER BY id DESC
+                    LIMIT {self.placeholder}
+                ) t
+                ORDER BY id ASC
+            """
+            params.append(int(limit))
+            cursor.execute(sql, tuple(params))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def count_chat_tasks(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        statuses: Optional[Iterable[str]] = None,
+        recent_seconds: Optional[int] = None,
+    ) -> int:
+        """Count chat tasks with optional user/status/time filters."""
+        where_clauses: List[str] = []
+        params: List[Any] = []
+
+        if user_id is not None:
+            where_clauses.append(f"user_id = {self.placeholder}")
+            params.append(str(user_id))
+
+        status_list = [str(s) for s in (statuses or []) if str(s).strip()]
+        if status_list:
+            placeholders = ",".join([self.placeholder] * len(status_list))
+            where_clauses.append(f"status IN ({placeholders})")
+            params.extend(status_list)
+
+        if recent_seconds is not None and int(recent_seconds) > 0:
+            cutoff = (datetime.datetime.now() - datetime.timedelta(seconds=int(recent_seconds))).isoformat()
+            where_clauses.append(f"created_at >= {self.placeholder}")
+            params.append(cutoff)
+
+        sql = "SELECT COUNT(1) FROM chat_tasks"
+        if where_clauses:
+            sql += " WHERE " + " AND ".join(where_clauses)
+
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(sql, tuple(params))
+                row = cursor.fetchone()
+            except Exception as exc:
+                logger.debug("count_chat_tasks failed: %s", exc, exc_info=True)
+                return 0
+            if not row:
+                return 0
+            if isinstance(row, (tuple, list)):
+                return int(row[0] or 0)
+            try:
+                return int(row[0] or 0)
+            except Exception:
+                return int(row.get("count", 0) or 0)
+
+    def insert_chat_metric(
+        self,
+        *,
+        user_id: Optional[str],
+        endpoint: str,
+        status_code: int,
+        duration_ms: float,
+        queue_depth: Optional[int] = None,
+    ) -> bool:
+        """Insert a chat request telemetry row."""
+        now = datetime.datetime.now().isoformat()
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(
+                    f"""
+                    INSERT INTO chat_metrics (
+                        user_id, endpoint, status_code, duration_ms, queue_depth, created_at
+                    ) VALUES (
+                        {self.placeholder}, {self.placeholder}, {self.placeholder},
+                        {self.placeholder}, {self.placeholder}, {self.placeholder}
+                    )
+                    """,
+                    (
+                        str(user_id) if user_id is not None else None,
+                        str(endpoint),
+                        int(status_code),
+                        float(duration_ms),
+                        int(queue_depth) if queue_depth is not None else None,
+                        now,
+                    ),
+                )
+                conn.commit()
+                return True
+            except Exception as exc:
+                logger.error("Failed to insert chat metric: %s", exc)
+                conn.rollback()
+                return False
+
+    def get_chat_metrics_summary(
+        self,
+        *,
+        window_minutes: int = 15,
+        endpoint: Optional[str] = None,
+        max_rows: int = 5000,
+    ) -> Dict[str, Any]:
+        """Return latency/error/queue summary for recent chat requests."""
+        minutes = max(1, int(window_minutes))
+        cutoff = (datetime.datetime.now() - datetime.timedelta(minutes=minutes)).isoformat()
+
+        where = [f"created_at >= {self.placeholder}"]
+        params: List[Any] = [cutoff]
+        if endpoint:
+            where.append(f"endpoint = {self.placeholder}")
+            params.append(str(endpoint))
+
+        sql = f"""
+            SELECT duration_ms, status_code, queue_depth
+            FROM chat_metrics
+            WHERE {' AND '.join(where)}
+            ORDER BY id DESC
+            LIMIT {self.placeholder}
+        """
+        params.append(max(1, int(max_rows)))
+
+        durations: List[float] = []
+        status_codes: List[int] = []
+        queue_depths: List[int] = []
+
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(sql, tuple(params))
+                rows = cursor.fetchall() or []
+            except Exception:
+                rows = []
+
+        for row in rows:
+            if isinstance(row, (tuple, list)):
+                dur, code, qd = row[0], row[1], row[2]
+            else:
+                try:
+                    dur = row["duration_ms"]
+                except Exception:
+                    dur = row[0]
+                try:
+                    code = row["status_code"]
+                except Exception:
+                    code = row[1]
+                try:
+                    qd = row["queue_depth"]
+                except Exception:
+                    qd = row[2]
+            try:
+                durations.append(float(dur))
+            except Exception:
+                pass
+            try:
+                status_codes.append(int(code))
+            except Exception:
+                pass
+            try:
+                if qd is not None:
+                    queue_depths.append(int(qd))
+            except Exception:
+                pass
+
+        durations_sorted = sorted(durations)
+
+        def _percentile(values: List[float], pct: float) -> float:
+            if not values:
+                return 0.0
+            if len(values) == 1:
+                return float(values[0])
+            rank = (pct / 100.0) * (len(values) - 1)
+            low = int(rank)
+            high = min(low + 1, len(values) - 1)
+            frac = rank - low
+            return float(values[low] * (1.0 - frac) + values[high] * frac)
+
+        total = len(durations_sorted)
+        error_count = sum(1 for c in status_codes if int(c) >= 400)
+        queue_avg = (sum(queue_depths) / len(queue_depths)) if queue_depths else 0.0
+        queue_max = max(queue_depths) if queue_depths else 0
+
+        return {
+            "window_minutes": minutes,
+            "total_requests": total,
+            "error_count": error_count,
+            "error_rate_pct": (100.0 * error_count / total) if total else 0.0,
+            "latency_ms": {
+                "avg": (sum(durations_sorted) / total) if total else 0.0,
+                "p95": _percentile(durations_sorted, 95.0),
+                "p99": _percentile(durations_sorted, 99.0),
+                "max": max(durations_sorted) if durations_sorted else 0.0,
+            },
+            "queue_depth": {
+                "avg": queue_avg,
+                "max": queue_max,
+            },
+        }
+
+    def insert_chat_alert(
+        self,
+        *,
+        level: str,
+        code: str,
+        message: str,
+        metric_value: Optional[float] = None,
+        threshold_value: Optional[float] = None,
+    ) -> bool:
+        """Persist a chat SLO alert record."""
+        now = datetime.datetime.now().isoformat()
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(
+                    f"""
+                    INSERT INTO chat_alerts (
+                        level, code, message, metric_value, threshold_value, created_at
+                    ) VALUES (
+                        {self.placeholder}, {self.placeholder}, {self.placeholder},
+                        {self.placeholder}, {self.placeholder}, {self.placeholder}
+                    )
+                    """,
+                    (
+                        str(level).upper(),
+                        str(code),
+                        str(message),
+                        float(metric_value) if metric_value is not None else None,
+                        float(threshold_value) if threshold_value is not None else None,
+                        now,
+                    ),
+                )
+                conn.commit()
+                return True
+            except Exception as exc:
+                logger.error("Failed to insert chat alert: %s", exc)
+                conn.rollback()
+                return False
+
+    def get_recent_chat_alerts(self, *, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return recent chat alerts in reverse chronological order."""
         with self.get_connection() as conn:
             cursor = self.get_cursor(conn)
             cursor.execute(
                 f"""
-                SELECT role, content, timestamp 
-                FROM chat_history 
-                WHERE session_id = {self.placeholder}
-                ORDER BY id ASC
+                SELECT id, level, code, message, metric_value, threshold_value, created_at
+                FROM chat_alerts
+                ORDER BY id DESC
+                LIMIT {self.placeholder}
                 """,
-                (session_id,)
+                (max(1, int(limit)),),
             )
-            return [dict(row) for row in cursor.fetchall()]
+            rows = cursor.fetchall() or []
+            return [dict(r) for r in rows]
+
+    def purge_chat_history_older_than(self, *, days: float, user_id: Optional[str] = None) -> int:
+        """Delete chat_history records older than `days` and return deleted count."""
+        max_age = float(days)
+        if max_age <= 0:
+            return 0
+        cutoff = (datetime.datetime.now() - datetime.timedelta(days=max_age)).isoformat()
+
+        where = [f"timestamp < {self.placeholder}"]
+        params: List[Any] = [cutoff]
+        if user_id is not None:
+            where.append(f"user_id = {self.placeholder}")
+            params.append(str(user_id))
+
+        sql = f"DELETE FROM chat_history WHERE {' AND '.join(where)}"
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(sql, tuple(params))
+            deleted = int(getattr(cursor, "rowcount", 0) or 0)
+            conn.commit()
+            return deleted
+
+    def purge_chat_tasks_older_than(
+        self,
+        *,
+        days: float,
+        only_terminal: bool = True,
+    ) -> int:
+        """Delete old chat_tasks (optionally only terminal statuses)."""
+        max_age = float(days)
+        if max_age <= 0:
+            return 0
+        cutoff = (datetime.datetime.now() - datetime.timedelta(days=max_age)).isoformat()
+
+        where = [f"created_at < {self.placeholder}"]
+        params: List[Any] = [cutoff]
+        if only_terminal:
+            terminal = ("completed", "failed", "error")
+            placeholders = ",".join([self.placeholder] * len(terminal))
+            where.append(f"status IN ({placeholders})")
+            params.extend(terminal)
+
+        sql = f"DELETE FROM chat_tasks WHERE {' AND '.join(where)}"
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            cursor.execute(sql, tuple(params))
+            deleted = int(getattr(cursor, "rowcount", 0) or 0)
+            conn.commit()
+            return deleted
+
+    def get_rag_index_state(self) -> Dict[int, Dict[str, Any]]:
+        """Load RAG index state keyed by doc_id."""
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                cursor.execute(
+                    "SELECT doc_id, content_hash, metadata_hash, updated_at FROM rag_index_state"
+                )
+                rows = cursor.fetchall() or []
+            except Exception as exc:
+                logger.debug("get_rag_index_state failed: %s", exc, exc_info=True)
+                return {}
+            out: Dict[int, Dict[str, Any]] = {}
+            for row in rows:
+                if isinstance(row, (tuple, list)):
+                    doc_id, content_hash, metadata_hash, updated_at = row[0], row[1], row[2], row[3]
+                else:
+                    doc_id = row["doc_id"]
+                    content_hash = row["content_hash"]
+                    metadata_hash = row["metadata_hash"]
+                    updated_at = row["updated_at"]
+                try:
+                    doc_id_int = int(doc_id)
+                except Exception:
+                    continue
+                out[doc_id_int] = {
+                    "content_hash": str(content_hash or ""),
+                    "metadata_hash": str(metadata_hash or ""),
+                    "updated_at": updated_at,
+                }
+            return out
+
+    def upsert_rag_index_state_entries(self, entries: Iterable[Dict[str, Any]]) -> int:
+        """Upsert RAG index state rows. Returns number of applied entries."""
+        rows = []
+        now = datetime.datetime.now().isoformat()
+        for item in entries or []:
+            try:
+                doc_id = int(item.get("doc_id"))
+            except Exception:
+                continue
+            rows.append(
+                (
+                    doc_id,
+                    str(item.get("content_hash") or ""),
+                    str(item.get("metadata_hash") or ""),
+                    str(item.get("updated_at") or now),
+                )
+            )
+        if not rows:
+            return 0
+
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            applied = 0
+            try:
+                if self.engine_type == "postgresql":
+                    sql = (
+                        f"""
+                        INSERT INTO rag_index_state (doc_id, content_hash, metadata_hash, updated_at)
+                        VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+                        ON CONFLICT (doc_id) DO UPDATE SET
+                            content_hash = EXCLUDED.content_hash,
+                            metadata_hash = EXCLUDED.metadata_hash,
+                            updated_at = EXCLUDED.updated_at
+                        """
+                    )
+                else:
+                    sql = (
+                        f"""
+                        INSERT INTO rag_index_state (doc_id, content_hash, metadata_hash, updated_at)
+                        VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder}, {self.placeholder})
+                        ON CONFLICT(doc_id) DO UPDATE SET
+                            content_hash = excluded.content_hash,
+                            metadata_hash = excluded.metadata_hash,
+                            updated_at = excluded.updated_at
+                        """
+                    )
+
+                for row in rows:
+                    cursor.execute(sql, row)
+                    applied += 1
+                conn.commit()
+            except Exception as exc:
+                logger.error("Failed to upsert rag_index_state entries: %s", exc)
+                conn.rollback()
+                return 0
+            return applied
+
+    def delete_rag_index_state_not_in(self, doc_ids: Iterable[int]) -> int:
+        """Delete rag_index_state rows whose doc_id is not in `doc_ids`."""
+        valid_ids = []
+        for d in doc_ids or []:
+            try:
+                valid_ids.append(int(d))
+            except Exception:
+                continue
+        with self.get_connection() as conn:
+            cursor = self.get_cursor(conn)
+            try:
+                if not valid_ids:
+                    cursor.execute("DELETE FROM rag_index_state")
+                else:
+                    placeholders = ",".join([self.placeholder] * len(valid_ids))
+                    cursor.execute(
+                        f"DELETE FROM rag_index_state WHERE doc_id NOT IN ({placeholders})",
+                        tuple(valid_ids),
+                    )
+                deleted = int(getattr(cursor, "rowcount", 0) or 0)
+                conn.commit()
+                return deleted
+            except Exception as exc:
+                logger.error("Failed to delete stale rag_index_state entries: %s", exc)
+                conn.rollback()
+                return 0
 
     def execute(self, query: str, params: tuple = (), commit: bool = False):
         """Helper to execute a query with automatic placeholder replacement and connection management."""

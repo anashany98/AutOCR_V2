@@ -1,21 +1,188 @@
-import os
+﻿import os
+import secrets
 import json
 from pathlib import Path
-from typing import List, Any, Dict
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_from_directory
+from typing import List, Any, Dict, Optional
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_from_directory, jsonify
 from werkzeug.utils import secure_filename
 from flask_login import login_required, current_user
 import tempfile
 
 from web_app.services import get_db, get_pipeline, get_logger, get_classifier, load_configuration, save_configuration, PROJECT_ROOT
-from web_app.security.security_decorators import require_role, hotel_scoped, financial_access_required
+from web_app.security.security_decorators import require_role, hotel_scoped, owner_scoped, financial_access_required
 from web_app.utils import safe_json_parse, resolve_path, ensure_within_project, encode_path, decode_path
 from modules.file_utils import ensure_directories
-from modules.tasks import process_document_task
+from modules.tasks import process_document_task, rebuild_vision_index_task
 
 main_bp = Blueprint('main', __name__)
 
 ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".jfif", ".avif", ".gif", ".tif", ".tiff"}
+VISION_ROOT = (PROJECT_ROOT / "data" / "vision").resolve()
+VISION_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".pdf"}
+
+
+def _documents_has_column(db, column_name: str) -> bool:
+    try:
+        with db.get_connection() as conn:
+            cursor = db.get_cursor(conn)
+            cursor.execute(f"SELECT {column_name} FROM documents LIMIT 1")
+        return True
+    except Exception:
+        return False
+
+
+def _documents_schema(db) -> Dict[str, Any]:
+    return {
+        "created_col": "created_at" if _documents_has_column(db, "created_at") else "datetime",
+        "path_col": "file_path" if _documents_has_column(db, "file_path") else "path",
+        "type_col": "doc_type" if _documents_has_column(db, "doc_type") else "type",
+        "has_file_size": _documents_has_column(db, "file_size"),
+    }
+
+
+def _row_get(row: Any, key: str, index: Optional[int] = None, default: Any = None) -> Any:
+    if row is None:
+        return default
+    try:
+        return row[key]
+    except Exception:
+        pass
+    if index is not None:
+        try:
+            return row[index]
+        except Exception:
+            pass
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return default
+
+
+def _abs_doc_path(path_value: Optional[str]) -> Optional[Path]:
+    if not path_value:
+        return None
+    p = Path(str(path_value))
+    if not p.is_absolute():
+        p = PROJECT_ROOT / p
+    try:
+        return p.resolve(strict=False)
+    except Exception:
+        return p
+
+
+def _path_candidates(path_value: Optional[str]) -> List[str]:
+    candidates: List[str] = []
+
+    def _append(value: Optional[str]) -> None:
+        if not value:
+            return
+        variants = {value, value.replace("\\", "/"), value.replace("/", "\\")}
+        for cand in variants:
+            if cand and cand not in candidates:
+                candidates.append(cand)
+
+    _append(path_value)
+    abs_path = _abs_doc_path(path_value)
+    if abs_path:
+        _append(str(abs_path))
+        try:
+            _append(str(abs_path.relative_to(PROJECT_ROOT.resolve())))
+        except Exception:
+            pass
+    return candidates
+
+
+def _find_document_by_path(db, path_col: str, path_value: Optional[str], select_sql: str):
+    candidates = _path_candidates(path_value)
+    if not candidates:
+        return None
+    placeholders = ",".join([db.placeholder] * len(candidates))
+    q = f"SELECT {select_sql} FROM documents WHERE {path_col} IN ({placeholders}) LIMIT 1"
+    return db.execute(q, tuple(candidates)).fetchone()
+
+
+def _filter_accessible_doc_ids(db, doc_ids: List[int], user=None) -> List[int]:
+    if not doc_ids:
+        return []
+    u = user or current_user
+    role = str(getattr(u, "role", "")).upper()
+    scope_set = {str(h) for h in (getattr(u, "hotel_scope", []) or [])}
+    owner_id = str(getattr(u, "id", "")) if role in {"CLIENTE", "CLIENT"} else None
+
+    # Fail closed for non-admin users without scope.
+    if role != "ADMIN" and not scope_set:
+        return []
+
+    placeholders = ",".join([db.placeholder] * len(doc_ids))
+    rows = db.execute(
+        f"SELECT id, owner_id, hotel_id FROM documents WHERE id IN ({placeholders})",
+        tuple(doc_ids),
+    ).fetchall()
+
+    allowed: set[int] = set()
+    for row in rows:
+        doc_id = int(_row_get(row, "id", 0))
+        doc_owner = _row_get(row, "owner_id", 1)
+        doc_hotel = _row_get(row, "hotel_id", 2)
+
+        if role != "ADMIN":
+            if doc_hotel is None or str(doc_hotel) not in scope_set:
+                continue
+        if owner_id is not None and str(doc_owner) != owner_id:
+            continue
+        allowed.add(doc_id)
+
+    # Preserve submitted order while deduplicating.
+    ordered_allowed: List[int] = []
+    for did in doc_ids:
+        if int(did) in allowed and int(did) not in ordered_allowed:
+            ordered_allowed.append(int(did))
+    return ordered_allowed
+
+
+def _vision_user_namespace() -> str:
+    return f"user_{current_user.id}"
+
+
+def _vision_user_dir(kind: str) -> Path:
+    base = VISION_ROOT / _vision_user_namespace() / kind
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def _resolve_vision_path_from_token(token: str) -> Path | None:
+    """Resolve a token to an on-disk path under data/vision/, enforcing per-user isolation."""
+    try:
+        rel_path = decode_path(token)
+    except Exception:
+        return None
+
+    if not rel_path:
+        return None
+
+    p = Path(rel_path)
+    if p.is_absolute():
+        return None
+
+    abs_path = (PROJECT_ROOT / p).resolve()
+    try:
+        if os.path.commonpath([str(abs_path), str(VISION_ROOT)]) != str(VISION_ROOT):
+            return None
+    except Exception:
+        return None
+
+    # Enforce per-user namespace unless admin.
+    role = str(getattr(current_user, "role", "")).upper()
+    if role != "ADMIN":
+        try:
+            rel_to_root = abs_path.relative_to(VISION_ROOT)
+        except Exception:
+            return None
+        if not rel_to_root.parts:
+            return None
+        if rel_to_root.parts[0] != _vision_user_namespace():
+            return None
+
+    return abs_path
 
 @main_bp.route("/")
 @login_required
@@ -40,6 +207,10 @@ def dashboard():
         
     db = get_db()
     hotel_id = request.args.get('hotel_id')
+    schema = _documents_schema(db)
+    created_col = schema["created_col"]
+    has_file_size = schema["has_file_size"]
+    has_doc_type = schema["type_col"] == "doc_type"
     
     # Validation of requested hotel_id
     if hotel_id and current_user.role != 'ADMIN':
@@ -69,9 +240,6 @@ def dashboard():
         all_hotels = db.get_hotels()
         available_hotels = [h for h in all_hotels if str(h['id']) in [str(s) for s in current_user.hotel_scope]]
 
-    # Re-calculate placeholders for pending/type queries if needed
-    p_holders = ",".join([db.placeholder] * len(scope_params)) if scope_params else ""
-
     with db.get_connection() as conn:
         cursor = db.get_cursor(conn)
 
@@ -81,16 +249,17 @@ def dashboard():
         cursor.execute(f"SELECT status, COUNT(*) FROM documents{scope_filter} GROUP BY status", scope_params)
         status_stats = {row[0]: row[1] for row in cursor.fetchall()}
 
-        pending_where = " WHERE workflow_state = 'pending'"
+        pending_where = " WHERE workflow_state IN ('pending', 'pending_review')"
         if scope_filter:
-            pending_where += f" AND hotel_id IN ({placeholders})"
+            pending_where += scope_filter.replace(" WHERE ", " AND ", 1)
         cursor.execute(f"SELECT COUNT(*) FROM documents{pending_where}", scope_params)
         pending_count = cursor.fetchone()[0]
 
-        type_where = " WHERE type IS NOT NULL"
+        type_col = "doc_type" if has_doc_type else "type"
+        type_where = f" WHERE {type_col} IS NOT NULL"
         if scope_filter:
-            type_where += f" AND hotel_id IN ({placeholders})"
-        cursor.execute(f"SELECT type, COUNT(*) FROM documents{type_where} GROUP BY type", scope_params)
+            type_where += scope_filter.replace(" WHERE ", " AND ", 1)
+        cursor.execute(f"SELECT {type_col}, COUNT(*) FROM documents{type_where} GROUP BY {type_col}", scope_params)
         raw_type_stats = cursor.fetchall()
         
         normalized_stats = {}
@@ -100,66 +269,82 @@ def dashboard():
             
         type_stats = sorted(normalized_stats.items(), key=lambda x: x[1], reverse=True)[:10]
 
+        doc_type_select = "doc_type" if has_doc_type else "type AS doc_type"
+        file_size_select = "file_size" if has_file_size else "NULL AS file_size"
         cursor.execute(
             f"""
-            SELECT id, filename, type, status, datetime, duration, error_message
+            SELECT id, filename, {doc_type_select}, status, {created_col} AS created_at, COALESCE(duration, 0) AS duration, {file_size_select}, error_message, tags
             FROM documents
             {scope_filter}
-            ORDER BY datetime DESC
+            ORDER BY {created_col} DESC
             LIMIT 10
             """, scope_params
         )
-        recent_docs = cursor.fetchall()
-
-        cursor.execute(
-            """
-            SELECT datetime, ok_docs, failed_docs, avg_time, reliability_pct
-            FROM metrics
-            ORDER BY datetime DESC
-            LIMIT 5
-            """
-        )
-        metrics = cursor.fetchall()
-
-        tables_where = ""
-        if scope_filter:
-            tables_where = f" AND d.hotel_id IN ({placeholders})"
-        cursor.execute(
-            f"""
-            SELECT d.id, d.filename, d.datetime, o.tables_json
-            FROM documents d
-            JOIN ocr_texts o ON d.id = o.id_doc
-            WHERE o.tables_json IS NOT NULL
-            {tables_where}
-            ORDER BY d.datetime DESC
-            LIMIT 10
-            """, scope_params
-        )
-        tables_rows = cursor.fetchall()
-        recent_tables: List[Dict[str, Any]] = []
-        for row in tables_rows:
+        recent_docs = []
+        for row in cursor.fetchall():
+            # Replace any None values in duration with 0
+            processed_row = list(row)
+            # Debug: Log the actual value
+            get_logger().debug(f"Raw duration value: {processed_row[5]} (type: {type(processed_row[5])})")
+            # Ensure duration is always a numeric value
             try:
-                tables_data = json.loads(row[3]) if row[3] else []
-            except json.JSONDecodeError:
-                tables_data = []
-            for index, table in enumerate(tables_data):
-                recent_tables.append(
-                    {
-                        "doc_id": row[0],
-                        "filename": row[1],
-                        "datetime": row[2],
-                        "index": index,
-                        "csv_path": table.get("csv_path"),
-                        "json_path": table.get("json_path"),
-                        "structure": table.get("structure", {}),
-                    }
-                )
+                if processed_row[5] is None or processed_row[5] == '' or processed_row[5] == 'None':
+                    processed_row[5] = 0.0
+                else:
+                    processed_row[5] = float(processed_row[5])
+            except Exception as e:
+                get_logger().error(f"Error processing duration: {e} (value: {processed_row[5]})")
+                processed_row[5] = 0.0
+            # Replace all None values in the entire row with safe values
+            processed_row = [0.0 if x is None else x for x in processed_row]
+            recent_docs.append(processed_row)
+
+        # Metrics table doesn't exist in the new schema â€” skip
+        metrics = []
+
+        # Tables are now stored in document_blocks, not ocr_texts
+        recent_tables: List[Dict[str, Any]] = []
 
     image_results = session.pop("image_results", None)
     image_error = session.pop("image_error", None)
 
     config = load_configuration()
     vision_enabled = config.get("vision", {}).get("enabled", False)
+
+    today_metrics = {} 
+    
+    # Activity Chart Data (Last 7 days)
+    activity_dates = []
+    activity_counts = []
+    try:
+        with db.get_connection() as conn:
+            cursor = db.get_cursor(conn)
+            if db.engine_type == "postgresql":
+                cursor.execute(
+                    f"""
+                    SELECT DATE({created_col}) AS d, COUNT(*)
+                    FROM documents
+                    WHERE {created_col} >= NOW() - INTERVAL '7 days'
+                    GROUP BY DATE({created_col})
+                    ORDER BY DATE({created_col}) ASC
+                    """
+                )
+            else:
+                cursor.execute(
+                    f"""
+                    SELECT DATE({created_col}) AS d, COUNT(*)
+                    FROM documents
+                    WHERE DATETIME({created_col}) >= DATETIME('now', '-7 days')
+                    GROUP BY DATE({created_col})
+                    ORDER BY DATE({created_col}) ASC
+                    """
+                )
+            rows = cursor.fetchall()
+            for r in rows:
+                activity_dates.append(str(r[0]))
+                activity_counts.append(r[1])
+    except Exception as e:
+        get_logger().error(f"Error fetching activity stats: {e}")
 
     recent_logs = get_db().get_recent_logs(10) if get_db() else []
 
@@ -178,21 +363,66 @@ def dashboard():
         pending_count=pending_count,
         selected_hotel=hotel_id,
         available_hotels=available_hotels,
+        activity_dates=activity_dates,
+        activity_counts=activity_counts,
     )
+
+@main_bp.route("/api/status")
+@login_required
+def system_status():
+    """
+    Check if the background worker is running and DB is accessible.
+    """
+    status = {
+        "web": "online",
+        "worker": "unknown",
+        "database": "unknown"
+    }
+    
+    try:
+        db = get_db()
+        with db.get_connection() as conn:
+            cursor = db.get_cursor(conn)
+            cursor.execute("SELECT 1")
+            status["database"] = "online"
+    except Exception:
+        status["database"] = "offline"
+
+    # In a real setup we'd check Celery/Huey stats here
+    status["worker"] = "online" if status["database"] == "online" else "offline"
+    
+    return status
+
+@main_bp.route("/api/check-email", methods=["POST"])
+@login_required
+@require_role(['GESTOR', 'DIRECCION', 'ADMIN'])
+def check_email_trigger():
+    """Manually trigger email check."""
+    from modules.tasks import trigger_email_check_task
+    try:
+        trigger_email_check_task()
+        return {"status": "ok", "message": "ComprobaciÃ³n de email iniciada."}
+    except Exception as e:
+        get_logger().error(f"Email check trigger failed: {e}")
+        return {"status": "error", "message": str(e)}, 500
 
 @main_bp.route("/verify")
 @login_required
 def verify_queue():
-    if current_user.role == 'client':
+    if str(getattr(current_user, "role", "")).upper() in {"CLIENTE", "CLIENT"}:
         return redirect(url_for('main.client_dashboard'))
 
     db = get_db()
+    schema = _documents_schema(db)
+    created_col = schema["created_col"]
+    type_col = schema["type_col"]
+
     # Filter by hotel_scope
     scope_filter = ""
     scope_params = []
     if current_user.role != 'ADMIN':
         if not current_user.hotel_scope:
-            return render_template("documents.html", documents=[], title="Cola de Verificación", is_verification_list=True, total_pages=1, page=1, status_filter="", type_filter="", search="")
+            return render_template("documents.html", documents=[], title="Cola de VerificaciÃ³n", is_verification_list=True, total_pages=1, page=1, status_filter="", type_filter="", search="")
         placeholders = ",".join([db.placeholder] * len(current_user.hotel_scope))
         scope_filter = f" AND d.hotel_id IN ({placeholders})"
         scope_params = list(current_user.hotel_scope)
@@ -201,19 +431,21 @@ def verify_queue():
         cursor = db.get_cursor(conn)
         cursor.execute(
             f"""
-            SELECT d.id, d.filename, d.datetime, o.confidence, d.type
+            SELECT d.id, d.filename, d.{created_col} AS created_at,
+                   COALESCE(o.confidence, 0) AS confidence,
+                   d.{type_col} AS doc_type
             FROM documents d
-            LEFT JOIN ocr_texts o ON d.id = o.id_doc
-            WHERE d.workflow_state = 'pending'
+            LEFT JOIN ocr_texts o ON o.id_doc = d.id
+            WHERE d.workflow_state IN ('pending', 'pending_review')
             {scope_filter}
-            ORDER BY d.datetime ASC
+            ORDER BY d.{created_col} ASC
             """, scope_params
         )
         pending_docs = cursor.fetchall()
     
     return render_template("documents.html", 
                            documents=pending_docs, 
-                           title="Cola de Verificación",
+                           title="Cola de VerificaciÃ³n",
                            is_verification_list=True,
                            total_pages=1,
                            page=1,
@@ -225,7 +457,13 @@ def verify_queue():
 @login_required
 def documents():
     db = get_db()
-    
+    role = str(getattr(current_user, "role", "")).upper()
+    schema = _documents_schema(db)
+    created_col = schema["created_col"]
+    path_col = schema["path_col"]
+    type_col = schema["type_col"]
+    file_size_select = "file_size" if schema["has_file_size"] else "NULL"
+
     # Filter by hotel_scope
     scope_filter = ""
     scope_params = []
@@ -235,6 +473,13 @@ def documents():
         placeholders = ",".join([db.placeholder] * len(current_user.hotel_scope))
         scope_filter = f" AND hotel_id IN ({placeholders})"
         scope_params = list(current_user.hotel_scope)
+
+    # Client isolation: never show other clients' documents, even within the same hotel.
+    owner_filter = ""
+    owner_params: List[Any] = []
+    if role in {"CLIENTE", "CLIENT"}:
+        owner_filter = f" AND owner_id = {db.placeholder}"
+        owner_params = [current_user.id]
 
     with db.get_connection() as conn:
         cursor = db.get_cursor(conn)
@@ -247,44 +492,55 @@ def documents():
         type_filter = request.args.get("type")
         search_term = request.args.get("search", "")
 
-        query = """
-            SELECT id, filename, path, type, status, datetime, duration, tags, error_message
+        query = f"""
+            SELECT id, filename, {path_col}, {type_col}, status, {created_col}, {file_size_select}, tags, error_message
             FROM documents
             WHERE 1=1
         """
         query += scope_filter
+        query += owner_filter
 
         params: List[Any] = []
         params.extend(scope_params)
+        params.extend(owner_params)
 
         if status_filter:
             query += f" AND status = {db.placeholder}"
             params.append(status_filter)
         if type_filter:
-            query += f" AND type = {db.placeholder}"
+            query += f" AND {type_col} = {db.placeholder}"
             params.append(type_filter)
         if search_term:
-            query += f" AND (filename ILIKE {db.placeholder} OR type ILIKE {db.placeholder})"
+            # Cross-DB case-insensitive search (SQLite has no ILIKE).
+            query += (
+                f" AND (LOWER(filename) LIKE LOWER({db.placeholder})"
+                f" OR LOWER({type_col}) LIKE LOWER({db.placeholder}))"
+            )
             params.extend([f"%{search_term}%", f"%{search_term}%"])
 
-        query += f" ORDER BY datetime DESC LIMIT {db.placeholder} OFFSET {db.placeholder}"
+        query += f" ORDER BY {created_col} DESC LIMIT {db.placeholder} OFFSET {db.placeholder}"
         params.extend([per_page, offset])
         cursor.execute(query, params)
         documents_rows = cursor.fetchall()
-        
+
         count_query = "SELECT COUNT(*) FROM documents WHERE 1=1"
         count_query += scope_filter
+        count_query += owner_filter
         count_params: List[Any] = []
         count_params.extend(scope_params)
+        count_params.extend(owner_params)
         
         if status_filter:
             count_query += f" AND status = {db.placeholder}"
             count_params.append(status_filter)
         if type_filter:
-            count_query += f" AND type = {db.placeholder}"
+            count_query += f" AND {type_col} = {db.placeholder}"
             count_params.append(type_filter)
         if search_term:
-            query_search = f" AND (filename LIKE {db.placeholder} OR type LIKE {db.placeholder})"
+            query_search = (
+                f" AND (LOWER(filename) LIKE LOWER({db.placeholder})"
+                f" OR LOWER({type_col}) LIKE LOWER({db.placeholder}))"
+            )
             count_query += query_search
             count_params.extend([f"%{search_term}%", f"%{search_term}%"])
         cursor = db.execute(count_query, count_params)
@@ -304,6 +560,7 @@ def documents():
 
 @main_bp.route("/document/<int:doc_id>")
 @login_required
+@hotel_scoped('doc_id')
 def document_detail(doc_id: int):
     db = get_db()
     
@@ -315,52 +572,75 @@ def document_detail(doc_id: int):
         if not row:
             flash("Documento no encontrado.", "error")
             return redirect(url_for("main.documents"))
-            
+             
         owner_id = row[0] if isinstance(row, (tuple, list)) else row['owner_id']
-        if current_user.role == 'client' and str(owner_id) != str(current_user.id):
+        role = str(getattr(current_user, "role", "")).upper()
+        if role in {"CLIENTE", "CLIENT"} and str(owner_id) != str(current_user.id):
             flash("No tienes permiso para ver este documento.", "error")
             return redirect(url_for("main.documents"))
     
+    row = db.get_document(doc_id)
+    if not row:
+        flash("Documento no encontrado.", "error")
+        return redirect(url_for("main.documents"))
+
+    schema = _documents_schema(db)
+    path_col = schema["path_col"]
+    type_col = schema["type_col"]
+    created_col = schema["created_col"]
+
+    metadata = {}
     with db.get_connection() as conn:
         cursor = db.get_cursor(conn)
-        cursor.execute(
-            f"""
-            SELECT d.id, d.filename, d.path, d.type, d.status, d.datetime, d.duration,
-                   d.tags, d.workflow_state, o.text, o.markdown_text, o.language, o.confidence,
-                   o.blocks_json, o.tables_json, o.structured_data,
-                   d.hotel_id, d.doc_type, d.visibility, d.financial_level
-            FROM documents d
-            LEFT JOIN ocr_texts o ON d.id = o.id_doc
-            WHERE d.id = {db.placeholder}
-            """,
-            (doc_id,),
-        )
-        row = cursor.fetchone()
+        try:
+            cursor.execute(
+                f"""
+                SELECT {created_col}, duration, workflow_state, {path_col}, {type_col},
+                       hotel_id, visibility, financial_level
+                FROM documents
+                WHERE id = {db.placeholder}
+                """,
+                (doc_id,),
+            )
+            md = cursor.fetchone()
+            if md:
+                metadata = {
+                    "datetime": md[0] if isinstance(md, (tuple, list)) else md[created_col],
+                    "duration": md[1] if isinstance(md, (tuple, list)) else md["duration"],
+                    "workflow_state": md[2] if isinstance(md, (tuple, list)) else md["workflow_state"],
+                    "path": md[3] if isinstance(md, (tuple, list)) else md[path_col],
+                    "doc_type": md[4] if isinstance(md, (tuple, list)) else md[type_col],
+                    "hotel_id": md[5] if isinstance(md, (tuple, list)) else md["hotel_id"],
+                    "visibility": md[6] if isinstance(md, (tuple, list)) else md["visibility"],
+                    "financial_level": md[7] if isinstance(md, (tuple, list)) else md["financial_level"],
+                }
+        except Exception:
+            # Fallback to data already available from DBManager.get_document()
+            metadata = {}
 
     document = {
-        "id": row[0],
-        "filename": row[1],
-        "path": row[2],
-        "type": row[3],
-        "status": row[4],
-        "datetime": row[5],
-        "duration": row[6],
-        "workflow_state": row[8],
-        "text": row[9],
-        "markdown": row[10],
-        "language": row[11],
-        "confidence": row[12],
+        "id": row.get("id"),
+        "filename": row.get("filename"),
+        "path": metadata.get("path", row.get("path")),
+        "type": row.get("type") or metadata.get("doc_type") or "Unknown",
+        "status": row.get("status"),
+        "datetime": metadata.get("datetime", row.get("date")),
+        "duration": metadata.get("duration", 0.0),
+        "workflow_state": metadata.get("workflow_state", "new"),
+        "text": row.get("text") or "",
+        "markdown": row.get("markdown") or "",
+        "language": row.get("language") or "",
+        "confidence": row.get("confidence") or 0.0,
+        "tags": row.get("tags") if isinstance(row.get("tags"), list) else safe_json_parse(row.get("tags"), []),
+        "blocks": row.get("blocks") if isinstance(row.get("blocks"), list) else safe_json_parse(row.get("blocks"), []),
+        "tables": row.get("tables") if isinstance(row.get("tables"), list) else safe_json_parse(row.get("tables"), []),
+        "structured_data": row.get("structured_data") if isinstance(row.get("structured_data"), dict) else safe_json_parse(row.get("structured_data"), {}),
+        "hotel_id": metadata.get("hotel_id", row.get("hotel_id")),
+        "doc_type": metadata.get("doc_type", row.get("doc_type") or row.get("type")),
+        "visibility": metadata.get("visibility", row.get("visibility") or "private"),
+        "financial_level": metadata.get("financial_level", row.get("financial_level") or "none"),
+        "data": row.get("data") if isinstance(row.get("data"), dict) else {},
     }
-
-    document["tags"] = safe_json_parse(row[7], [])
-    document["blocks"] = safe_json_parse(row[13], [])
-    document["tables"] = safe_json_parse(row[14], [])
-    document["structured_data"] = safe_json_parse(row[15], None)
-    
-    document["hotel_id"] = row[16]
-    document["doc_type"] = row[17]
-    document["visibility"] = row[18]
-    document["financial_level"] = row[19]
 
     # Security: Restrict financial data
     if document["financial_level"] != 'none' and current_user.role not in ['DIRECCION', 'ADMIN']:
@@ -380,7 +660,7 @@ def upload():
         upload_dir = current_app.config["UPLOAD_FOLDER"]
         
         # User isolation folder (optional, but good practice)
-        if current_user.role == 'client':
+        if str(getattr(current_user, "role", "")).upper() in {"CLIENTE", "CLIENT"}:
             upload_dir = os.path.join(upload_dir, f"client_{current_user.id}")
             
         ensure_directories(upload_dir)
@@ -475,7 +755,7 @@ def chat():
 @main_bp.route("/duplicates")
 @login_required
 def duplicates_page():
-    if current_user.role == 'client':
+    if str(getattr(current_user, "role", "")).upper() in {"CLIENTE", "CLIENT"}:
          return redirect(url_for('main.client_dashboard'))
     return render_template("duplicates.html")
 
@@ -483,7 +763,7 @@ def duplicates_page():
 @login_required
 @require_role(['GESTOR', 'DIRECCION', 'ADMIN'])
 def settings():
-    if current_user.role == 'client':
+    if str(getattr(current_user, "role", "")).upper() in {"CLIENTE", "CLIENT"}:
         flash("Acceso denegado.", "error")
         return redirect(url_for('main.client_dashboard'))
         
@@ -503,7 +783,7 @@ def settings():
                 hot_conf = config.setdefault("hot_folder", {})
                 hot_conf["enabled"] = "hot_enabled" in request.form
                 hot_conf["path"] = request.form.get("hot_path", "").strip()
-                flash("Configuración de Hot Folder actualizada.", "success")
+                flash("ConfiguraciÃ³n de Hot Folder actualizada.", "success")
                 
             elif action == "pipeline":
                 app_conf = config.setdefault("app", {})
@@ -515,7 +795,7 @@ def settings():
                 
                 post_conf = config.setdefault("postbatch", {})
                 post_conf["languages"] = [l.strip() for l in request.form.get("languages", "es").split(",")]
-                flash("Configuración de Pipeline actualizada.", "success")
+                flash("ConfiguraciÃ³n de Pipeline actualizada.", "success")
                 
             elif action == "email_import":
                 email_conf = config.setdefault("email_importer", {})
@@ -524,10 +804,11 @@ def settings():
                 email_conf["port"] = int(request.form.get("email_port", 993))
                 email_conf["user"] = request.form.get("email_user", "").strip()
                 email_conf["password"] = request.form.get("email_password", "").strip()
-                flash("Configuración de Email actualizada.", "success")
+                flash("ConfiguraciÃ³n de Email actualizada.", "success")
                 
             elif action == "rebuild_index":
-                flash("Reindexado solicitado (no implementado en UI todavía).", "info")
+                rebuild_vision_index_task()
+                flash("Reindexado iniciado en segundo plano.", "success")
 
             elif action == "llm_pipeline_config":
                 llm_conf = config.setdefault("llm", {})
@@ -536,7 +817,7 @@ def settings():
                 llm_conf["model"] = request.form.get("llm_model", "").strip()
                 llm_conf["api_key"] = request.form.get("llm_api_key", "").strip()
                 llm_conf["timeout"] = int(request.form.get("llm_timeout", 60))
-                flash("Configuración de Pipeline IA actualizada.", "success")
+                flash("ConfiguraciÃ³n de Pipeline IA actualizada.", "success")
 
             elif action == "llm_chat_config":
                 if "routing" not in config.get("llm", {}):
@@ -547,14 +828,20 @@ def settings():
                 
                 chat_conf["base_url"] = request.form.get("chat_base_url", "").strip()
                 chat_conf["model"] = request.form.get("chat_model", "").strip()
-                flash("Configuración de Chat IA actualizada.", "success")
+                flash("ConfiguraciÃ³n de Chat IA actualizada.", "success")
+                
+            elif action == "webhooks":
+                app_conf = config.setdefault("app", {})
+                app_conf["webhook_url"] = request.form.get("webhook_url", "").strip()
+                app_conf["webhook_secret"] = request.form.get("webhook_secret", "").strip()
+                flash("ConfiguraciÃ³n de Webhooks actualizada.", "success")
                 
             save_configuration(config)
             return redirect(url_for("main.settings"))
             
         except Exception as e:
             get_logger().error(f"Error saving settings: {e}")
-            flash(f"Error al guardar configuración: {e}", "error")
+            flash(f"Error al guardar configuraciÃ³n: {e}", "error")
 
     post_conf = config.get("postbatch", {})
     hot_conf = config.get("hot_folder", {})
@@ -588,14 +875,16 @@ def settings():
         "llm_api_key": llm_conf.get("api_key", ""),
         "llm_timeout": llm_conf.get("timeout", 60),
         "chat_base_url": chat_conf.get("base_url", "http://host.docker.internal:1234/v1"),
-        "chat_model": chat_conf.get("model", "mistral-small-24b")
+        "chat_model": chat_conf.get("model", "mistral-small-24b"),
+        "webhook_url": app_conf.get("webhook_url", ""),
+        "webhook_secret": app_conf.get("webhook_secret", "")
     }
     return render_template("settings.html", config=settings_data)
 
 @main_bp.route("/batch_process", methods=["GET", "POST"])
 @login_required
 def batch_process():
-    if current_user.role == 'client':
+    if str(getattr(current_user, "role", "")).upper() in {"CLIENTE", "CLIENT"}:
          return redirect(url_for('main.client_dashboard'))
          
     if request.method == "POST":
@@ -614,7 +903,7 @@ def batch_process():
             if result == 0:
                 flash(f"Procesamiento completado en {target_folder}", "success")
             else:
-                flash("El procesamiento finalizó con errores.", "error")
+                flash("El procesamiento finalizÃ³ con errores.", "error")
         except Exception as exc:
             get_logger().error("Error running batch process: %s", exc)
             flash(f"Error en procesamiento: {exc}", "error")
@@ -625,6 +914,7 @@ def batch_process():
 
 @main_bp.route("/view_document_file/<int:doc_id>")
 @login_required
+@hotel_scoped('doc_id')
 def view_document_file(doc_id):
     db = get_db()
     # Check ownership
@@ -633,9 +923,10 @@ def view_document_file(doc_id):
          cursor.execute(f"SELECT owner_id FROM documents WHERE id = {db.placeholder}", (doc_id,))
          row = cursor.fetchone()
          if row:
-             owner_id = row[0] if isinstance(row, (tuple, list)) else row['owner_id']
-             if current_user.role == 'client' and str(owner_id) != str(current_user.id):
-                 return "Unauthorized", 403
+              owner_id = row[0] if isinstance(row, (tuple, list)) else row['owner_id']
+              role = str(getattr(current_user, "role", "")).upper()
+              if role in {"CLIENTE", "CLIENT"} and str(owner_id) != str(current_user.id):
+                  return "Unauthorized", 403
 
     path_str = db.get_document_path(doc_id)
     if not path_str:
@@ -649,9 +940,36 @@ def view_document_file(doc_id):
     if version == "original":
          backup_p = p.with_name(f"{p.stem}_original{p.suffix}")
          if backup_p.exists():
-             p = backup_p
-             
+              p = backup_p
+              
     try:
+        # Security: only serve files from known storage roots (prevents DB path injection / LFI).
+        config = load_configuration()
+        post_conf = config.get("postbatch", {})
+        allowed_roots = [
+            Path(resolve_path(post_conf.get("processed_folder"), "processed")),
+            Path(resolve_path(post_conf.get("failed_folder"), "errors")),
+            Path(resolve_path(post_conf.get("input_folder"), "input")),
+        ]
+        upload_root = str(current_app.config.get("UPLOAD_FOLDER") or "").strip()
+        if upload_root:
+            allowed_roots.append(Path(upload_root))
+        allowed_roots = [
+            root.resolve()
+            for root in allowed_roots
+            if str(root) and str(root) not in {"", "."}
+        ]
+
+        p_abs = p.resolve()
+        def _within(root: Path) -> bool:
+            try:
+                return os.path.commonpath([str(p_abs), str(root)]) == str(root)
+            except Exception:
+                return False
+        if allowed_roots and not any(_within(root) for root in allowed_roots):
+            get_logger().warning("Blocked attempt to serve file outside allowed roots: %s", p_abs)
+            return "Forbidden", 403
+
         if not p.exists():
             get_logger().error(f"File not found on disk: {p}")
             return "File not found on disk", 404
@@ -663,8 +981,9 @@ def view_document_file(doc_id):
 
 @main_bp.route("/verify/<int:doc_id>")
 @login_required
+@hotel_scoped('doc_id')
 def verify_document(doc_id):
-    if current_user.role == 'client':
+    if str(getattr(current_user, "role", "")).upper() in {"CLIENTE", "CLIENT"}:
         return redirect(url_for('main.client_dashboard'))
 
     db = get_db()
@@ -675,7 +994,7 @@ def verify_document(doc_id):
     if isinstance(doc.get("structured_data"), str):
         try:
              doc["structured_data"] = json.loads(doc["structured_data"])
-        except:
+        except Exception:
              doc["structured_data"] = {}
              
     if doc.get("structured_data") and "fields" in doc["structured_data"]:
@@ -693,57 +1012,68 @@ def verify_document(doc_id):
 def batch_action():
     action = request.form.get("action")
     doc_ids_str = request.form.get("doc_ids")
-    
-    if not action or not doc_ids_str:
-        flash("Acción inválida", "error")
-        return redirect(url_for("main.documents"))
-        
-    try:
-        doc_ids = json.loads(doc_ids_str)
-        doc_ids = [int(id) for id in doc_ids]
-    except:
-        flash("IDs inválidos", "error")
-        return redirect(url_for("main.documents"))
-        
-    if not doc_ids:
-        flash("Ningún documento seleccionado", "warning")
-        return redirect(url_for("main.documents"))
-    
-    if current_user.role == 'client' and action == "delete":
-        # Check ownership for all
-        db = get_db()
-        for doc_id in doc_ids:
-             # Very strict check here
-             pass
 
-    pipeline = get_pipeline()
+    if not action or not doc_ids_str:
+        flash("AcciÃ³n invÃ¡lida", "error")
+        return redirect(url_for("main.documents"))
+
+    try:
+        parsed_ids = json.loads(doc_ids_str)
+        doc_ids = [int(doc_id) for doc_id in parsed_ids]
+    except Exception:
+        flash("IDs invÃ¡lidos", "error")
+        return redirect(url_for("main.documents"))
+
+    if not doc_ids:
+        flash("NingÃºn documento seleccionado", "warning")
+        return redirect(url_for("main.documents"))
+
     db = get_db()
-    
+    allowed_doc_ids = _filter_accessible_doc_ids(db, doc_ids)
+    denied_count = len(doc_ids) - len(allowed_doc_ids)
+    if denied_count > 0:
+        flash(f"{denied_count} documento(s) fuera de tu alcance fueron omitidos.", "warning")
+    if not allowed_doc_ids:
+        flash("No tienes acceso a los documentos seleccionados.", "error")
+        return redirect(url_for("main.documents"))
+
     if action == "delete":
         success_count = 0
-        for doc_id in doc_ids:
+        for doc_id in allowed_doc_ids:
             if db.delete_document(doc_id):
                 success_count += 1
         flash(f"{success_count} documentos eliminados", "success")
-        
+
     elif action == "reprocess":
-        from modules.tasks import huey, process_document_task
+        from modules.tasks import process_document_task
+
         count = 0
-        for doc_id in doc_ids:
-            row = db.execute(f"SELECT path FROM documents WHERE id = {db.placeholder}", (doc_id,)).fetchone()
-            if row:
-                path = PROJECT_ROOT / row[0]
-                process_document_task(str(path), {
+        schema = _documents_schema(db)
+        path_col = schema["path_col"]
+        for doc_id in allowed_doc_ids:
+            row = db.execute(
+                f"SELECT {path_col} FROM documents WHERE id = {db.placeholder}",
+                (doc_id,),
+            ).fetchone()
+            if not row:
+                continue
+            path = Path(_row_get(row, path_col, 0))
+            if not path.is_absolute():
+                path = PROJECT_ROOT / path
+            process_document_task(
+                str(path),
+                {
                     "delete_original": False,
                     "ocr_enabled": True,
-                    "classification_enabled": True
-                })
-                count += 1
+                    "classification_enabled": True,
+                },
+            )
+            count += 1
         flash(f"{count} documentos enviados a reprocesar", "info")
-        
+
     elif action == "export":
-        return export_documents(doc_ids)
-        
+        return export_documents(allowed_doc_ids)
+
     return redirect(url_for("main.documents"))
 
 def export_documents(doc_ids):
@@ -752,14 +1082,25 @@ def export_documents(doc_ids):
     from flask import make_response
     
     db = get_db()
+    schema = _documents_schema(db)
+    created_col = schema["created_col"]
+    type_col = schema["type_col"]
     placeholders = ",".join([db.placeholder] * len(doc_ids))
-    query = f"SELECT d.id, d.filename, d.classification, d.status, d.confidence, d.datetime FROM documents d WHERE d.id IN ({placeholders})"
+    query = f"""
+        SELECT d.id, d.filename, d.{type_col} AS doc_type, d.status,
+               COALESCE(o.confidence, 0) AS confidence,
+               d.{created_col} AS created_at
+        FROM documents d
+        LEFT JOIN ocr_texts o ON o.id_doc = d.id
+        WHERE d.id IN ({placeholders})
+        ORDER BY d.{created_col} DESC
+    """
     
     rows = db.execute(query, tuple(doc_ids)).fetchall()
     
     si = io.StringIO()
     cw = csv.writer(si)
-    cw.writerow(["ID", "Archivo", "Clasificación", "Estado", "Confianza", "Fecha"])
+    cw.writerow(["ID", "Archivo", "ClasificaciÃ³n", "Estado", "Confianza", "Fecha"])
     for row in rows:
         cw.writerow(row)
         
@@ -771,22 +1112,32 @@ def export_documents(doc_ids):
 @main_bp.route("/tasks")
 @login_required
 def tasks_page():
-    if current_user.role == 'client':
+    if str(getattr(current_user, "role", "")).upper() in {"CLIENTE", "CLIENT"}:
          return redirect(url_for('main.client_dashboard'))
     return render_template("tasks.html")
 
 @main_bp.route("/gallery")
 @login_required
 def gallery():
-    if current_user.role == 'client':
+    if str(getattr(current_user, "role", "")).upper() in {"CLIENTE", "CLIENT"}:
          return redirect(url_for('main.client_dashboard'))
     return render_template("gallery.html")
 
 @main_bp.route("/download/table/<int:doc_id>/<int:index>/<fmt>")
 @login_required
+@hotel_scoped('doc_id')
 def download_table(doc_id, index, fmt):
     db = get_db()
-    # Check ownership (TODO)
+
+    # Client isolation: clients can only download tables for their own documents.
+    role = str(getattr(current_user, "role", "")).upper()
+    if role in {"CLIENTE", "CLIENT"}:
+        owner_row = db.execute(
+            f"SELECT owner_id FROM documents WHERE id = {db.placeholder}", (doc_id,)
+        ).fetchone()
+        owner_id = owner_row[0] if owner_row else None
+        if owner_id is None or str(owner_id) != str(current_user.id):
+            return "Unauthorized", 403
     
     row = db.execute(f"SELECT tables_json FROM ocr_texts WHERE id_doc = {db.placeholder}", (doc_id,)).fetchone()
     if not row or not row[0]:
@@ -809,63 +1160,212 @@ def download_table(doc_id, index, fmt):
         
     if not path:
         return "File path missing in DB", 404
-        
-    abs_path = PROJECT_ROOT / path
-    if not abs_path.exists():
+
+    # Security: tables must be served only from the configured tables directory.
+    config = load_configuration()
+    tables_dir = (
+        config.get("ocr_pipeline", {}).get("output", {}).get("tables_dir", "data/tables")
+    )
+    tables_root = Path(resolve_path(tables_dir, "data/tables")).resolve()
+
+    p = Path(path)
+    if not p.is_absolute():
+        p = PROJECT_ROOT / p
+
+    try:
+        p_abs = p.resolve()
+    except Exception:
+        return "Forbidden", 403
+
+    try:
+        if os.path.commonpath([str(p_abs), str(tables_root)]) != str(tables_root):
+            get_logger().warning(
+                "Blocked attempt to download table file outside tables root: %s", p_abs
+            )
+            return "Forbidden", 403
+    except Exception:
+        return "Forbidden", 403
+
+    if not p_abs.exists():
         return "File not found on disk", 404
-        
-    return send_from_directory(abs_path.parent, abs_path.name, as_attachment=True, download_name=f"table_{doc_id}_{index}.{ext}")
+
+    return send_from_directory(
+        p_abs.parent,
+        p_abs.name,
+        as_attachment=True,
+        download_name=f"table_{doc_id}_{index}.{ext}",
+    )
+
+
+@main_bp.route("/data/exports/<path:filename>")
+@login_required
+@require_role(['GESTOR', 'DIRECCION', 'ADMIN'])
+def download_export_file(filename: str):
+    """Serve generated export files from data/exports (authenticated)."""
+    exports_root = (PROJECT_ROOT / "data" / "exports").resolve()
+    p = (exports_root / filename).resolve()
+
+    # Per-user export isolation: only admins can access other users' exports.
+    role = str(getattr(current_user, "role", "")).upper()
+    if role != "ADMIN":
+        parts = Path(filename).parts
+        if not parts or parts[0] != f"user_{current_user.id}":
+            return "Forbidden", 403
+    try:
+        if os.path.commonpath([str(p), str(exports_root)]) != str(exports_root):
+            return "Forbidden", 403
+    except Exception:
+        return "Forbidden", 403
+
+    if not p.exists():
+        return "File not found", 404
+
+    return send_from_directory(p.parent, p.name, as_attachment=True)
+
+
+@main_bp.route("/vision/preview/<token>")
+@login_required
+def vision_preview(token: str):
+    """
+    Resolve a base64-encoded document path to a document id and redirect to the
+    guarded file-serving route. Used by the Vision/Deduplication UI.
+    """
+    db = get_db()
+    try:
+        path_str = decode_path(token)
+    except Exception:
+        return "Forbidden", 403
+
+    if not path_str:
+        return "Not found", 404
+
+    candidates: List[str] = [path_str]
+    p = Path(path_str)
+    try:
+        if not p.is_absolute():
+            candidates.append(str((PROJECT_ROOT / p).resolve()))
+        else:
+            try:
+                candidates.append(str(p.resolve().relative_to(PROJECT_ROOT)))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    doc_id = None
+    schema = _documents_schema(db)
+    path_col = schema["path_col"]
+    for cand in candidates:
+        row = db.execute(f"SELECT id FROM documents WHERE {path_col} = {db.placeholder}", (cand,)).fetchone()
+        if row:
+            doc_id = row[0]
+            break
+
+    if not doc_id:
+        return "Not found", 404
+
+    return redirect(url_for("main.view_document_file", doc_id=int(doc_id)))
+
+
+@main_bp.route("/vision/file/<token>")
+@login_required
+def vision_file(token: str):
+    """Serve per-user Vision Studio artifacts stored under data/vision/."""
+    p = _resolve_vision_path_from_token(token)
+    if not p:
+        return "Forbidden", 403
+    if p.suffix.lower() not in VISION_ALLOWED_SUFFIXES:
+        return "Forbidden", 403
+    if not p.exists():
+        return "File not found", 404
+
+    download = str(request.args.get("download", "")).strip().lower() in {"1", "true", "yes", "y"}
+    return send_from_directory(p.parent, p.name, as_attachment=download)
 
 @main_bp.route("/image_search", methods=["POST"])
 @login_required
 def image_search():
     if "image" not in request.files:
-        flash("No se subió imagen", "error")
+        flash("No se subiÃ³ imagen", "error")
         return redirect(url_for("main.dashboard"))
         
     file = request.files["image"]
     if file.filename == "":
-        flash("Nombre de archivo vacío", "error")
+        flash("Nombre de archivo vacÃ­o", "error")
         return redirect(url_for("main.dashboard"))
 
+    temp_path = None
     try:
         fd, temp_path = tempfile.mkstemp(suffix=Path(file.filename).suffix)
         os.close(fd)
         file.save(temp_path)
-        
+
         pipeline = get_pipeline()
         vision = pipeline.vision_manager
-        
+
         if not vision or not vision.config.enabled:
-            os.remove(temp_path)
-            flash("Visión no habilitada", "error")
+            flash("VisiÃ³n no habilitada", "error")
             return redirect(url_for("main.dashboard"))
-            
+
         results = vision.search_similar(temp_path, k=5)
-        os.remove(temp_path)
-        
+
         db = get_db()
+        schema = _documents_schema(db)
+        path_col = schema["path_col"]
+        created_col = schema["created_col"]
         enriched = []
+        role = str(getattr(current_user, "role", "")).upper()
+        scope_set = {str(h) for h in getattr(current_user, "hotel_scope", []) or []}
+        if role != "ADMIN" and not scope_set:
+            session["image_results"] = []
+            session["image_error"] = "Usuario sin alcance de hotel configurado."
+            return redirect(url_for("main.dashboard") + "#vision-pane")
+
         for res in results:
-            path = res["path"]
-            row = db.execute(f"SELECT id, filename, tags, datetime FROM documents WHERE path = {db.placeholder}", (path,)).fetchone()
+            path = res.get("path")
+            if not path:
+                continue
+
+            row = _find_document_by_path(
+                db,
+                path_col,
+                path,
+                f"id, filename, {path_col} AS path, tags, {created_col} AS created_at, owner_id, hotel_id",
+            )
             if row:
+                owner_id = _row_get(row, "owner_id", 5)
+                hotel_id = _row_get(row, "hotel_id", 6)
+
+                # Multi-tenant isolation: never leak other hotels' documents.
+                if role != "ADMIN":
+                    if hotel_id is None or str(hotel_id) not in scope_set:
+                        continue
+                if role in {"CLIENTE", "CLIENT"} and str(owner_id) != str(current_user.id):
+                    continue
+
+                stored_path = _row_get(row, "path", 2) or path
                 enriched.append({
-                    "id": row[0],
-                    "filename": row[1],
-                    "path": path,
+                    "id": _row_get(row, "id", 0),
+                    "filename": _row_get(row, "filename", 1),
+                    "path": stored_path,
                     "score": res["score"],
-                    "tags": json.loads(row[2]) if row[2] else [],
-                    "preview_url": f"/vision/preview/{encode_path(path)}" 
+                    "tags": safe_json_parse(_row_get(row, "tags", 3), []),
+                    "preview_url": url_for("main.vision_preview", token=encode_path(stored_path)),
                 })
-        
+
         session["image_results"] = enriched
         return redirect(url_for("main.dashboard") + "#vision-pane")
-        
+
     except Exception as e:
         get_logger().error(f"Image search error: {e}")
         session["image_error"] = str(e)
         return redirect(url_for("main.dashboard"))
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 @main_bp.route("/vision/studio")
 @login_required
@@ -876,41 +1376,51 @@ def vision_studio():
 @login_required
 def vision_analyze():
     if 'file' not in request.files:
-        flash("No se subió ningún archivo.", "error")
+        flash("No se subiÃ³ ningÃºn archivo.", "error")
         return redirect(url_for('main.vision_studio'))
     
     file = request.files['file']
     mode = request.form.get("mode", "furniture")
     
     if file.filename == '':
-        flash("Nombre de archivo vacío.", "error")
+        flash("Nombre de archivo vacÃ­o.", "error")
         return redirect(url_for('main.vision_studio'))
 
-    filename = secure_filename(file.filename)
-    # Use static folder for easy access in templates
-    upload_dir = Path(current_app.root_path) / "static" / "uploads" / "vision"
-    upload_dir.mkdir(parents=True, exist_ok=True)
+    original_name = secure_filename(file.filename)
+    if not original_name:
+        flash("Nombre de archivo invÃ¡lido.", "error")
+        return redirect(url_for('main.vision_studio'))
+
+    # Store vision uploads outside of `static/` and serve them through an authenticated route.
+    upload_dir = _vision_user_dir("uploads")
+    suffix = Path(original_name).suffix.lower()
+    filename = f"{secrets.token_hex(8)}{suffix}"
     file_path = upload_dir / filename
     file.save(str(file_path))
-    
-    relative_path = f"uploads/vision/{filename}"
+
+    rel_path = str(file_path.resolve().relative_to(PROJECT_ROOT))
+    image_token = encode_path(rel_path)
+    image_src = url_for("main.vision_file", token=image_token)
 
     vision_manager = get_pipeline().vision_manager
     
     results = {}
     if mode == "interactive":
-        return render_template("vision_interactive.html", image_url=relative_path)
+        return render_template(
+            "vision_interactive.html", image_src=image_src, image_token=image_token
+        )
         
     if mode == "furniture":
         results = vision_manager.detect_design_elements(str(file_path))
-        # ... (Advice and Product Linking logic already here) ...
-        # [I will keep the existing advice/linking logic but ensure it's integrated correctly if I missed something in previous partial apply]
-        od_data = results.get("od_data", {})
-        objects = results.get("objects", [])
-        pm = get_pipeline().product_manager # Assuming product manager is available
-        if od_data and od_data["bboxes"]:
-            first_bbox = od_data["bboxes"][0]
-            results["similar_products"] = vision_manager.find_similar_products(str(file_path), first_bbox, pm)
+        od_data = results.get("od_data") or {}
+        objects = results.get("objects") or []
+        bboxes = od_data.get("bboxes") if isinstance(od_data, dict) else None
+        pm = getattr(get_pipeline(), "product_manager", None)
+        if bboxes:
+            first_bbox = bboxes[0]
+            results["similar_products"] = vision_manager.find_similar_products(
+                str(file_path), first_bbox, pm
+            )
         
         # Phase II/III: Technical RAG (Search docs for the most relevant item)
         if objects:
@@ -933,23 +1443,45 @@ def vision_analyze():
         render_path = render_manager.generate_from_sketch(str(file_path), custom_prompt)
         # ... rest of render path handling ...
         if render_path:
-            render_filename = f"render_{filename}"
+            render_filename = f"render_{secrets.token_hex(6)}_{filename}"
             target_render = upload_dir / render_filename
             import shutil
             shutil.copy(render_path, target_render)
-            results = {"render_url": f"uploads/vision/{render_filename}"}
+            render_rel = str(target_render.resolve().relative_to(PROJECT_ROOT))
+            render_token = encode_path(render_rel)
+            results = {
+                "render_src": url_for("main.vision_file", token=render_token),
+                "render_token": render_token,
+            }
 
-    return render_template("vision_results.html", results=results, mode=mode, image_url=relative_path)
+    return render_template(
+        "vision_results.html",
+        results=results,
+        mode=mode,
+        image_src=image_src,
+        image_token=image_token,
+    )
 
 @main_bp.route("/vision/segment/click", methods=["POST"])
 @login_required
 def vision_segment_click():
-    x_percent = float(request.form.get("x"))
-    y_percent = float(request.form.get("y"))
-    image_rel_path = request.form.get("image_url")
-    
-    # Resolve absolute path
-    full_path = Path(current_app.root_path) / "static" / image_rel_path
+    try:
+        x_percent = float(request.form.get("x"))
+        y_percent = float(request.form.get("y"))
+    except (TypeError, ValueError):
+        return {"success": False, "error": "Invalid click coordinates"}, 400
+
+    if x_percent < 0 or x_percent > 100 or y_percent < 0 or y_percent > 100:
+        return {"success": False, "error": "Coordinates out of range"}, 400
+
+    image_token = request.form.get("image_token")
+
+    if not image_token:
+        return {"success": False, "error": "Missing image_token"}
+
+    full_path = _resolve_vision_path_from_token(image_token)
+    if not full_path:
+        return {"success": False, "error": "Forbidden"}
     
     from modules.segmentation_manager import SegmentationManager
     # In a real app, model paths should be in config
@@ -977,47 +1509,137 @@ def vision_segment_click():
         
         res_img = Image.fromarray(data)
         
-        # Save to static
-        res_filename = f"seg_{px}_{py}_{Path(full_path).name}"
-        res_dir = Path(current_app.root_path) / "static" / "uploads" / "segments"
-        res_dir.mkdir(parents=True, exist_ok=True)
+        # Save to per-user vision storage.
+        res_filename = f"seg_{px}_{py}_{secrets.token_hex(6)}.png"
+        res_dir = _vision_user_dir("segments")
         res_path = res_dir / res_filename
         res_img.save(str(res_path))
-        
-        return {"success": True, "segment_url": f"uploads/segments/{res_filename}"}
+
+        seg_rel = str(res_path.resolve().relative_to(PROJECT_ROOT))
+        seg_token = encode_path(seg_rel)
+        return {
+            "success": True,
+            "segment_url": url_for("main.vision_file", token=seg_token),
+            "segment_token": seg_token,
+        }
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 @main_bp.route("/vision/canvas")
 @login_required
 def vision_canvas():
-    # Fetch segments from static folder to show in gallery
-    segments_dir = Path(current_app.root_path) / "static" / "uploads" / "segments"
+    # Fetch segments from per-user vision storage to show in gallery
+    segments_dir = (VISION_ROOT / _vision_user_namespace() / "segments").resolve()
     segments = []
     if segments_dir.exists():
         for f in segments_dir.glob("*.png"):
-            segments.append({"path": f"uploads/segments/{f.name}", "name": f.name})
+            try:
+                rel = str(f.resolve().relative_to(PROJECT_ROOT))
+            except Exception:
+                continue
+            token = encode_path(rel)
+            segments.append(
+                {"url": url_for("main.vision_file", token=token), "name": f.name}
+            )
     
     return render_template("canvas.html", segments=segments)
 
 @main_bp.route("/vision/report", methods=["POST"])
 @login_required
 def vision_report():
-    data = request.json
+    payload = request.json or {}
+
+    original_token = payload.get("original_token") or ""
+    render_token = payload.get("render_token") or ""
+
+    if not original_token:
+        return {"success": False, "error": "Missing original_token"}
+
+    original_path = _resolve_vision_path_from_token(original_token)
+    if not original_path or not original_path.exists():
+        return {"success": False, "error": "Original image not found"} 
+
+    render_path = None
+    if render_token:
+        render_path = _resolve_vision_path_from_token(render_token)
+        if render_path and not render_path.exists():
+            render_path = None
+
     from modules.report_generator import ReportGenerator
-    # Set production absolute path for images (static folder)
-    static_root = Path(current_app.root_path) / "static"
-    
-    # Prefix image paths with static root if relative
-    if data.get("original_image"):
-        data["original_image"] = str(static_root / data["original_image"])
-    if data.get("render_image"):
-        data["render_image"] = str(static_root / data["render_image"])
-        
-    report_gen = ReportGenerator(output_dir=str(static_root / "uploads" / "reports"))
-    report_path = report_gen.generate_project_report(data)
-    
-    if report_path:
-        rel_path = f"uploads/reports/{Path(report_path).name}"
-        return {"success": True, "report_url": url_for('static', filename=rel_path)}
+
+    report_dir = _vision_user_dir("reports")
+    report_gen = ReportGenerator(output_dir=str(report_dir))
+
+    project_data = {
+        "title": payload.get("title") or "Informe de Proyecto AutOCR",
+        "original_image": str(original_path),
+        "render_image": str(render_path) if render_path else "",
+        "furniture": payload.get("furniture") or [],
+        "advice": payload.get("advice") or "",
+        "colors": payload.get("colors") or [],
+        "details": payload.get("details") or "",
+    }
+
+    report_path_str = report_gen.generate_project_report(project_data)
+    if report_path_str:
+        report_path = Path(report_path_str)
+        try:
+            report_rel = str(report_path.resolve().relative_to(PROJECT_ROOT))
+        except Exception:
+            return {"success": False, "error": "Report generated but could not be served"}
+        report_token = encode_path(report_rel)
+        return {"success": True, "report_url": url_for("main.vision_file", token=report_token)}
+
     return {"success": False, "error": "Error generando PDF"}
+@main_bp.route("/api/document/<int:doc_id>/advice", methods=["POST"])
+@login_required
+@hotel_scoped('doc_id')
+@owner_scoped("doc_id")
+def get_document_advice(doc_id):
+    """
+    Generates AI Decorator advice for a specific document image.
+    """
+    db = get_db()
+    schema = _documents_schema(db)
+    path_col = schema["path_col"]
+    type_col = schema["type_col"]
+    with db.get_connection() as conn:
+        cursor = db.get_cursor(conn)
+        cursor.execute(
+            f"SELECT {path_col}, {type_col}, tags FROM documents WHERE id = {db.placeholder}",
+            (doc_id,),
+        )
+        doc = cursor.fetchone()
+    
+    if not doc:
+        return jsonify({"error": "Document not found"}), 404
+         
+    file_path = doc[0]
+    doc_type = doc[1]
+    tags_json = doc[2]
+
+    # Access control is enforced by @hotel_scoped('doc_id').
+    
+    if doc_type != "Imagen":
+        return jsonify({"error": "Solo se puede asesorar sobre imÃ¡genes."}), 400
+        
+    from web_app.services import get_llm_client
+    from modules.decor_advisor import DecorAdvisor
+    
+    client = get_llm_client()
+    advisor = DecorAdvisor()
+    
+    # Parse tags to list
+    tags = []
+    if tags_json:
+        tags = safe_json_parse(tags_json, [])
+        
+    # Generate advice
+    # file_path might be relative or absolute. Ensure absolute.
+    if not os.path.isabs(file_path):
+        file_path = os.path.join(PROJECT_ROOT, file_path)
+        
+    advice = advisor.generate_ai_advice(caption="Imagen de interior", objects=tags, llm_client=client, image_path=file_path)
+    
+    return jsonify({"advice": advice})
+

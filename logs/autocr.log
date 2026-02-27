@@ -24245,3 +24245,1335 @@ ImportError: EasyOCR is required for the OCR cascade.
 2026-02-06 16:42:00 | INFO |  * Detected change in 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\linalg\\__init__.py', reloading
 2026-02-06 16:42:00 | INFO |  * Restarting with watchdog (windowsapi)
 2026-02-06 16:42:00 | INFO | 🧩 Logger initialized.
+2026-02-26 12:58:44 | INFO | 🧩 Logger initialized.
+2026-02-26 12:58:55 | INFO | 🧩 Logger initialized.
+2026-02-26 12:59:24 | INFO | 🚀 Starting AutOCR_V2...
+2026-02-26 12:59:24 | INFO | 🚀 Starting AutOCR_V2...
+2026-02-26 12:59:24 | INFO | 🔧 Preparing PaddlePaddle runtime...
+2026-02-26 12:59:24 | INFO | 🔧 Preparing PaddlePaddle runtime...
+2026-02-26 12:59:24 | INFO | Env snapshot CUDA_VISIBLE_DEVICES=<unset> PADDLEOCR_DISABLE_VLM=1
+2026-02-26 12:59:24 | INFO | Env snapshot CUDA_VISIBLE_DEVICES=<unset> PADDLEOCR_DISABLE_VLM=1
+2026-02-26 12:59:24 | INFO | PaddlePaddle version: 3.0.0
+2026-02-26 12:59:24 | INFO | PaddlePaddle version: 3.0.0
+2026-02-26 12:59:24 | INFO | Paddle compiled with CUDA: False
+2026-02-26 12:59:24 | INFO | Paddle compiled with CUDA: False
+2026-02-26 12:59:24 | INFO | ✅ PaddlePaddle CPU mode (GPU not available)
+2026-02-26 12:59:24 | INFO | ✅ PaddlePaddle CPU mode (GPU not available)
+2026-02-26 12:59:41 | ERROR | ❌ Failed to initialise application: Failed to initialize PostgreSQL pool: could not translate host name "db" to address: Host desconocido. 
+
+Traceback (most recent call last):
+
+  File "c:\Users\PC\Desktop\AutoOCR\modules\db_manager.py", line 79, in __init__
+    self._pool = pool.ThreadedConnectionPool(**pool_args)
+    │            │    │                        └ {'minconn': 2, 'maxconn': 10, 'host': 'db', 'port': 5432, 'user': 'postgres', 'password': 'password', 'dbname': 'autoocr'}
+    │            │    └ <class 'psycopg2.pool.ThreadedConnectionPool'>
+    │            └ <module 'psycopg2.pool' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\psycopg2\\pool....
+    └ <modules.db_manager.DBManager object at 0x0000019AAA25F510>
+
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\psycopg2\pool.py", line 161, in __init__
+    AbstractConnectionPool.__init__(
+    │                      └ <function AbstractConnectionPool.__init__ at 0x0000019AB33ABBA0>
+    └ <class 'psycopg2.pool.AbstractConnectionPool'>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\psycopg2\pool.py", line 59, in __init__
+    self._connect()
+    │    └ <function AbstractConnectionPool._connect at 0x0000019AB33ABC40>
+    └ <psycopg2.pool.ThreadedConnectionPool object at 0x0000019AB677AC90>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\psycopg2\pool.py", line 63, in _connect
+    conn = psycopg2.connect(*self._args, **self._kwargs)
+           │        │        │    │        │    └ {'host': 'db', 'port': 5432, 'user': 'postgres', 'password': 'password', 'dbname': 'autoocr'}
+           │        │        │    │        └ <psycopg2.pool.ThreadedConnectionPool object at 0x0000019AB677AC90>
+           │        │        │    └ ()
+           │        │        └ <psycopg2.pool.ThreadedConnectionPool object at 0x0000019AB677AC90>
+           │        └ <function connect at 0x0000019AB2327F60>
+           └ <module 'psycopg2' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\psycopg2\\__init__.py'>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\psycopg2\__init__.py", line 122, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+           │        │                       │                     └ {}
+           │        │                       └ None
+           │        └ 'host=db port=5432 user=postgres password=password dbname=autoocr'
+           └ <built-in function _connect>
+
+psycopg2.OperationalError: could not translate host name "db" to address: Host desconocido. 
+
+
+
+During handling of the above exception, another exception occurred:
+
+
+Traceback (most recent call last):
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 135, in <module>
+    main()
+    └ <function main at 0x0000019AB676D800>
+
+> File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 92, in main
+    init_app()
+    └ <function init_app at 0x0000019B07BE7F60>
+
+  File "c:\Users\PC\Desktop\AutoOCR\web_app\app.py", line 261, in init_app
+    get_db()
+    └ <function get_db at 0x0000019B079D8220>
+
+  File "c:\Users\PC\Desktop\AutoOCR\web_app\services.py", line 112, in get_db
+    _db_instance = DBManager(config)
+                   │         └ {'postbatch': {'input_folder': 'input', 'processed_folder': 'processed', 'failed_folder': 'errors', 'reports_folder': 'report...
+                   └ <class 'modules.db_manager.DBManager'>
+
+  File "c:\Users\PC\Desktop\AutoOCR\modules\db_manager.py", line 81, in __init__
+    raise RuntimeError(f"Failed to initialize PostgreSQL pool: {e}")
+
+RuntimeError: Failed to initialize PostgreSQL pool: could not translate host name "db" to address: Host desconocido. 
+
+2026-02-26 12:59:41 | ERROR | ❌ Failed to initialise application: Failed to initialize PostgreSQL pool: could not translate host name "db" to address: Host desconocido. 
+
+Traceback (most recent call last):
+
+  File "c:\Users\PC\Desktop\AutoOCR\modules\db_manager.py", line 79, in __init__
+    self._pool = pool.ThreadedConnectionPool(**pool_args)
+    │            │    │                        └ {'minconn': 2, 'maxconn': 10, 'host': 'db', 'port': 5432, 'user': 'postgres', 'password': 'password', 'dbname': 'autoocr'}
+    │            │    └ <class 'psycopg2.pool.ThreadedConnectionPool'>
+    │            └ <module 'psycopg2.pool' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\psycopg2\\pool....
+    └ <modules.db_manager.DBManager object at 0x000001FB0F34AE10>
+
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\psycopg2\pool.py", line 161, in __init__
+    AbstractConnectionPool.__init__(
+    │                      └ <function AbstractConnectionPool.__init__ at 0x000001FB102B7560>
+    └ <class 'psycopg2.pool.AbstractConnectionPool'>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\psycopg2\pool.py", line 59, in __init__
+    self._connect()
+    │    └ <function AbstractConnectionPool._connect at 0x000001FB102B7600>
+    └ <psycopg2.pool.ThreadedConnectionPool object at 0x000001FB08149AD0>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\psycopg2\pool.py", line 63, in _connect
+    conn = psycopg2.connect(*self._args, **self._kwargs)
+           │        │        │    │        │    └ {'host': 'db', 'port': 5432, 'user': 'postgres', 'password': 'password', 'dbname': 'autoocr'}
+           │        │        │    │        └ <psycopg2.pool.ThreadedConnectionPool object at 0x000001FB08149AD0>
+           │        │        │    └ ()
+           │        │        └ <psycopg2.pool.ThreadedConnectionPool object at 0x000001FB08149AD0>
+           │        └ <function connect at 0x000001FB1020F920>
+           └ <module 'psycopg2' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\psycopg2\\__init__.py'>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\psycopg2\__init__.py", line 122, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+           │        │                       │                     └ {}
+           │        │                       └ None
+           │        └ 'host=db port=5432 user=postgres password=password dbname=autoocr'
+           └ <built-in function _connect>
+
+psycopg2.OperationalError: could not translate host name "db" to address: Host desconocido. 
+
+
+
+During handling of the above exception, another exception occurred:
+
+
+Traceback (most recent call last):
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 135, in <module>
+    main()
+    └ <function main at 0x000001FB13D1CD60>
+
+> File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 92, in main
+    init_app()
+    └ <function init_app at 0x000001FB86C0F920>
+
+  File "c:\Users\PC\Desktop\AutoOCR\web_app\app.py", line 261, in init_app
+    get_db()
+    └ <function get_db at 0x000001FB869DBBA0>
+
+  File "c:\Users\PC\Desktop\AutoOCR\web_app\services.py", line 112, in get_db
+    _db_instance = DBManager(config)
+                   │         └ {'postbatch': {'input_folder': 'input', 'processed_folder': 'processed', 'failed_folder': 'errors', 'reports_folder': 'report...
+                   └ <class 'modules.db_manager.DBManager'>
+
+  File "c:\Users\PC\Desktop\AutoOCR\modules\db_manager.py", line 81, in __init__
+    raise RuntimeError(f"Failed to initialize PostgreSQL pool: {e}")
+
+RuntimeError: Failed to initialize PostgreSQL pool: could not translate host name "db" to address: Host desconocido. 
+
+2026-02-26 12:59:41 | INFO | 🧩 Troubleshooting:
+2026-02-26 12:59:41 | INFO | 🧩 Troubleshooting:
+2026-02-26 12:59:41 | INFO | 1. Verify config.yaml exists and is properly configured.
+2026-02-26 12:59:41 | INFO | 1. Verify config.yaml exists and is properly configured.
+2026-02-26 12:59:41 | INFO | 2. Ensure the database file exists or can be created.
+2026-02-26 12:59:41 | INFO | 3. Check all OCR dependencies are installed and functional.
+2026-02-26 12:59:41 | INFO | 2. Ensure the database file exists or can be created.
+2026-02-26 12:59:41 | INFO | 4. Confirm file permissions for data directories.
+ctional.
+2026-02-26 12:59:41 | INFO | 4. Confirm file permissions for data directories.
+2026-02-26 13:00:11 | INFO | 🧩 Logger initialized.
+2026-02-26 13:00:14 | INFO | 🚀 Starting AutOCR_V2...
+2026-02-26 13:00:14 | INFO | 🔧 Preparing PaddlePaddle runtime...
+2026-02-26 13:00:14 | INFO | Env snapshot CUDA_VISIBLE_DEVICES=<unset> PADDLEOCR_DISABLE_VLM=1
+2026-02-26 13:00:14 | INFO | PaddlePaddle version: 3.0.0
+2026-02-26 13:00:14 | INFO | Paddle compiled with CUDA: False
+2026-02-26 13:00:14 | INFO | ✅ PaddlePaddle CPU mode (GPU not available)
+2026-02-26 13:00:17 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 13:01:05 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 13:02:10 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 13:02:28 | INFO | Running PaddleOCR safety pre-flight check...
+2026-02-26 13:02:39 | INFO | PaddleOCR Safety Check PASSED.
+2026-02-26 13:02:43 | INFO | Initializing PPStructureV3 engine...
+2026-02-26 13:03:22 | INFO | PPStructureV3 engine loaded successfully.
+2026-02-26 13:03:22 | WARNING | Using CPU. Note: This module is much faster with a GPU.
+2026-02-26 13:03:36 | SUCCESS | ✅ Application initialised successfully.
+2026-02-26 13:03:36 | INFO | 🧠 GPU available: True
+2026-02-26 13:03:36 | INFO | 🔤 OCR cascade languages: ['en', 'es']
+2026-02-26 13:03:38 | ERROR | ❌ OCR self-test failed: CUDA error: no kernel image is available for execution on the device
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Traceback (most recent call last):
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 135, in <module>
+    main()
+    └ <function main at 0x000002A6FEABB7E0>
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 120, in main
+    run_startup_test()
+    └ <function run_startup_test at 0x000002A6DCB0CE00>
+
+> File "c:\Users\PC\Desktop\AutoOCR\modules\startup_test.py", line 24, in run_startup_test
+    ocr = MultiOCR()
+          └ <class 'modules.ocr_cascade.MultiOCR'>
+
+  File "c:\Users\PC\Desktop\AutoOCR\modules\ocr_cascade.py", line 51, in __init__
+    self.easy = easyocr.Reader(self.langs, gpu=self.gpu_available)  # type: ignore[misc]
+    │           │       │      │    │          │    └ True
+    │           │       │      │    │          └ <modules.ocr_cascade.MultiOCR object at 0x000002A920C20210>
+    │           │       │      │    └ ['en', 'es']
+    │           │       │      └ <modules.ocr_cascade.MultiOCR object at 0x000002A920C20210>
+    │           │       └ <class 'easyocr.easyocr.Reader'>
+    │           └ <module 'easyocr' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\easyocr\\__init__.py'>
+    └ <modules.ocr_cascade.MultiOCR object at 0x000002A920C20210>
+
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\easyocr\easyocr.py", line 231, in __init__
+    self.recognizer, self.converter = get_recognizer(recog_network, network_params,\
+    │                │                │              │              └ {'input_channel': 1, 'output_channel': 256, 'hidden_size': 256}
+    │                │                │              └ 'generation2'
+    │                │                └ <function get_recognizer at 0x000002A6CE88D440>
+    │                └ <easyocr.easyocr.Reader object at 0x000002A956747190>
+    └ <easyocr.easyocr.Reader object at 0x000002A956747190>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\easyocr\recognition.py", line 181, in get_recognizer
+    model = torch.nn.DataParallel(model).to(device)
+            │     │  │            │         └ 'cuda'
+            │     │  │            └ Model(
+            │     │  │                (FeatureExtraction): VGG_FeatureExtractor(
+            │     │  │                  (ConvNet): Sequential(
+            │     │  │                    (0): Conv2d(1, 32, kernel_size=(3, 3), s...
+            │     │  └ <class 'torch.nn.parallel.data_parallel.DataParallel'>
+            │     └ <module 'torch.nn' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\nn\\__init__....
+            └ <module 'torch' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\__init__.py'>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\parallel\data_parallel.py", line 168, in __init__
+    self.module.to(self.src_device_obj)
+    │              │    └ device(type='cuda', index=0)
+    │              └ DataParallel(
+    │                  (module): Model(
+    │                    (FeatureExtraction): VGG_FeatureExtractor(
+    │                      (ConvNet): Sequential(
+    │                        (0): Con...
+    └ DataParallel(
+        (module): Model(
+          (FeatureExtraction): VGG_FeatureExtractor(
+            (ConvNet): Sequential(
+              (0): Con...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 1340, in to
+    return self._apply(convert)
+           │    │      └ <function Module.to.<locals>.convert at 0x000002A95C54D440>
+           │    └ <function Module._apply at 0x000002A6FF01BB00>
+           └ Model(
+               (FeatureExtraction): VGG_FeatureExtractor(
+                 (ConvNet): Sequential(
+                   (0): Conv2d(1, 32, kernel_size=(3, 3), s...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000002A95C54D440>
+    │      └ <function Module._apply at 0x000002A6FF01BB00>
+    └ Sequential(
+        (0): BidirectionalLSTM(
+          (rnn): LSTM(256, 256, batch_first=True, bidirectional=True)
+          (linear): Linear(in...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000002A95C54D440>
+    │      └ <function Module._apply at 0x000002A6FF01BB00>
+    └ BidirectionalLSTM(
+        (rnn): LSTM(256, 256, batch_first=True, bidirectional=True)
+        (linear): Linear(in_features=512, out_feat...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000002A95C54D440>
+    │      └ <function RNNBase._apply at 0x000002A6FF37B6A0>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 288, in _apply
+    self._init_flat_weights()
+    │    └ <function RNNBase._init_flat_weights at 0x000002A6FF37B4C0>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 215, in _init_flat_weights
+    self.flatten_parameters()
+    │    └ <function RNNBase.flatten_parameters at 0x000002A6FF37B600>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 269, in flatten_parameters
+    torch._cudnn_rnn_flatten_weight(
+    │     └ <built-in method _cudnn_rnn_flatten_weight of type object at 0x00007FF9488D5250>
+    └ <module 'torch' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\__init__.py'>
+
+RuntimeError: CUDA error: no kernel image is available for execution on the device
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-02-26 13:03:38 | INFO | 🌐 Web interface available at http://0.0.0.0:8000
+2026-02-26 13:03:38 | INFO | 📦 Flask debug mode: False
+2026-02-26 13:43:04 | INFO | 🧩 Logger initialized.
+2026-02-26 13:43:10 | INFO | 🚀 Starting AutOCR_V2...
+2026-02-26 13:43:10 | INFO | 🔧 Preparing PaddlePaddle runtime...
+2026-02-26 13:43:10 | INFO | Env snapshot CUDA_VISIBLE_DEVICES=<unset> PADDLEOCR_DISABLE_VLM=1
+2026-02-26 13:43:10 | INFO | PaddlePaddle version: 3.0.0
+2026-02-26 13:43:10 | INFO | Paddle compiled with CUDA: False
+2026-02-26 13:43:10 | INFO | ✅ PaddlePaddle CPU mode (GPU not available)
+2026-02-26 13:43:14 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 13:43:45 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 13:44:55 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 13:45:21 | INFO | Running PaddleOCR safety pre-flight check...
+2026-02-26 13:45:29 | INFO | PaddleOCR Safety Check PASSED.
+2026-02-26 13:45:35 | INFO | Initializing PPStructureV3 engine...
+2026-02-26 13:46:08 | INFO | PPStructureV3 engine loaded successfully.
+2026-02-26 13:46:08 | WARNING | Using CPU. Note: This module is much faster with a GPU.
+2026-02-26 13:46:24 | SUCCESS | ✅ Application initialised successfully.
+2026-02-26 13:46:24 | INFO | 🧠 GPU available: True
+2026-02-26 13:46:24 | INFO | 🔤 OCR cascade languages: ['en', 'es']
+2026-02-26 13:46:25 | ERROR | ❌ OCR self-test failed: CUDA error: no kernel image is available for execution on the device
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Traceback (most recent call last):
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 135, in <module>
+    main()
+    └ <function main at 0x00000232C91471A0>
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 120, in main
+    run_startup_test()
+    └ <function run_startup_test at 0x000002329319CCC0>
+
+> File "c:\Users\PC\Desktop\AutoOCR\modules\startup_test.py", line 24, in run_startup_test
+    ocr = MultiOCR()
+          └ <class 'modules.ocr_cascade.MultiOCR'>
+
+  File "c:\Users\PC\Desktop\AutoOCR\modules\ocr_cascade.py", line 51, in __init__
+    self.easy = easyocr.Reader(self.langs, gpu=self.gpu_available)  # type: ignore[misc]
+    │           │       │      │    │          │    └ True
+    │           │       │      │    │          └ <modules.ocr_cascade.MultiOCR object at 0x0000023520B95C10>
+    │           │       │      │    └ ['en', 'es']
+    │           │       │      └ <modules.ocr_cascade.MultiOCR object at 0x0000023520B95C10>
+    │           │       └ <class 'easyocr.easyocr.Reader'>
+    │           └ <module 'easyocr' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\easyocr\\__init__.py'>
+    └ <modules.ocr_cascade.MultiOCR object at 0x0000023520B95C10>
+
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\easyocr\easyocr.py", line 231, in __init__
+    self.recognizer, self.converter = get_recognizer(recog_network, network_params,\
+    │                │                │              │              └ {'input_channel': 1, 'output_channel': 256, 'hidden_size': 256}
+    │                │                │              └ 'generation2'
+    │                │                └ <function get_recognizer at 0x00000232FEABCE00>
+    │                └ <easyocr.easyocr.Reader object at 0x0000023512B9BE10>
+    └ <easyocr.easyocr.Reader object at 0x0000023512B9BE10>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\easyocr\recognition.py", line 181, in get_recognizer
+    model = torch.nn.DataParallel(model).to(device)
+            │     │  │            │         └ 'cuda'
+            │     │  │            └ Model(
+            │     │  │                (FeatureExtraction): VGG_FeatureExtractor(
+            │     │  │                  (ConvNet): Sequential(
+            │     │  │                    (0): Conv2d(1, 32, kernel_size=(3, 3), s...
+            │     │  └ <class 'torch.nn.parallel.data_parallel.DataParallel'>
+            │     └ <module 'torch.nn' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\nn\\__init__....
+            └ <module 'torch' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\__init__.py'>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\parallel\data_parallel.py", line 168, in __init__
+    self.module.to(self.src_device_obj)
+    │              │    └ device(type='cuda', index=0)
+    │              └ DataParallel(
+    │                  (module): Model(
+    │                    (FeatureExtraction): VGG_FeatureExtractor(
+    │                      (ConvNet): Sequential(
+    │                        (0): Con...
+    └ DataParallel(
+        (module): Model(
+          (FeatureExtraction): VGG_FeatureExtractor(
+            (ConvNet): Sequential(
+              (0): Con...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 1340, in to
+    return self._apply(convert)
+           │    │      └ <function Module.to.<locals>.convert at 0x000002354D3913A0>
+           │    └ <function Module._apply at 0x00000232C96974C0>
+           └ Model(
+               (FeatureExtraction): VGG_FeatureExtractor(
+                 (ConvNet): Sequential(
+                   (0): Conv2d(1, 32, kernel_size=(3, 3), s...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000002354D3913A0>
+    │      └ <function Module._apply at 0x00000232C96974C0>
+    └ Sequential(
+        (0): BidirectionalLSTM(
+          (rnn): LSTM(256, 256, batch_first=True, bidirectional=True)
+          (linear): Linear(in...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000002354D3913A0>
+    │      └ <function Module._apply at 0x00000232C96974C0>
+    └ BidirectionalLSTM(
+        (rnn): LSTM(256, 256, batch_first=True, bidirectional=True)
+        (linear): Linear(in_features=512, out_feat...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000002354D3913A0>
+    │      └ <function RNNBase._apply at 0x00000232C99E7060>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 288, in _apply
+    self._init_flat_weights()
+    │    └ <function RNNBase._init_flat_weights at 0x00000232C99E6E80>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 215, in _init_flat_weights
+    self.flatten_parameters()
+    │    └ <function RNNBase.flatten_parameters at 0x00000232C99E6FC0>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 269, in flatten_parameters
+    torch._cudnn_rnn_flatten_weight(
+    │     └ <built-in method _cudnn_rnn_flatten_weight of type object at 0x00007FF947415250>
+    └ <module 'torch' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\__init__.py'>
+
+RuntimeError: CUDA error: no kernel image is available for execution on the device
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-02-26 13:46:25 | INFO | 🌐 Web interface available at http://0.0.0.0:8000
+2026-02-26 13:46:25 | INFO | 📦 Flask debug mode: False
+2026-02-26 13:46:25 | INFO | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.1.200:8000
+2026-02-26 13:46:25 | INFO | [33mPress CTRL+C to quit[0m
+2026-02-26 13:48:11 | INFO | 127.0.0.1 - - [26/Feb/2026 13:48:11] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 13:48:11 | INFO | 127.0.0.1 - - [26/Feb/2026 13:48:11] "GET /login?next=/ HTTP/1.1" 200 -
+2026-02-26 13:48:11 | INFO | 127.0.0.1 - - [26/Feb/2026 13:48:11] "GET /static/css/obsidian.css HTTP/1.1" 200 -
+2026-02-26 13:48:13 | INFO | 127.0.0.1 - - [26/Feb/2026 13:48:13] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-02-26 14:13:31 | INFO | 127.0.0.1 - - [26/Feb/2026 14:13:31] "POST /login?next=/ HTTP/1.1" 200 -
+2026-02-26 14:13:31 | INFO | 127.0.0.1 - - [26/Feb/2026 14:13:31] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:15:42 | INFO | 127.0.0.1 - - [26/Feb/2026 14:15:42] "POST /login?next=/ HTTP/1.1" 200 -
+2026-02-26 14:15:42 | INFO | 127.0.0.1 - - [26/Feb/2026 14:15:42] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:16:49 | INFO | 127.0.0.1 - - [26/Feb/2026 14:16:49] "POST /login?next=/ HTTP/1.1" 200 -
+2026-02-26 14:16:49 | INFO | 127.0.0.1 - - [26/Feb/2026 14:16:49] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:18:12 | INFO | 127.0.0.1 - - [26/Feb/2026 14:18:12] "POST /login?next=/ HTTP/1.1" 200 -
+2026-02-26 14:18:12 | INFO | 127.0.0.1 - - [26/Feb/2026 14:18:12] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:25:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:25:21] "POST /login?next=/ HTTP/1.1" 200 -
+2026-02-26 14:25:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:25:21] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:28:59 | INFO | 127.0.0.1 - - [26/Feb/2026 14:28:59] "POST /login?next=/ HTTP/1.1" 200 -
+2026-02-26 14:28:59 | INFO | 127.0.0.1 - - [26/Feb/2026 14:28:59] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:30:09 | INFO | 🧩 Logger initialized.
+2026-02-26 14:30:15 | INFO | 🚀 Starting AutOCR_V2...
+2026-02-26 14:30:15 | INFO | 🔧 Preparing PaddlePaddle runtime...
+2026-02-26 14:30:15 | INFO | Env snapshot CUDA_VISIBLE_DEVICES=<unset> PADDLEOCR_DISABLE_VLM=1
+2026-02-26 14:30:15 | INFO | PaddlePaddle version: 3.0.0
+2026-02-26 14:30:15 | INFO | Paddle compiled with CUDA: False
+2026-02-26 14:30:15 | INFO | ✅ PaddlePaddle CPU mode (GPU not available)
+2026-02-26 14:30:21 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 14:30:58 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 14:31:52 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 14:32:15 | INFO | Running PaddleOCR safety pre-flight check...
+2026-02-26 14:32:22 | INFO | PaddleOCR Safety Check PASSED.
+2026-02-26 14:32:26 | INFO | Initializing PPStructureV3 engine...
+2026-02-26 14:33:01 | INFO | PPStructureV3 engine loaded successfully.
+2026-02-26 14:33:01 | WARNING | Using CPU. Note: This module is much faster with a GPU.
+2026-02-26 14:33:15 | SUCCESS | ✅ Application initialised successfully.
+2026-02-26 14:33:15 | INFO | 🧠 GPU available: True
+2026-02-26 14:33:15 | INFO | 🔤 OCR cascade languages: ['en', 'es']
+2026-02-26 14:33:16 | ERROR | ❌ OCR self-test failed: CUDA error: no kernel image is available for execution on the device
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Traceback (most recent call last):
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 135, in <module>
+    main()
+    └ <function main at 0x000001B6C43571A0>
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 120, in main
+    run_startup_test()
+    └ <function run_startup_test at 0x000001B68E64CCC0>
+
+> File "c:\Users\PC\Desktop\AutoOCR\modules\startup_test.py", line 24, in run_startup_test
+    ocr = MultiOCR()
+          └ <class 'modules.ocr_cascade.MultiOCR'>
+
+  File "c:\Users\PC\Desktop\AutoOCR\modules\ocr_cascade.py", line 51, in __init__
+    self.easy = easyocr.Reader(self.langs, gpu=self.gpu_available)  # type: ignore[misc]
+    │           │       │      │    │          │    └ True
+    │           │       │      │    │          └ <modules.ocr_cascade.MultiOCR object at 0x000001B9134C7FD0>
+    │           │       │      │    └ ['en', 'es']
+    │           │       │      └ <modules.ocr_cascade.MultiOCR object at 0x000001B9134C7FD0>
+    │           │       └ <class 'easyocr.easyocr.Reader'>
+    │           └ <module 'easyocr' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\easyocr\\__init__.py'>
+    └ <modules.ocr_cascade.MultiOCR object at 0x000001B9134C7FD0>
+
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\easyocr\easyocr.py", line 231, in __init__
+    self.recognizer, self.converter = get_recognizer(recog_network, network_params,\
+    │                │                │              │              └ {'input_channel': 1, 'output_channel': 256, 'hidden_size': 256}
+    │                │                │              └ 'generation2'
+    │                │                └ <function get_recognizer at 0x000001B6FFE2CE00>
+    │                └ <easyocr.easyocr.Reader object at 0x000001B9134AA5D0>
+    └ <easyocr.easyocr.Reader object at 0x000001B9134AA5D0>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\easyocr\recognition.py", line 181, in get_recognizer
+    model = torch.nn.DataParallel(model).to(device)
+            │     │  │            │         └ 'cuda'
+            │     │  │            └ Model(
+            │     │  │                (FeatureExtraction): VGG_FeatureExtractor(
+            │     │  │                  (ConvNet): Sequential(
+            │     │  │                    (0): Conv2d(1, 32, kernel_size=(3, 3), s...
+            │     │  └ <class 'torch.nn.parallel.data_parallel.DataParallel'>
+            │     └ <module 'torch.nn' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\nn\\__init__....
+            └ <module 'torch' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\__init__.py'>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\parallel\data_parallel.py", line 168, in __init__
+    self.module.to(self.src_device_obj)
+    │              │    └ device(type='cuda', index=0)
+    │              └ DataParallel(
+    │                  (module): Model(
+    │                    (FeatureExtraction): VGG_FeatureExtractor(
+    │                      (ConvNet): Sequential(
+    │                        (0): Con...
+    └ DataParallel(
+        (module): Model(
+          (FeatureExtraction): VGG_FeatureExtractor(
+            (ConvNet): Sequential(
+              (0): Con...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 1340, in to
+    return self._apply(convert)
+           │    │      └ <function Module.to.<locals>.convert at 0x000001B920A01440>
+           │    └ <function Module._apply at 0x000001B6C48A34C0>
+           └ Model(
+               (FeatureExtraction): VGG_FeatureExtractor(
+                 (ConvNet): Sequential(
+                   (0): Conv2d(1, 32, kernel_size=(3, 3), s...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000001B920A01440>
+    │      └ <function Module._apply at 0x000001B6C48A34C0>
+    └ Sequential(
+        (0): BidirectionalLSTM(
+          (rnn): LSTM(256, 256, batch_first=True, bidirectional=True)
+          (linear): Linear(in...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000001B920A01440>
+    │      └ <function Module._apply at 0x000001B6C48A34C0>
+    └ BidirectionalLSTM(
+        (rnn): LSTM(256, 256, batch_first=True, bidirectional=True)
+        (linear): Linear(in_features=512, out_feat...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000001B920A01440>
+    │      └ <function RNNBase._apply at 0x000001B6C4BF7060>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 288, in _apply
+    self._init_flat_weights()
+    │    └ <function RNNBase._init_flat_weights at 0x000001B6C4BF6E80>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 215, in _init_flat_weights
+    self.flatten_parameters()
+    │    └ <function RNNBase.flatten_parameters at 0x000001B6C4BF6FC0>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 269, in flatten_parameters
+    torch._cudnn_rnn_flatten_weight(
+    │     └ <built-in method _cudnn_rnn_flatten_weight of type object at 0x00007FF947415250>
+    └ <module 'torch' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\__init__.py'>
+
+RuntimeError: CUDA error: no kernel image is available for execution on the device
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-02-26 14:33:16 | INFO | 🌐 Web interface available at http://0.0.0.0:8000
+2026-02-26 14:33:16 | INFO | 📦 Flask debug mode: False
+2026-02-26 14:33:16 | INFO | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.1.200:8000
+2026-02-26 14:33:16 | INFO | [33mPress CTRL+C to quit[0m
+2026-02-26 14:33:34 | INFO | 127.0.0.1 - - [26/Feb/2026 14:33:34] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:33:34 | INFO | 127.0.0.1 - - [26/Feb/2026 14:33:34] "GET /login?next=/ HTTP/1.1" 200 -
+2026-02-26 14:33:34 | INFO | 127.0.0.1 - - [26/Feb/2026 14:33:34] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "[32mPOST /login?next=/ HTTP/1.1[0m" 302 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "GET /socket.io/?EIO=4&transport=polling&t=PoQA6LP HTTP/1.1" 200 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "POST /socket.io/?EIO=4&transport=polling&t=PoQA6M0&sid=wWTdhbXAhZiFQGjXAAAA HTTP/1.1" 200 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "GET /socket.io/?EIO=4&transport=polling&t=PoQA6M2&sid=wWTdhbXAhZiFQGjXAAAA HTTP/1.1" 200 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "GET /static/sw.js HTTP/1.1" 200 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "GET /static/css/modern.css HTTP/1.1" 200 -
+2026-02-26 14:34:24 | INFO | 127.0.0.1 - - [26/Feb/2026 14:34:24] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "GET /socket.io/?EIO=4&transport=websocket&sid=wWTdhbXAhZiFQGjXAAAA HTTP/1.1" 200 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "GET /socket.io/?EIO=4&transport=polling&t=PoQAXTw HTTP/1.1" 200 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "POST /socket.io/?EIO=4&transport=polling&t=PoQAXU2&sid=seHY6irzgGBMMcC2AAAC HTTP/1.1" 200 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "GET /socket.io/?EIO=4&transport=polling&t=PoQAXU3&sid=seHY6irzgGBMMcC2AAAC HTTP/1.1" 200 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:36:15 | INFO | 127.0.0.1 - - [26/Feb/2026 14:36:15] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "GET /socket.io/?EIO=4&transport=websocket&sid=seHY6irzgGBMMcC2AAAC HTTP/1.1" 200 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "GET /socket.io/?EIO=4&transport=polling&t=PoQAqKn HTTP/1.1" 200 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "POST /socket.io/?EIO=4&transport=polling&t=PoQAqKt&sid=f46fGOSvEF_ZDcEEAAAE HTTP/1.1" 200 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "GET /socket.io/?EIO=4&transport=polling&t=PoQAqKu&sid=f46fGOSvEF_ZDcEEAAAE HTTP/1.1" 200 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:37:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:32] "GET /socket.io/?EIO=4&transport=polling&t=PoQAqL1&sid=f46fGOSvEF_ZDcEEAAAE HTTP/1.1" 200 -
+2026-02-26 14:37:33 | INFO | 127.0.0.1 - - [26/Feb/2026 14:37:33] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "GET /socket.io/?EIO=4&transport=websocket&sid=f46fGOSvEF_ZDcEEAAAE HTTP/1.1" 200 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "GET /socket.io/?EIO=4&transport=polling&t=PoQBhga HTTP/1.1" 200 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "POST /socket.io/?EIO=4&transport=polling&t=PoQBhgg&sid=nL0RBdGZmvutDx9yAAAG HTTP/1.1" 200 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "GET /socket.io/?EIO=4&transport=polling&t=PoQBhgh&sid=nL0RBdGZmvutDx9yAAAG HTTP/1.1" 200 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:41:19 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:19] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "GET /socket.io/?EIO=4&transport=websocket&sid=nL0RBdGZmvutDx9yAAAG HTTP/1.1" 200 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "GET /socket.io/?EIO=4&transport=polling&t=PoQBqdM HTTP/1.1" 200 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "POST /socket.io/?EIO=4&transport=polling&t=PoQBqdU&sid=C_XaHwQRH0a8bKJvAAAI HTTP/1.1" 200 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "GET /socket.io/?EIO=4&transport=polling&t=PoQBqdV&sid=C_XaHwQRH0a8bKJvAAAI HTTP/1.1" 200 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:41:56 | INFO | 127.0.0.1 - - [26/Feb/2026 14:41:56] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "GET /socket.io/?EIO=4&transport=websocket&sid=C_XaHwQRH0a8bKJvAAAI HTTP/1.1" 200 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "GET /socket.io/?EIO=4&transport=polling&t=PoQB_Nf HTTP/1.1" 200 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "POST /socket.io/?EIO=4&transport=polling&t=PoQB_Nm&sid=5Ln5VOiiT5T8wfP_AAAK HTTP/1.1" 200 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "GET /socket.io/?EIO=4&transport=polling&t=PoQB_Nm.0&sid=5Ln5VOiiT5T8wfP_AAAK HTTP/1.1" 200 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:42:40 | INFO | 127.0.0.1 - - [26/Feb/2026 14:42:40] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "GET /socket.io/?EIO=4&transport=websocket&sid=5Ln5VOiiT5T8wfP_AAAK HTTP/1.1" 200 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "GET /socket.io/?EIO=4&transport=polling&t=PoQC85B HTTP/1.1" 200 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "POST /socket.io/?EIO=4&transport=polling&t=PoQC85H&sid=CFxWNPHeyZ-oWvpJAAAM HTTP/1.1" 200 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "GET /socket.io/?EIO=4&transport=polling&t=PoQC85H.0&sid=CFxWNPHeyZ-oWvpJAAAM HTTP/1.1" 200 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:43:16 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:16] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "GET /socket.io/?EIO=4&transport=websocket&sid=CFxWNPHeyZ-oWvpJAAAM HTTP/1.1" 200 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "GET /socket.io/?EIO=4&transport=polling&t=PoQCGz9 HTTP/1.1" 200 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "POST /socket.io/?EIO=4&transport=polling&t=PoQCGzE&sid=pEohRMjVBypfpx5uAAAO HTTP/1.1" 200 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "GET /socket.io/?EIO=4&transport=polling&t=PoQCGzF&sid=pEohRMjVBypfpx5uAAAO HTTP/1.1" 200 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:43:52 | INFO | 127.0.0.1 - - [26/Feb/2026 14:43:52] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "GET /socket.io/?EIO=4&transport=websocket&sid=pEohRMjVBypfpx5uAAAO HTTP/1.1" 200 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "GET /socket.io/?EIO=4&transport=polling&t=PoQCPOa HTTP/1.1" 200 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "POST /socket.io/?EIO=4&transport=polling&t=PoQCPOg&sid=H4jDGbpKX5Wm0RkMAAAQ HTTP/1.1" 200 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "GET /socket.io/?EIO=4&transport=polling&t=PoQCPOh&sid=H4jDGbpKX5Wm0RkMAAAQ HTTP/1.1" 200 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:44:26 | INFO | 127.0.0.1 - - [26/Feb/2026 14:44:26] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "GET /socket.io/?EIO=4&transport=websocket&sid=H4jDGbpKX5Wm0RkMAAAQ HTTP/1.1" 200 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "GET /socket.io/?EIO=4&transport=polling&t=PoQCnWM HTTP/1.1" 200 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "POST /socket.io/?EIO=4&transport=polling&t=PoQCnWU&sid=lL0ej1CIa5sYrnUgAAAS HTTP/1.1" 200 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "GET /socket.io/?EIO=4&transport=polling&t=PoQCnWU.0&sid=lL0ej1CIa5sYrnUgAAAS HTTP/1.1" 200 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:46:05 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:05] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "GET /socket.io/?EIO=4&transport=websocket&sid=lL0ej1CIa5sYrnUgAAAS HTTP/1.1" 200 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "GET /socket.io/?EIO=4&transport=polling&t=PoQCxj- HTTP/1.1" 200 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "POST /socket.io/?EIO=4&transport=polling&t=PoQCxk5&sid=m3jtY985nFysmGlbAAAU HTTP/1.1" 200 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "GET /socket.io/?EIO=4&transport=polling&t=PoQCxk6&sid=m3jtY985nFysmGlbAAAU HTTP/1.1" 200 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:46:47 | INFO | 127.0.0.1 - - [26/Feb/2026 14:46:47] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "GET /socket.io/?EIO=4&transport=websocket&sid=m3jtY985nFysmGlbAAAU HTTP/1.1" 200 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "GET /socket.io/?EIO=4&transport=polling&t=PoQD3ww HTTP/1.1" 200 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "POST /socket.io/?EIO=4&transport=polling&t=PoQD3x3&sid=lOYFOcrafM2FN777AAAW HTTP/1.1" 200 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "GET /socket.io/?EIO=4&transport=polling&t=PoQD3x3.0&sid=lOYFOcrafM2FN777AAAW HTTP/1.1" 200 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "GET /socket.io/?EIO=4&transport=polling&t=PoQD3xB&sid=lOYFOcrafM2FN777AAAW HTTP/1.1" 200 -
+2026-02-26 14:47:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:21] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "GET /socket.io/?EIO=4&transport=websocket&sid=lOYFOcrafM2FN777AAAW HTTP/1.1" 200 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "GET /socket.io/?EIO=4&transport=polling&t=PoQDBow HTTP/1.1" 200 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "POST /socket.io/?EIO=4&transport=polling&t=PoQDBp1&sid=KRAsp-ciBLhCHRmuAAAY HTTP/1.1" 200 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "GET /socket.io/?EIO=4&transport=polling&t=PoQDBp1.0&sid=KRAsp-ciBLhCHRmuAAAY HTTP/1.1" 200 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:47:53 | INFO | 127.0.0.1 - - [26/Feb/2026 14:47:53] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "GET /socket.io/?EIO=4&transport=websocket&sid=KRAsp-ciBLhCHRmuAAAY HTTP/1.1" 200 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "GET /socket.io/?EIO=4&transport=polling&t=PoQDKue HTTP/1.1" 200 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "POST /socket.io/?EIO=4&transport=polling&t=PoQDKuk&sid=QZuORBAuneK3_fhDAAAa HTTP/1.1" 200 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "GET /socket.io/?EIO=4&transport=polling&t=PoQDKul&sid=QZuORBAuneK3_fhDAAAa HTTP/1.1" 200 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "GET /socket.io/?EIO=4&transport=polling&t=PoQDKut&sid=QZuORBAuneK3_fhDAAAa HTTP/1.1" 200 -
+2026-02-26 14:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:30] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "GET /socket.io/?EIO=4&transport=websocket&sid=QZuORBAuneK3_fhDAAAa HTTP/1.1" 200 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "GET /socket.io/?EIO=4&transport=polling&t=PoQDQwM HTTP/1.1" 200 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "POST /socket.io/?EIO=4&transport=polling&t=PoQDQwT&sid=K1mVmCzmb2TY8ArPAAAc HTTP/1.1" 200 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "GET /socket.io/?EIO=4&transport=polling&t=PoQDQwU&sid=K1mVmCzmb2TY8ArPAAAc HTTP/1.1" 200 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:48:55 | INFO | 127.0.0.1 - - [26/Feb/2026 14:48:55] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "GET /socket.io/?EIO=4&transport=websocket&sid=K1mVmCzmb2TY8ArPAAAc HTTP/1.1" 200 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "GET /socket.io/?EIO=4&transport=polling&t=PoQDWPa HTTP/1.1" 200 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "POST /socket.io/?EIO=4&transport=polling&t=PoQDWPf&sid=Wiek7HkUsTDPnAMtAAAe HTTP/1.1" 200 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "GET /socket.io/?EIO=4&transport=polling&t=PoQDWPf.0&sid=Wiek7HkUsTDPnAMtAAAe HTTP/1.1" 200 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:49:17 | INFO | 127.0.0.1 - - [26/Feb/2026 14:49:17] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "GET /socket.io/?EIO=4&transport=websocket&sid=Wiek7HkUsTDPnAMtAAAe HTTP/1.1" 200 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "GET /socket.io/?EIO=4&transport=polling&t=PoQD-j6 HTTP/1.1" 200 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "POST /socket.io/?EIO=4&transport=polling&t=PoQD-jC&sid=qvCPr3vXXLEnysRvAAAg HTTP/1.1" 200 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "GET /socket.io/?EIO=4&transport=polling&t=PoQD-jD&sid=qvCPr3vXXLEnysRvAAAg HTTP/1.1" 200 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:51:21 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:21] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "GET /socket.io/?EIO=4&transport=websocket&sid=qvCPr3vXXLEnysRvAAAg HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "GET /socket.io/?EIO=4&transport=polling&t=PoQD-sE HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "POST /socket.io/?EIO=4&transport=polling&t=PoQD-sI&sid=rpDdIBtTQgpC30ggAAAi HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "GET /socket.io/?EIO=4&transport=polling&t=PoQD-sJ&sid=rpDdIBtTQgpC30ggAAAi HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "GET /socket.io/?EIO=4&transport=websocket&sid=rpDdIBtTQgpC30ggAAAi HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "GET /socket.io/?EIO=4&transport=polling&t=PoQD-vB HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "POST /socket.io/?EIO=4&transport=polling&t=PoQD-vH&sid=8aWiJQ_v4T3h9xDLAAAk HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "GET /socket.io/?EIO=4&transport=polling&t=PoQD-vH.0&sid=8aWiJQ_v4T3h9xDLAAAk HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "GET /socket.io/?EIO=4&transport=websocket&sid=8aWiJQ_v4T3h9xDLAAAk HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "GET /socket.io/?EIO=4&transport=polling&t=PoQD-xf HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "POST /socket.io/?EIO=4&transport=polling&t=PoQD-xk&sid=Ux4aEQz2rEHZzjgkAAAm HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "GET /socket.io/?EIO=4&transport=polling&t=PoQD-xk.0&sid=Ux4aEQz2rEHZzjgkAAAm HTTP/1.1" 200 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:51:22 | INFO | 127.0.0.1 - - [26/Feb/2026 14:51:22] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "GET /socket.io/?EIO=4&transport=websocket&sid=Ux4aEQz2rEHZzjgkAAAm HTTP/1.1" 200 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "GET /socket.io/?EIO=4&transport=polling&t=PoQEUXq HTTP/1.1" 200 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "POST /socket.io/?EIO=4&transport=polling&t=PoQEUXv&sid=C-cs8QkZ3lb9n8WCAAAo HTTP/1.1" 200 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "GET /socket.io/?EIO=4&transport=polling&t=PoQEUXw&sid=C-cs8QkZ3lb9n8WCAAAo HTTP/1.1" 200 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:53:32 | INFO | 127.0.0.1 - - [26/Feb/2026 14:53:32] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "GET /socket.io/?EIO=4&transport=websocket&sid=C-cs8QkZ3lb9n8WCAAAo HTTP/1.1" 200 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "GET /socket.io/?EIO=4&transport=polling&t=PoQF8kU HTTP/1.1" 200 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "POST /socket.io/?EIO=4&transport=polling&t=PoQF8kc&sid=j_dbIJ7UJeGFXIYcAAAq HTTP/1.1" 200 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "GET /socket.io/?EIO=4&transport=polling&t=PoQF8kd&sid=j_dbIJ7UJeGFXIYcAAAq HTTP/1.1" 200 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 14:56:25 | INFO | 127.0.0.1 - - [26/Feb/2026 14:56:25] "[35m[1mGET /dashboard HTTP/1.1[0m" 500 -
+2026-02-26 14:57:57 | INFO | 🧩 Logger initialized.
+2026-02-26 14:58:03 | INFO | 🚀 Starting AutOCR_V2...
+2026-02-26 14:58:03 | INFO | 🔧 Preparing PaddlePaddle runtime...
+2026-02-26 14:58:03 | INFO | Env snapshot CUDA_VISIBLE_DEVICES=<unset> PADDLEOCR_DISABLE_VLM=1
+2026-02-26 14:58:03 | INFO | PaddlePaddle version: 3.0.0
+2026-02-26 14:58:03 | INFO | Paddle compiled with CUDA: False
+2026-02-26 14:58:03 | INFO | ✅ PaddlePaddle CPU mode (GPU not available)
+2026-02-26 14:58:09 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 14:58:14 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 14:58:38 | INFO | ⬇️ Downloading Paddle model %s
+2026-02-26 14:58:59 | INFO | Running PaddleOCR safety pre-flight check...
+2026-02-26 14:59:06 | INFO | PaddleOCR Safety Check PASSED.
+2026-02-26 14:59:10 | INFO | Initializing PPStructureV3 engine...
+2026-02-26 14:59:45 | INFO | PPStructureV3 engine loaded successfully.
+2026-02-26 14:59:45 | WARNING | Using CPU. Note: This module is much faster with a GPU.
+2026-02-26 14:59:58 | SUCCESS | ✅ Application initialised successfully.
+2026-02-26 14:59:58 | INFO | 🧠 GPU available: True
+2026-02-26 14:59:58 | INFO | 🔤 OCR cascade languages: ['en', 'es']
+2026-02-26 15:00:00 | ERROR | ❌ OCR self-test failed: CUDA error: no kernel image is available for execution on the device
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Traceback (most recent call last):
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 135, in <module>
+    main()
+    └ <function main at 0x000001B633F071A0>
+
+  File "c:\Users\PC\Desktop\AutoOCR\run_web.py", line 120, in main
+    run_startup_test()
+    └ <function run_startup_test at 0x000001B67DDFCCC0>
+
+> File "c:\Users\PC\Desktop\AutoOCR\modules\startup_test.py", line 24, in run_startup_test
+    ocr = MultiOCR()
+          └ <class 'modules.ocr_cascade.MultiOCR'>
+
+  File "c:\Users\PC\Desktop\AutoOCR\modules\ocr_cascade.py", line 51, in __init__
+    self.easy = easyocr.Reader(self.langs, gpu=self.gpu_available)  # type: ignore[misc]
+    │           │       │      │    │          │    └ True
+    │           │       │      │    │          └ <modules.ocr_cascade.MultiOCR object at 0x000001B890E13B90>
+    │           │       │      │    └ ['en', 'es']
+    │           │       │      └ <modules.ocr_cascade.MultiOCR object at 0x000001B890E13B90>
+    │           │       └ <class 'easyocr.easyocr.Reader'>
+    │           └ <module 'easyocr' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\easyocr\\__init__.py'>
+    └ <modules.ocr_cascade.MultiOCR object at 0x000001B890E13B90>
+
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\easyocr\easyocr.py", line 231, in __init__
+    self.recognizer, self.converter = get_recognizer(recog_network, network_params,\
+    │                │                │              │              └ {'input_channel': 1, 'output_channel': 256, 'hidden_size': 256}
+    │                │                │              └ 'generation2'
+    │                │                └ <function get_recognizer at 0x000001B66FC3CE00>
+    │                └ <easyocr.easyocr.Reader object at 0x000001B890D5C8D0>
+    └ <easyocr.easyocr.Reader object at 0x000001B890D5C8D0>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\easyocr\recognition.py", line 181, in get_recognizer
+    model = torch.nn.DataParallel(model).to(device)
+            │     │  │            │         └ 'cuda'
+            │     │  │            └ Model(
+            │     │  │                (FeatureExtraction): VGG_FeatureExtractor(
+            │     │  │                  (ConvNet): Sequential(
+            │     │  │                    (0): Conv2d(1, 32, kernel_size=(3, 3), s...
+            │     │  └ <class 'torch.nn.parallel.data_parallel.DataParallel'>
+            │     └ <module 'torch.nn' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\nn\\__init__....
+            └ <module 'torch' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\__init__.py'>
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\parallel\data_parallel.py", line 168, in __init__
+    self.module.to(self.src_device_obj)
+    │              │    └ device(type='cuda', index=0)
+    │              └ DataParallel(
+    │                  (module): Model(
+    │                    (FeatureExtraction): VGG_FeatureExtractor(
+    │                      (ConvNet): Sequential(
+    │                        (0): Con...
+    └ DataParallel(
+        (module): Model(
+          (FeatureExtraction): VGG_FeatureExtractor(
+            (ConvNet): Sequential(
+              (0): Con...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 1340, in to
+    return self._apply(convert)
+           │    │      └ <function Module.to.<locals>.convert at 0x000001B8A09594E0>
+           │    └ <function Module._apply at 0x000001B6344574C0>
+           └ Model(
+               (FeatureExtraction): VGG_FeatureExtractor(
+                 (ConvNet): Sequential(
+                   (0): Conv2d(1, 32, kernel_size=(3, 3), s...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000001B8A09594E0>
+    │      └ <function Module._apply at 0x000001B6344574C0>
+    └ Sequential(
+        (0): BidirectionalLSTM(
+          (rnn): LSTM(256, 256, batch_first=True, bidirectional=True)
+          (linear): Linear(in...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000001B8A09594E0>
+    │      └ <function Module._apply at 0x000001B6344574C0>
+    └ BidirectionalLSTM(
+        (rnn): LSTM(256, 256, batch_first=True, bidirectional=True)
+        (linear): Linear(in_features=512, out_feat...
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\module.py", line 900, in _apply
+    module._apply(fn)
+    │      │      └ <function Module.to.<locals>.convert at 0x000001B8A09594E0>
+    │      └ <function RNNBase._apply at 0x000001B6347A7060>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 288, in _apply
+    self._init_flat_weights()
+    │    └ <function RNNBase._init_flat_weights at 0x000001B6347A6E80>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 215, in _init_flat_weights
+    self.flatten_parameters()
+    │    └ <function RNNBase.flatten_parameters at 0x000001B6347A6FC0>
+    └ LSTM(256, 256, batch_first=True, bidirectional=True)
+  File "C:\Users\PC\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 269, in flatten_parameters
+    torch._cudnn_rnn_flatten_weight(
+    │     └ <built-in method _cudnn_rnn_flatten_weight of type object at 0x00007FF947415250>
+    └ <module 'torch' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\torch\\__init__.py'>
+
+RuntimeError: CUDA error: no kernel image is available for execution on the device
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2026-02-26 15:00:00 | INFO | 🌐 Web interface available at http://0.0.0.0:8000
+2026-02-26 15:00:00 | INFO | 📦 Flask debug mode: False
+2026-02-26 15:00:00 | INFO | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.1.200:8000
+2026-02-26 15:00:00 | INFO | [33mPress CTRL+C to quit[0m
+2026-02-26 15:00:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:00:00] "GET /socket.io/?EIO=4&transport=polling&t=PoQFyq5 HTTP/1.1" 200 -
+2026-02-26 15:00:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:00:00] "POST /socket.io/?EIO=4&transport=polling&t=PoQFzJo&sid=Kz7k7Q1k7Y3ZZjY4AAAA HTTP/1.1" 200 -
+2026-02-26 15:00:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:00:00] "GET /socket.io/?EIO=4&transport=polling&t=PoQFzJo.0&sid=Kz7k7Q1k7Y3ZZjY4AAAA HTTP/1.1" 200 -
+2026-02-26 15:11:51 | INFO | 127.0.0.1 - - [26/Feb/2026 15:11:51] "[32mGET /dashboard HTTP/1.1[0m" 302 -
+2026-02-26 15:11:51 | INFO | 127.0.0.1 - - [26/Feb/2026 15:11:51] "GET /login?next=/dashboard HTTP/1.1" 200 -
+2026-02-26 15:11:52 | INFO | 127.0.0.1 - - [26/Feb/2026 15:11:52] "GET /socket.io/?EIO=4&transport=websocket&sid=Kz7k7Q1k7Y3ZZjY4AAAA HTTP/1.1" 200 -
+2026-02-26 15:11:52 | INFO | 127.0.0.1 - - [26/Feb/2026 15:11:52] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:29 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:29] "POST /login?next=/dashboard HTTP/1.1" 200 -
+2026-02-26 15:13:29 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:29] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "[32mPOST /login?next=/dashboard HTTP/1.1[0m" 302 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "GET /dashboard HTTP/1.1" 200 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ41k HTTP/1.1" 200 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "POST /socket.io/?EIO=4&transport=polling&t=PoQJ41p&sid=A_nDvWYgAetsmx9LAAAC HTTP/1.1" 200 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ41p.0&sid=A_nDvWYgAetsmx9LAAAC HTTP/1.1" 200 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ425&sid=A_nDvWYgAetsmx9LAAAC HTTP/1.1" 200 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "[36mGET /static/sw.js HTTP/1.1[0m" 304 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "[32mGET / HTTP/1.1[0m" 302 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "[36mGET /static/css/modern.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:34 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:34] "GET /dashboard HTTP/1.1" 200 -
+2026-02-26 15:13:40 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:40] "GET /documents HTTP/1.1" 200 -
+2026-02-26 15:13:40 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:40] "GET /socket.io/?EIO=4&transport=websocket&sid=A_nDvWYgAetsmx9LAAAC HTTP/1.1" 200 -
+2026-02-26 15:13:40 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:40] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:40 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:40] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ5d6 HTTP/1.1" 200 -
+2026-02-26 15:13:40 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:40] "POST /socket.io/?EIO=4&transport=polling&t=PoQJ5dY&sid=i5vcH0fhQndFs5AgAAAE HTTP/1.1" 200 -
+2026-02-26 15:13:40 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:40] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ5dZ&sid=i5vcH0fhQndFs5AgAAAE HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "GET /batch_process HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "GET /socket.io/?EIO=4&transport=websocket&sid=i5vcH0fhQndFs5AgAAAE HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6Cj HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "POST /socket.io/?EIO=4&transport=polling&t=PoQJ6D0&sid=kOHos1_0CDxqBTI1AAAG HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6D0.0&sid=kOHos1_0CDxqBTI1AAAG HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6D7&sid=kOHos1_0CDxqBTI1AAAG HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "GET /upload HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "GET /socket.io/?EIO=4&transport=websocket&sid=kOHos1_0CDxqBTI1AAAG HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6K4 HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "POST /socket.io/?EIO=4&transport=polling&t=PoQJ6KK&sid=SKgIjJa50B5F3FTkAAAI HTTP/1.1" 200 -
+2026-02-26 15:13:43 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:43] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6KL&sid=SKgIjJa50B5F3FTkAAAI HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /tasks HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /socket.io/?EIO=4&transport=websocket&sid=SKgIjJa50B5F3FTkAAAI HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6jb HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "POST /socket.io/?EIO=4&transport=polling&t=PoQJ6ji&sid=Ykx8yMJDs6hmBi76AAAK HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /api/tasks HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6jj&sid=Ykx8yMJDs6hmBi76AAAK HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6jq&sid=Ykx8yMJDs6hmBi76AAAK HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /batch_process HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /socket.io/?EIO=4&transport=websocket&sid=Ykx8yMJDs6hmBi76AAAK HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6pl HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "POST /socket.io/?EIO=4&transport=polling&t=PoQJ6pr&sid=CtaSI9fp07Rgi8pZAAAM HTTP/1.1" 200 -
+2026-02-26 15:13:45 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:45] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6pr.0&sid=CtaSI9fp07Rgi8pZAAAM HTTP/1.1" 200 -
+2026-02-26 15:13:46 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:46] "GET /tasks HTTP/1.1" 200 -
+2026-02-26 15:13:46 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:46] "GET /socket.io/?EIO=4&transport=websocket&sid=CtaSI9fp07Rgi8pZAAAM HTTP/1.1" 200 -
+2026-02-26 15:13:46 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:46] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:46 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:46] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6wf HTTP/1.1" 200 -
+2026-02-26 15:13:46 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:46] "GET /api/tasks HTTP/1.1" 200 -
+2026-02-26 15:13:46 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:46] "POST /socket.io/?EIO=4&transport=polling&t=PoQJ6wn&sid=5kqQLXBv6KqODZTqAAAO HTTP/1.1" 200 -
+2026-02-26 15:13:46 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:46] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ6wn.0&sid=5kqQLXBv6KqODZTqAAAO HTTP/1.1" 200 -
+2026-02-26 15:13:51 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:51] "GET /api/tasks HTTP/1.1" 200 -
+2026-02-26 15:13:55 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:55] "GET /chat HTTP/1.1" 200 -
+2026-02-26 15:13:55 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:55] "GET /socket.io/?EIO=4&transport=websocket&sid=5kqQLXBv6KqODZTqAAAO HTTP/1.1" 200 -
+2026-02-26 15:13:55 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:55] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:55 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:55] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ9C8 HTTP/1.1" 200 -
+2026-02-26 15:13:55 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:55] "GET /api/chat/history?session_id=1303d354-d346-441c-81c4-332dffedf8e3 HTTP/1.1" 200 -
+2026-02-26 15:13:55 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:55] "POST /socket.io/?EIO=4&transport=polling&t=PoQJ9CH&sid=nGArP4M5srUZvFqiAAAQ HTTP/1.1" 200 -
+2026-02-26 15:13:55 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:55] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ9CH.0&sid=nGArP4M5srUZvFqiAAAQ HTTP/1.1" 200 -
+2026-02-26 15:13:55 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:55] "GET /socket.io/?EIO=4&transport=polling&t=PoQJ9Cc&sid=nGArP4M5srUZvFqiAAAQ HTTP/1.1" 200 -
+2026-02-26 15:13:55 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:55] "GET /api/status/llm HTTP/1.1" 200 -
+2026-02-26 15:13:59 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:59] "GET /batch_process HTTP/1.1" 200 -
+2026-02-26 15:13:59 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:59] "GET /socket.io/?EIO=4&transport=websocket&sid=nGArP4M5srUZvFqiAAAQ HTTP/1.1" 200 -
+2026-02-26 15:13:59 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:59] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:13:59 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:59] "GET /socket.io/?EIO=4&transport=polling&t=PoQJAD1 HTTP/1.1" 200 -
+2026-02-26 15:13:59 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:59] "POST /socket.io/?EIO=4&transport=polling&t=PoQJAD6&sid=vE9xKwmowgBTa-OzAAAS HTTP/1.1" 200 -
+2026-02-26 15:13:59 | INFO | 127.0.0.1 - - [26/Feb/2026 15:13:59] "GET /socket.io/?EIO=4&transport=polling&t=PoQJAD7&sid=vE9xKwmowgBTa-OzAAAS HTTP/1.1" 200 -
+2026-02-26 15:14:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:14:30] "GET /dashboard HTTP/1.1" 200 -
+2026-02-26 15:14:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:14:30] "GET /socket.io/?EIO=4&transport=websocket&sid=vE9xKwmowgBTa-OzAAAS HTTP/1.1" 200 -
+2026-02-26 15:14:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:14:30] "[36mGET /static/css/obsidian.css HTTP/1.1[0m" 304 -
+2026-02-26 15:14:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:14:30] "GET /socket.io/?EIO=4&transport=polling&t=PoQJHkg HTTP/1.1" 200 -
+2026-02-26 15:14:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:14:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:14:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:14:30] "POST /socket.io/?EIO=4&transport=polling&t=PoQJHky&sid=g-Jd6tdK-9uGuZb7AAAU HTTP/1.1" 200 -
+2026-02-26 15:14:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:14:30] "GET /socket.io/?EIO=4&transport=polling&t=PoQJHkz&sid=g-Jd6tdK-9uGuZb7AAAU HTTP/1.1" 200 -
+2026-02-26 15:14:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:14:30] "GET /socket.io/?EIO=4&transport=polling&t=PoQJHl5&sid=g-Jd6tdK-9uGuZb7AAAU HTTP/1.1" 200 -
+2026-02-26 15:15:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:15:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:15:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:15:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:16:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:16:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:16:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:16:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:17:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:17:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:17:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:17:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:18:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:18:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:18:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:18:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:19:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:19:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:19:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:19:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:20:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:20:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:20:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:20:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:21:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:21:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:21:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:21:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:22:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:22:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:22:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:22:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:23:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:23:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:23:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:23:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:24:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:24:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:24:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:24:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:25:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:25:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:25:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:25:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:26:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:26:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:26:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:26:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:27:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:27:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:27:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:27:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:28:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:28:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:28:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:28:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:29:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:29:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:29:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:29:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:30:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:30:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:30:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:30:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:31:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:31:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:31:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:31:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:32:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:32:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:32:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:32:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:33:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:33:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:33:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:33:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:34:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:34:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:34:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:34:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:35:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:35:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:35:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:35:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:36:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:36:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:36:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:36:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:37:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:37:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:37:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:37:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:38:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:38:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:38:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:38:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:39:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:39:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:39:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:39:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:40:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:40:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:40:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:40:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:41:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:41:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:41:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:41:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:42:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:42:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:42:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:42:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:43:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:43:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:43:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:43:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:44:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:44:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:44:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:44:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:45:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:45:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:45:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:45:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:46:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:46:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:46:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:46:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:47:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:47:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:47:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:47:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:48:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:48:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:48:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:49:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:49:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:49:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:49:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:50:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:50:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:50:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:50:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:51:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:51:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:51:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:51:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:52:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:52:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:52:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:52:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:53:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:53:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:53:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:53:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:54:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:54:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:54:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:54:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:55:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:55:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:55:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:55:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:56:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:56:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:56:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:56:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:57:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:57:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:57:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:57:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:58:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:58:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:58:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:58:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:59:00 | INFO | 127.0.0.1 - - [26/Feb/2026 15:59:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 15:59:30 | INFO | 127.0.0.1 - - [26/Feb/2026 15:59:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:00:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:00:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:00:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:00:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:01:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:01:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:01:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:01:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:02:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:02:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:02:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:02:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:03:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:03:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:03:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:03:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:04:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:04:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:04:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:04:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:05:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:05:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:05:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:05:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:06:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:06:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:06:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:06:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:07:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:07:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:07:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:07:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:08:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:08:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:08:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:08:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:09:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:09:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:09:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:09:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:10:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:10:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:10:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:10:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:11:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:11:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:11:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:11:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:12:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:12:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:12:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:12:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:13:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:13:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:13:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:13:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:14:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:14:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:14:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:14:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:15:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:15:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:15:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:15:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:16:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:16:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:16:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:16:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:17:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:17:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:17:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:17:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:18:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:18:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:18:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:18:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:19:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:19:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:19:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:19:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:20:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:20:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:20:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:20:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:21:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:21:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:21:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:21:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:22:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:22:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:22:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:22:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:23:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:23:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:23:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:23:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:24:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:24:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:24:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:24:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:25:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:25:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:25:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:25:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:26:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:26:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:26:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:26:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:27:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:27:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:27:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:27:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:28:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:28:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:28:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:28:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:29:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:29:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:29:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:29:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:30:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:30:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:30:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:30:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:31:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:31:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:31:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:31:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:32:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:32:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:32:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:32:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:33:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:33:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:33:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:33:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:34:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:34:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:34:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:34:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:35:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:35:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:35:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:35:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:36:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:36:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:36:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:36:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:37:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:37:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:37:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:37:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:38:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:38:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:38:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:38:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:39:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:39:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:39:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:39:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:40:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:40:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:40:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:40:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:41:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:41:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:41:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:41:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:42:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:42:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:42:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:42:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:43:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:43:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:43:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:43:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:44:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:44:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:44:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:44:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:45:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:45:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:45:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:45:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:46:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:46:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:46:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:46:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:47:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:47:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:47:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:47:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:48:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:48:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:48:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:48:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:49:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:49:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:49:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:49:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:50:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:50:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:50:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:50:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:51:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:51:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:51:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:51:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:52:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:52:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:52:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:52:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:53:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:53:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:53:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:53:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:54:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:54:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:54:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:54:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:55:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:55:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:55:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:55:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:56:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:56:15 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:15] "GET /socket.io/?EIO=4&transport=websocket&sid=g-Jd6tdK-9uGuZb7AAAU HTTP/1.1" 200 -
+2026-02-26 16:56:16 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:16] "GET /socket.io/?EIO=4&transport=polling&t=PoQgaPi HTTP/1.1" 200 -
+2026-02-26 16:56:16 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:16] "POST /socket.io/?EIO=4&transport=polling&t=PoQgaQ1&sid=GuutucaQmBepokqsAAAW HTTP/1.1" 200 -
+2026-02-26 16:56:16 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:16] "GET /socket.io/?EIO=4&transport=polling&t=PoQgaQ9&sid=GuutucaQmBepokqsAAAW HTTP/1.1" 200 -
+2026-02-26 16:56:16 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:16] "GET /socket.io/?EIO=4&transport=polling&t=PoQgaQt&sid=GuutucaQmBepokqsAAAW HTTP/1.1" 200 -
+2026-02-26 16:56:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:56:33 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:33] "GET /socket.io/?EIO=4&transport=websocket&sid=GuutucaQmBepokqsAAAW HTTP/1.1" 200 -
+2026-02-26 16:56:34 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:34] "GET /socket.io/?EIO=4&transport=polling&t=PoQgeoX HTTP/1.1" 200 -
+2026-02-26 16:56:34 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:34] "POST /socket.io/?EIO=4&transport=polling&t=PoQgeos&sid=sWGqpYlm04qJ7fmBAAAY HTTP/1.1" 200 -
+2026-02-26 16:56:34 | INFO | 127.0.0.1 - - [26/Feb/2026 16:56:34] "GET /socket.io/?EIO=4&transport=polling&t=PoQgeos.0&sid=sWGqpYlm04qJ7fmBAAAY HTTP/1.1" 200 -
+2026-02-26 16:57:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:57:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:57:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:57:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:57:37 | INFO | 127.0.0.1 - - [26/Feb/2026 16:57:37] "GET /socket.io/?EIO=4&transport=websocket&sid=sWGqpYlm04qJ7fmBAAAY HTTP/1.1" 200 -
+2026-02-26 16:57:38 | INFO | 127.0.0.1 - - [26/Feb/2026 16:57:38] "GET /socket.io/?EIO=4&transport=polling&t=PoQguSb HTTP/1.1" 200 -
+2026-02-26 16:57:38 | INFO | 127.0.0.1 - - [26/Feb/2026 16:57:38] "POST /socket.io/?EIO=4&transport=polling&t=PoQguSk&sid=V38J3SpLQ2xQhazrAAAa HTTP/1.1" 200 -
+2026-02-26 16:57:38 | INFO | 127.0.0.1 - - [26/Feb/2026 16:57:38] "GET /socket.io/?EIO=4&transport=polling&t=PoQguSl&sid=V38J3SpLQ2xQhazrAAAa HTTP/1.1" 200 -
+2026-02-26 16:58:00 | INFO | 127.0.0.1 - - [26/Feb/2026 16:58:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:58:30 | INFO | 127.0.0.1 - - [26/Feb/2026 16:58:30] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 16:58:40 | INFO | 127.0.0.1 - - [26/Feb/2026 16:58:40] "GET /socket.io/?EIO=4&transport=websocket&sid=V38J3SpLQ2xQhazrAAAa HTTP/1.1" 200 -
+2026-02-26 19:40:10 | INFO | 127.0.0.1 - - [26/Feb/2026 19:40:10] "GET /socket.io/?EIO=4&transport=polling&t=PoRG5K7 HTTP/1.1" 200 -
+2026-02-26 19:40:10 | INFO | 127.0.0.1 - - [26/Feb/2026 19:40:10] "GET /api/status HTTP/1.1" 200 -
+2026-02-26 19:40:10 | INFO | 127.0.0.1 - - [26/Feb/2026 19:40:10] "POST /socket.io/?EIO=4&transport=polling&t=PoRG5LM&sid=NCFOAdMAo7wAvif0AAAc HTTP/1.1" 200 -
+2026-02-26 19:40:10 | INFO | 127.0.0.1 - - [26/Feb/2026 19:40:10] "GET /socket.io/?EIO=4&transport=polling&t=PoRG5LM.0&sid=NCFOAdMAo7wAvif0AAAc HTTP/1.1" 200 -
+2026-02-26 19:40:11 | INFO | 127.0.0.1 - - [26/Feb/2026 19:40:11] "GET /socket.io/?EIO=4&transport=polling&t=PoRG5LT&sid=NCFOAdMAo7wAvif0AAAc HTTP/1.1" 200 -
+2026-02-27 03:14:49 | INFO | 127.0.0.1 - - [27/Feb/2026 03:14:49] "GET /socket.io/?EIO=4&transport=websocket&sid=NCFOAdMAo7wAvif0AAAc HTTP/1.1" 200 -
+2026-02-27 03:14:50 | INFO | 127.0.0.1 - - [27/Feb/2026 03:14:50] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 03:14:50 | INFO | 127.0.0.1 - - [27/Feb/2026 03:14:50] "GET /socket.io/?EIO=4&transport=polling&t=PoSu9bH HTTP/1.1" 200 -
+2026-02-27 03:14:50 | INFO | 127.0.0.1 - - [27/Feb/2026 03:14:50] "POST /socket.io/?EIO=4&transport=polling&t=PoSu9bN&sid=t93ht5548oxKfrrAAAAe HTTP/1.1" 200 -
+2026-02-27 03:14:50 | INFO | 127.0.0.1 - - [27/Feb/2026 03:14:50] "GET /socket.io/?EIO=4&transport=polling&t=PoSu9bO&sid=t93ht5548oxKfrrAAAAe HTTP/1.1" 200 -
+2026-02-27 03:14:52 | INFO | 127.0.0.1 - - [27/Feb/2026 03:14:52] "GET /socket.io/?EIO=4&transport=polling&t=PoSu9bS&sid=t93ht5548oxKfrrAAAAe HTTP/1.1" 200 -
+2026-02-27 03:14:54 | INFO | 127.0.0.1 - - [27/Feb/2026 03:14:54] "GET /socket.io/?EIO=4&transport=websocket&sid=t93ht5548oxKfrrAAAAe HTTP/1.1" 200 -
+2026-02-27 07:27:43 | INFO | 127.0.0.1 - - [27/Feb/2026 07:27:43] "GET /socket.io/?EIO=4&transport=polling&t=PoTo1nA HTTP/1.1" 200 -
+2026-02-27 07:27:43 | INFO | 127.0.0.1 - - [27/Feb/2026 07:27:43] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 07:27:43 | INFO | 127.0.0.1 - - [27/Feb/2026 07:27:43] "POST /socket.io/?EIO=4&transport=polling&t=PoTo1nc&sid=jjPM3Mbl4WC6mmWAAAAg HTTP/1.1" 200 -
+2026-02-27 07:27:43 | INFO | 127.0.0.1 - - [27/Feb/2026 07:27:43] "GET /socket.io/?EIO=4&transport=polling&t=PoTo1nn&sid=jjPM3Mbl4WC6mmWAAAAg HTTP/1.1" 200 -
+2026-02-27 07:27:45 | INFO | 127.0.0.1 - - [27/Feb/2026 07:27:45] "GET /socket.io/?EIO=4&transport=polling&t=PoTo1nx&sid=jjPM3Mbl4WC6mmWAAAAg HTTP/1.1" 200 -
+2026-02-27 07:27:49 | INFO | 127.0.0.1 - - [27/Feb/2026 07:27:49] "GET /socket.io/?EIO=4&transport=websocket&sid=jjPM3Mbl4WC6mmWAAAAg HTTP/1.1" 200 -
+2026-02-27 08:00:55 | INFO | 127.0.0.1 - - [27/Feb/2026 08:00:55] "GET /socket.io/?EIO=4&transport=polling&t=PoTveCW HTTP/1.1" 200 -
+2026-02-27 08:00:55 | INFO | 127.0.0.1 - - [27/Feb/2026 08:00:55] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:00:55 | INFO | 127.0.0.1 - - [27/Feb/2026 08:00:55] "POST /socket.io/?EIO=4&transport=polling&t=PoTveCo&sid=AQmJwJloGW-Re9C7AAAi HTTP/1.1" 200 -
+2026-02-27 08:00:55 | INFO | 127.0.0.1 - - [27/Feb/2026 08:00:55] "GET /socket.io/?EIO=4&transport=polling&t=PoTveCp&sid=AQmJwJloGW-Re9C7AAAi HTTP/1.1" 200 -
+2026-02-27 08:00:57 | INFO | 127.0.0.1 - - [27/Feb/2026 08:00:57] "GET /socket.io/?EIO=4&transport=polling&t=PoTveCz&sid=AQmJwJloGW-Re9C7AAAi HTTP/1.1" 200 -
+2026-02-27 08:01:00 | INFO | 127.0.0.1 - - [27/Feb/2026 08:01:00] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:01:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:01:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:01:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:01:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:02:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:02:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:02:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:02:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:03:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:03:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:03:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:03:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:04:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:04:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:04:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:04:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:05:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:05:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:05:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:05:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:06:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:06:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:06:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:06:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:07:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:07:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:07:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:07:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:08:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:08:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:08:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:08:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:09:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:09:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:09:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:09:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:10:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:10:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:10:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:10:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:11:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:11:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:11:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:11:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:12:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:12:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:12:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:12:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:13:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:13:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:13:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:13:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:14:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:14:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:14:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:14:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:15:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:15:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:15:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:15:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:16:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:16:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:16:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:16:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:17:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:17:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:17:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:17:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:18:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:18:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:18:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:18:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:19:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:19:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:19:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:19:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:20:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:20:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:20:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:20:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:21:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:21:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:21:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:21:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:22:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:22:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:22:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:22:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:23:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:23:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:23:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:23:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:24:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:24:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:24:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:24:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:25:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:25:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:25:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:25:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:26:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:26:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:26:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:26:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:27:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:27:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:27:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:27:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:28:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:28:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:28:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:28:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:29:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:29:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:29:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:29:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:30:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:30:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:30:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:30:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:31:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:31:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:31:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:31:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:32:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:32:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:32:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:32:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:33:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:33:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:33:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:33:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:34:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:34:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:34:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:34:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:35:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:35:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:35:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:35:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:36:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:36:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:36:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:36:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:37:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:37:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:37:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:37:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:38:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:38:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:38:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:38:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:39:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:39:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:39:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:39:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:40:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:40:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:40:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:40:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:41:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:41:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:41:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:41:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:42:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:42:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:42:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:42:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:43:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:43:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:43:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:43:59] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:44:29 | INFO | 127.0.0.1 - - [27/Feb/2026 08:44:29] "GET /api/status HTTP/1.1" 200 -
+2026-02-27 08:44:59 | INFO | 127.0.0.1 - - [27/Feb/2026 08:44:59] "GET /api/status HTTP/1.1" 200 -

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es" data-bs-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}AutoOCR - Autenticación{% endblock %}</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Obsidian Flow Design System -->
+    <link href="{{ url_for('static', filename='css/obsidian.css') }}" rel="stylesheet">
+    
+    <style>
+        /* Auth-specific overrides */
+        .auth-page-wrapper {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-overlay);
+            background-image: 
+                radial-gradient(ellipse at top, rgba(13, 148, 136, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+            padding: var(--space-4);
+        }
+        
+        .auth-card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xl);
+            padding: var(--space-8);
+            box-shadow: var(--shadow-xl);
+            animation: slideUp 0.4s ease;
+        }
+        
+        .auth-logo {
+            text-align: center;
+            margin-bottom: var(--space-8);
+        }
+        
+        .auth-logo h1 {
+            font-family: var(--font-display);
+            font-size: 2rem;
+            font-weight: var(--font-bold);
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
+        }
+        
+        .auth-logo h1 span {
+            color: var(--color-primary);
+        }
+        
+        .auth-logo p {
+            font-size: var(--text-sm);
+            color: var(--text-muted);
+            margin-top: var(--space-2);
+        }
+        
+        .auth-footer {
+            margin-top: var(--space-6);
+            text-align: center;
+            font-size: var(--text-sm);
+            color: var(--text-muted);
+        }
+        
+        .auth-footer a {
+            color: var(--color-primary-light);
+            font-weight: var(--font-medium);
+        }
+        
+        .auth-divider {
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+            margin: var(--space-6) 0;
+            color: var(--text-muted);
+            font-size: var(--text-sm);
+        }
+        
+        .auth-divider::before,
+        .auth-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-subtle);
+        }
+        
+        .form-icon {
+            position: absolute;
+            left: var(--space-4);
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            z-index: 10;
+        }
+        
+        .form-input-with-icon {
+            padding-left: calc(var(--space-4) + 24px);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="auth-page-wrapper">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'error' else 'info' }} alert-dismissible fade show position-fixed" 
+             style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;" role="alert">
+            <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' if category == 'error' else 'info-circle' }}"></i>
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="auth-card">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // CSRF Token Handler
+        (function() {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            const token = meta ? meta.getAttribute('content') : '';
+            if (!token || typeof window.fetch !== 'function') return;
+
+            function isSameOrigin(url) {
+                try {
+                    const target = new URL(url, window.location.href);
+                    return target.origin === window.location.origin;
+                } catch (_) {
+                    return true;
+                }
+            }
+
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = function(input, init) {
+                const opts = init ? {...init} : {};
+                const method = String(opts.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+                const url = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+
+                if (isSameOrigin(url) && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+                    const headers = new Headers(opts.headers || (input instanceof Request ? input.headers : undefined));
+                    headers.set('X-CSRFToken', token);
+                    opts.headers = headers;
+                }
+                return originalFetch(input, opts);
+            };
+            window.__csrfToken = token;
+        })();
+
+        // Auto-hide alerts
+        setTimeout(function() {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function(alert) {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            });
+        }, 5000);
+    </script>
+</body>
+
+</html>

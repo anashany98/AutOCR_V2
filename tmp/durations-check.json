@@ -1,0 +1,107 @@
+{
+  "source": "tmp\\full-junit-optimized.xml",
+  "total_seconds": 0.865,
+  "top": 10,
+  "files": [
+    {
+      "file": "tests/test_auth_security_regressions.py",
+      "seconds": 0.355
+    },
+    {
+      "file": "tests/test_vision_manager.py",
+      "seconds": 0.292
+    },
+    {
+      "file": "tests/test_pdf_chunking.py",
+      "seconds": 0.06
+    },
+    {
+      "file": "tests/test_chat_security.py",
+      "seconds": 0.052
+    },
+    {
+      "file": "tests/test_tool_manager_scoping.py",
+      "seconds": 0.046
+    },
+    {
+      "file": "tests/test_pipeline.py",
+      "seconds": 0.03
+    },
+    {
+      "file": "tests/test_field_quality_baseline.py",
+      "seconds": 0.022
+    },
+    {
+      "file": "tests/test_table_manager.py",
+      "seconds": 0.005
+    },
+    {
+      "file": "tests/test_field_extraction_core.py",
+      "seconds": 0.002
+    },
+    {
+      "file": "tests/test_process_blocks.py",
+      "seconds": 0.001
+    },
+    {
+      "file": "tests/test_config_normalizer.py",
+      "seconds": 0.0
+    },
+    {
+      "file": "tests/test_fusion_manager.py",
+      "seconds": 0.0
+    }
+  ],
+  "tests_top": [
+    {
+      "nodeid": "tests.test_vision_manager::test_build_and_search_roundtrip",
+      "file": "tests/test_vision_manager.py",
+      "seconds": 0.292
+    },
+    {
+      "nodeid": "tests.test_auth_security_regressions::test_public_register_cannot_escalate_role_and_requires_verified_email",
+      "file": "tests/test_auth_security_regressions.py",
+      "seconds": 0.193
+    },
+    {
+      "nodeid": "tests.test_auth_security_regressions::test_user_role_and_scope_updates_work_in_sqlite",
+      "file": "tests/test_auth_security_regressions.py",
+      "seconds": 0.073
+    },
+    {
+      "nodeid": "tests.test_pdf_chunking::test_workflow_pending_when_visual_text_missing",
+      "file": "tests/test_pdf_chunking.py",
+      "seconds": 0.037
+    },
+    {
+      "nodeid": "tests.test_chat_security::test_chat_history_scoped_by_user_id",
+      "file": "tests/test_chat_security.py",
+      "seconds": 0.03
+    },
+    {
+      "nodeid": "tests.test_auth_security_regressions::test_get_document_path_works_with_legacy_path_column",
+      "file": "tests/test_auth_security_regressions.py",
+      "seconds": 0.026
+    },
+    {
+      "nodeid": "tests.test_pdf_chunking::test_pdf_chunking_uses_ranges_and_global_pages",
+      "file": "tests/test_pdf_chunking.py",
+      "seconds": 0.023
+    },
+    {
+      "nodeid": "tests.test_tool_manager_scoping::test_tool_export_respects_hotel_scope",
+      "file": "tests/test_tool_manager_scoping.py",
+      "seconds": 0.016
+    },
+    {
+      "nodeid": "tests.test_tool_manager_scoping::test_tool_update_document_type_scoped",
+      "file": "tests/test_tool_manager_scoping.py",
+      "seconds": 0.015
+    },
+    {
+      "nodeid": "tests.test_tool_manager_scoping::test_client_cannot_execute_document_mutation_tools",
+      "file": "tests/test_tool_manager_scoping.py",
+      "seconds": 0.015
+    }
+  ]
+}

@@ -57,8 +57,40 @@
                     <button type="submit" id="send-btn" class="btn btn-info px-4">
                         <i class="fas fa-paper-plane"></i>
                     </button>
+                    <button type="button" id="stop-btn" class="btn btn-outline-warning d-none" title="Detener respuesta">
+                        <i class="fas fa-stop"></i>
+                    </button>
                 </form>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Floating Shopping Cart -->
+<div class="cart-floating">
+    <button id="cart-toggle" class="cart-icon-btn">
+        <i class="fas fa-shopping-basket"></i>
+        <span id="cart-badge" class="cart-count">0</span>
+    </button>
+    <div id="cart-panel" class="cart-panel">
+        <div class="cart-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-shopping-cart me-2 text-primary"></i> Mi Carrito</h6>
+            <button class="btn btn-sm text-muted" id="cart-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="cart-items" class="p-3 overflow-auto custom-scrollbar" style="max-height: 300px;">
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-cart-plus fa-2x mb-2 opacity-25"></i>
+                <p class="small mb-0">Tu carrito está vacío</p>
+            </div>
+        </div>
+        <div class="p-3 border-top border-secondary border-opacity-25 bg-dark bg-opacity-25">
+            <div class="d-flex justify-content-between mb-3">
+                <span class="text-muted">Total:</span>
+                <span id="cart-total" class="fw-bold text-primary">0.00€</span>
+            </div>
+            <button class="btn btn-primary w-100 py-2 rounded-pill shadow-sm">
+                Finalizar Compra <i class="fas fa-arrow-right ms-2"></i>
+            </button>
         </div>
     </div>
 </div>
@@ -76,8 +108,73 @@
         const history = document.getElementById('chat-history');
         const rebuildBtn = document.getElementById('rebuild-btn');
         const micBtn = document.getElementById('mic-btn');
+        const sendBtn = document.getElementById('send-btn');
+        const stopBtn = document.getElementById('stop-btn');
 
         let selectedFile = null;
+        let isSending = false;
+        let activeStreamController = null;
+
+        function setInputState(disabled) {
+            input.disabled = disabled;
+            imageInput.disabled = disabled;
+            micBtn.disabled = disabled;
+            sendBtn.disabled = disabled;
+        }
+
+        function setStopVisible(visible) {
+            stopBtn.classList.toggle('d-none', !visible);
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function sanitizeDocId(raw) {
+            const id = String(raw || '').trim();
+            return /^\d+$/.test(id) ? id : '';
+        }
+
+        function sanitizeImageUrl(rawUrl) {
+            const value = String(rawUrl || '').trim();
+            if (!value) return 'https://via.placeholder.com/150';
+            if (/^https?:\/\//i.test(value)) return value;
+            return `/view_document_file/product?path=${encodeURIComponent(value)}`;
+        }
+
+        function formatAnswerWithCitations(text) {
+            const safeText = escapeHtml(text || '');
+            return safeText.replace(/\[ID:\s*(\d+)\]/g, (_, id) => {
+                const cleanId = sanitizeDocId(id);
+                if (!cleanId) return `[ID: ${escapeHtml(id)}]`;
+                return `<a href="/document/${cleanId}" target="_blank" class="badge bg-info text-decoration-none mx-1 hover-shadow" title="Ver documento fuente" style="cursor: pointer; vertical-align: text-bottom;"><i class="fas fa-file-alt me-1"></i>[ID: ${cleanId}]</a>`;
+            });
+        }
+
+        function bindAddToCartActions(rootElement) {
+            if (!rootElement) return;
+            const buttons = rootElement.querySelectorAll('.js-add-cart');
+            buttons.forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const sku = String(btn.dataset.sku || '').trim();
+                    const name = String(btn.dataset.name || '').trim();
+                    const price = Number.parseFloat(btn.dataset.price || '0');
+                    if (!sku || !name) return;
+                    window.addToCart(sku, name, Number.isFinite(price) ? price : 0);
+                });
+            });
+        }
+
+        stopBtn.addEventListener('click', () => {
+            if (activeStreamController) {
+                activeStreamController.abort('cancelled_by_user');
+            }
+        });
 
         // --- Session Management ---
         function getSessionId() {
@@ -148,6 +245,8 @@
             div.appendChild(bubble);
             history.appendChild(div);
             history.scrollTop = history.scrollHeight;
+
+            return { div, bubble, contentDiv };
         }
 
         // Load History
@@ -159,10 +258,8 @@
                     // Clear placeholder
                     history.innerHTML = '';
                     data.history.forEach(msg => {
-                        // Assuming msg structure: {role: 'user'|'assistant', content: '...', timestamp: '...'}
-                        // Heuristic to detect HTML content (e.g. tool output or formatting)
-                        const isHtml = msg.role === 'assistant' || msg.content.includes('<');
-                        appendMessage(msg.role, msg.content, isHtml);
+                        // Persisted history is stored as plain text in DB.
+                        appendMessage(msg.role, msg.content, false);
                     });
                     // Scroll to bottom after loading
                     setTimeout(() => history.scrollTop = history.scrollHeight, 100);
@@ -173,7 +270,82 @@
         }
         loadHistory();
 
+        // --- Shopping Cart Logic ---
+        let cart = [];
+        const cartToggle = document.getElementById('cart-toggle');
+        const cartPanel = document.getElementById('cart-panel');
+        const cartClose = document.getElementById('cart-close');
+        const cartItems = document.getElementById('cart-items');
+        const cartBadge = document.getElementById('cart-badge');
+        const cartTotal = document.getElementById('cart-total');
+
+        cartToggle.addEventListener('click', () => {
+            cartPanel.classList.toggle('show');
+        });
+
+        cartClose.addEventListener('click', () => {
+            cartPanel.classList.remove('show');
+        });
+
+        window.addToCart = (sku, name, price) => {
+            const existing = cart.find(item => item.sku === sku);
+            if (existing) {
+                existing.qty++;
+            } else {
+                cart.push({ sku, name, price, qty: 1 });
+            }
+            updateCartUI();
+
+            // Subtle animation on cart button
+            cartToggle.classList.add('animate-pulse');
+            setTimeout(() => cartToggle.classList.remove('animate-pulse'), 500);
+        };
+
+        function updateCartUI() {
+            if (cart.length === 0) {
+                cartItems.innerHTML = `
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-cart-plus fa-2x mb-2 opacity-25"></i>
+                        <p class="small mb-0">Tu carrito está vacío</p>
+                    </div>
+                `;
+                cartBadge.textContent = '0';
+                cartTotal.textContent = '0.00€';
+                return;
+            }
+
+            let total = 0;
+            let count = 0;
+            cartItems.innerHTML = cart.map(item => {
+                total += item.price * item.qty;
+                count += item.qty;
+                return `
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="min-width-0">
+                            <h6 class="mb-0 small fw-bold text-truncate">${item.name}</h6>
+                            <small class="text-muted">${item.qty} x ${item.price}€</small>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                             <span class="fw-bold" style="color: var(--primary-color)">${(item.price * item.qty).toFixed(2)}€</span>
+                             <button class="btn btn-sm btn-outline-danger border-0 p-1" onclick="removeFromCart('${item.sku}')">
+                                <i class="fas fa-trash-alt"></i>
+                             </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            cartBadge.textContent = count;
+            cartTotal.textContent = total.toFixed(2) + '€';
+        }
+
+        window.removeFromCart = (sku) => {
+            cart = cart.filter(item => item.sku !== sku);
+            updateCartUI();
+        };
+
         // --- Voice Recording ---
+
         let mediaRecorder;
         let audioChunks = [];
         let isRecording = false;
@@ -214,14 +386,16 @@
         });
 
         async function sendVoiceChat(blob) {
+            if (isSending) return;
+            isSending = true;
             appendMessage('user', '🎤 Comandando de voz...', false);
 
             const formData = new FormData();
             formData.append('audio', blob, 'voice.wav');
             formData.append('session_id', sessionId);
 
-            input.disabled = true;
-            micBtn.disabled = true;
+            setInputState(true);
+            setStopVisible(false);
 
             try {
                 const res = await fetch('/api/chat/voice', {
@@ -239,64 +413,263 @@
                 appendMessage('bot', 'Error al procesar voz.');
                 console.error(err);
             } finally {
-                input.disabled = false;
-                micBtn.disabled = false;
+                isSending = false;
+                setInputState(false);
+                setStopVisible(false);
             }
         }
 
-        function handleAssistantResponse(data) {
-            function formatCitations(text) {
-                if (!text) return "";
-                return text.replace(/\[ID:\s*(\d+)\]/g, (match, id) => {
-                    return `<a href="/document/${id}" target="_blank" class="badge bg-info text-decoration-none mx-1 hover-shadow" title="Ver documento fuente" style="cursor: pointer; vertical-align: text-bottom;"><i class="fas fa-file-alt me-1"></i>${match}</a>`;
-                });
+        function handleAssistantResponse(data, targetContentDiv = null) {
+            const rawAnswer = String((data && data.answer) || '');
+            const cartMatch = rawAnswer.match(/\[CART_ACTION\]\s+(\{.*?\})/);
+            if (cartMatch) {
+                try {
+                    const cartJson = cartMatch[1].replace(/'/g, '"');
+                    const cartData = JSON.parse(cartJson);
+                    if (cartData.sku && cartData.name) {
+                        window.addToCart(String(cartData.sku), String(cartData.name), Number(cartData.price) || 0);
+                    }
+                } catch (e) {
+                    console.error('Error parsing cart action:', e);
+                }
             }
 
-            if (data.answer) {
-                const formattedAnswer = formatCitations(data.answer);
+            const cleanedAnswer = rawAnswer.replace(/\[CART_ACTION\]\s+\{.*?\}/g, '').trim();
+            if (cleanedAnswer) {
+                const formattedAnswer = formatAnswerWithCitations(cleanedAnswer);
+                const safeTranscription = data && data.transcription
+                    ? `<p class="small text-muted mb-2 fst-italic">Transcripcion: "${escapeHtml(data.transcription)}"</p>`
+                    : '';
                 const answerHtml = `
                     <div class="mb-3">
-                        ${data.transcription ? `<p class="small text-muted mb-2 fst-italic">Transcripción: "${data.transcription}"</p>` : ''}
+                        ${safeTranscription}
                         <h6 class="fw-bold text-info mb-2"><i class="fas fa-robot me-2"></i>Respuesta Inteligente:</h6>
                         <div class="text-light" style="white-space: pre-wrap;">${formattedAnswer}</div>
                     </div>
                     <hr class="border-secondary mb-3">
                 `;
-                appendMessage('bot', answerHtml, true);
+                if (targetContentDiv) {
+                    targetContentDiv.innerHTML = answerHtml;
+                } else {
+                    appendMessage('bot', answerHtml, true);
+                }
             }
 
-            if (data.results && data.results.length > 0) {
-                let html = '<h6 class="fw-bold mb-2 small text-muted"><i class="fas fa-search-location me-2"></i>Fuentes utilizadas:</h6>';
-                data.results.forEach(item => {
-                    const score = (item.score || 0).toFixed(2);
-                    const filename = item.filename || "Desconocido";
-                    const docId = item.doc_id || item.id;
-                    const text = item.text || item.snippet || "";
-                    const link = `/document/${docId}`;
-                    html += `
-                        <div class="mb-2 p-2 rounded bg-dark border border-secondary border-opacity-25">
-                            <div class="d-flex justify-content-between small text-info mb-1">
-                                <span><i class="fas fa-file-alt me-1"></i> ${filename}</span>
-                                <span class="badge bg-secondary bg-opacity-25">${score}</span>
+            if (Array.isArray(data && data.results) && data.results.length > 0) {
+                const isProductList = data.results.some((item) => item && (item.price !== undefined || item.sku));
+
+                if (isProductList) {
+                    let html = '<h6 class="fw-bold mb-3 small text-muted"><i class="fas fa-tags me-2"></i>Productos recomendados:</h6>';
+                    html += '<div class="row g-2">';
+                    data.results.forEach((item) => {
+                        const scoreNumber = Number(item && item.score);
+                        const score = Number.isFinite(scoreNumber) ? scoreNumber.toFixed(2) : '0.00';
+                        const nameRaw = String((item && item.name) || 'Producto sin nombre');
+                        const skuRaw = String((item && item.sku) || '');
+                        const priceNumber = Number(item && item.price);
+                        const price = Number.isFinite(priceNumber) ? priceNumber : 0;
+                        const image = sanitizeImageUrl(item && item.image_url);
+
+                        const safeName = escapeHtml(nameRaw);
+                        const safeSku = escapeHtml(skuRaw || 'N/A');
+                        const safeSkuAttr = escapeHtml(skuRaw);
+                        const safeNameAttr = escapeHtml(nameRaw);
+                        const safePriceAttr = escapeHtml(price.toString());
+                        const disabledAttr = skuRaw ? '' : 'disabled';
+
+                        html += `
+                            <div class="col-12 col-md-6 mb-2">
+                                <div class="product-card">
+                                    <div class="d-flex gap-3">
+                                        <div class="product-img-wrapper flex-shrink-0">
+                                            <img src="${image}" alt="${safeName}" onerror="this.src='https://via.placeholder.com/150'">
+                                        </div>
+                                        <div class="flex-grow-1 min-width-0">
+                                            <div class="d-flex justify-content-between">
+                                                <h6 class="text-truncate mb-0 fw-bold" title="${safeName}">${safeName}</h6>
+                                                <span class="badge bg-secondary bg-opacity-10 text-muted" style="font-size: 0.6rem;">${score}</span>
+                                            </div>
+                                            <p class="small text-muted mb-1" style="font-size: 0.7rem;">SKU: ${safeSku}</p>
+                                            <div class="d-flex justify-content-between align-items-end mt-1">
+                                                <span class="product-price">${price.toFixed(2)} EUR</span>
+                                                <button class="btn-add-cart js-add-cart" data-sku="${safeSkuAttr}" data-name="${safeNameAttr}" data-price="${safePriceAttr}" ${disabledAttr}>
+                                                    <i class="fas fa-cart-plus"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <p class="mb-1 small text-white-50 fst-italic">"...${text.substring(0, 150)}..."</p>
-                            <a href="${link}" target="_blank" class="btn btn-xs btn-outline-light py-0" style="font-size: 0.7rem;">Ver documento</a>
-                        </div>
-                    `;
-                });
-                appendMessage('bot', html, true);
-            } else if (!data.answer) {
-                appendMessage('bot', 'No encontré información relevante.');
+                        `;
+                    });
+                    html += '</div>';
+                    const rendered = appendMessage('bot', html, true);
+                    bindAddToCartActions(rendered.contentDiv);
+                } else {
+                    let html = '<h6 class="fw-bold mb-2 small text-muted"><i class="fas fa-search-location me-2"></i>Fuentes utilizadas:</h6>';
+                    data.results.forEach((item) => {
+                        const scoreNumber = Number(item && item.score);
+                        const score = Number.isFinite(scoreNumber) ? scoreNumber.toFixed(2) : '0.00';
+                        const filename = escapeHtml(String((item && item.filename) || 'Desconocido'));
+                        const cleanDocId = sanitizeDocId(item && (item.doc_id || item.id));
+                        const text = escapeHtml(String((item && (item.text || item.snippet)) || '').substring(0, 150));
+                        const link = cleanDocId ? `/document/${cleanDocId}` : '#';
+
+                        html += `
+                            <div class="mb-2 p-2 rounded bg-dark border border-secondary border-opacity-25">
+                                <div class="d-flex justify-content-between small text-info mb-1">
+                                    <span><i class="fas fa-file-alt me-1"></i> ${filename}</span>
+                                    <span class="badge bg-secondary bg-opacity-25">${score}</span>
+                                </div>
+                                <p class="mb-1 small text-white-50 fst-italic">"...${text}..."</p>
+                                ${cleanDocId ? `<a href="${link}" target="_blank" class="btn btn-xs btn-outline-light py-0" style="font-size: 0.7rem;">Ver documento</a>` : ''}
+                            </div>
+                        `;
+                    });
+                    appendMessage('bot', html, true);
+                }
+            } else if (!cleanedAnswer) {
+                if (targetContentDiv) {
+                    targetContentDiv.textContent = 'No encontre informacion relevante.';
+                    targetContentDiv.style.whiteSpace = 'pre-wrap';
+                } else {
+                    appendMessage('bot', 'No encontre informacion relevante.');
+                }
             }
         }
+        async function sendChatStream(query) {
+            const botMsg = appendMessage('bot', '', false);
+            let accumulated = '';
+            let meta = null;
+            let final = null;
+            let buffer = '';
 
+            const streamController = new AbortController();
+            activeStreamController = streamController;
+            setStopVisible(true);
+
+            const STREAM_IDLE_TIMEOUT_MS = 90000;
+            let timeoutHandle = null;
+
+            const armTimeout = () => {
+                if (timeoutHandle) clearTimeout(timeoutHandle);
+                timeoutHandle = setTimeout(() => {
+                    if (activeStreamController === streamController) {
+                        streamController.abort('stream_timeout');
+                    }
+                }, STREAM_IDLE_TIMEOUT_MS);
+            };
+
+            const processNdjsonLine = (line) => {
+                const trimmed = (line || '').trim();
+                if (!trimmed) return;
+
+                let msg = null;
+                try {
+                    msg = JSON.parse(trimmed);
+                } catch (_) {
+                    return;
+                }
+
+                if (msg.type === 'meta') {
+                    meta = msg;
+                    return;
+                }
+
+                if (msg.type === 'delta') {
+                    const chunk = msg.content || '';
+                    if (!chunk) return;
+                    accumulated += chunk;
+                    botMsg.contentDiv.textContent = accumulated;
+                    botMsg.contentDiv.style.whiteSpace = 'pre-wrap';
+                    history.scrollTop = history.scrollHeight;
+                    return;
+                }
+
+                if (msg.type === 'final') {
+                    final = msg;
+                }
+            };
+
+            try {
+                armTimeout();
+                const res = await fetch('/api/chat/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query, session_id: sessionId }),
+                    signal: streamController.signal
+                });
+
+                if (!res.ok) {
+                    let errMsg = 'Error al consultar el servicio.';
+                    try {
+                        const errData = await res.json();
+                        errMsg = errData.error || errData.answer || JSON.stringify(errData);
+                    } catch (_) {
+                        try { errMsg = await res.text(); } catch (_) {}
+                    }
+                    botMsg.contentDiv.textContent = errMsg;
+                    botMsg.contentDiv.style.whiteSpace = 'pre-wrap';
+                    history.scrollTop = history.scrollHeight;
+                    return;
+                }
+                if (!res.body) throw new Error('Stream failed');
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    armTimeout();
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    lines.forEach(processNdjsonLine);
+                }
+
+                if (buffer && buffer.trim()) {
+                    processNdjsonLine(buffer);
+                }
+
+                const out = final || meta || {};
+                if (!out.answer) out.answer = accumulated;
+                if (!out.results) out.results = (meta && Array.isArray(meta.results)) ? meta.results : [];
+
+                handleAssistantResponse(out, botMsg.contentDiv);
+            } catch (err) {
+                if (err && err.name === 'AbortError') {
+                    const reason = streamController.signal.reason;
+                    const statusMessage = reason === 'stream_timeout'
+                        ? 'Respuesta detenida por tiempo de espera. Prueba una consulta mas corta.'
+                        : 'Respuesta detenida por el usuario.';
+                    const shown = accumulated ? `${accumulated}\n\n${statusMessage}` : statusMessage;
+                    botMsg.contentDiv.textContent = shown;
+                    botMsg.contentDiv.style.whiteSpace = 'pre-wrap';
+                    history.scrollTop = history.scrollHeight;
+                    return;
+                }
+                throw err;
+            } finally {
+                if (timeoutHandle) clearTimeout(timeoutHandle);
+                if (activeStreamController === streamController) {
+                    activeStreamController = null;
+                }
+                setStopVisible(false);
+            }
+        }
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isSending) return;
+
             const query = input.value.trim();
             if (!query && !selectedFile) return;
 
+            isSending = true;
+            const hasImage = !!selectedFile;
             const currentImage = selectedFile ? imagePreview.src : null;
-            appendMessage('user', query || "Búsqueda por imagen", false, currentImage);
+            appendMessage('user', query || 'Busqueda por imagen', false, currentImage);
 
             const formData = new FormData();
             formData.append('query', query);
@@ -306,27 +679,31 @@
             }
 
             input.value = '';
-            input.disabled = true;
             removeImageBtn.click();
-            imageInput.disabled = true;
+            setInputState(true);
+            setStopVisible(!hasImage);
 
             try {
-                const res = await fetch('/api/chat', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await res.json();
-                handleAssistantResponse(data);
+                if (!hasImage) {
+                    await sendChatStream(query);
+                } else {
+                    const res = await fetch('/api/chat', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+                    handleAssistantResponse(data);
+                }
             } catch (err) {
                 appendMessage('bot', 'Error al consultar el servicio.');
                 console.error(err);
             } finally {
-                input.disabled = false;
-                imageInput.disabled = false;
+                isSending = false;
+                setInputState(false);
+                setStopVisible(false);
                 input.focus();
             }
         });
-
         rebuildBtn.addEventListener('click', async () => {
             if (!confirm('¿Reindexar base de conocimiento?\nEsto procesará todos los documentos para que el "Cerebro" pueda leerlos.')) return;
 
@@ -392,3 +769,4 @@
     });
 </script>
 {% endblock %}
+

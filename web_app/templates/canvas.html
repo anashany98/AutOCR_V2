@@ -31,9 +31,9 @@
                         <!-- Assets will be loaded here -->
                         {% for seg in segments %}
                         <div class="col-6">
-                            <img src="/static/{{ seg.path }}"
+                            <img src="{{ seg.url }}"
                                 class="img-fluid rounded border border-secondary asset-item"
-                                onclick="addToCanvas('/static/{{ seg.path }}')"
+                                onclick="addToCanvas('{{ seg.url }}')"
                                 style="cursor: pointer; background: #222;">
                         </div>
                         {% endfor %}

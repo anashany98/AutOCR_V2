@@ -13,6 +13,7 @@
 <div class="row mb-5 animate-fade-in">
     <div class="col-lg-8 mx-auto">
         <form method="POST" class="position-relative">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="input-group input-group-lg shadow-sm rounded-pill overflow-hidden border-0">
                 <span class="input-group-text bg-dark border-0 ps-4 text-muted">
                     <i class="fas fa-search"></i>
@@ -41,9 +42,10 @@
         <div class="card h-100 border-0 shadow-sm hover-up">
             <div class="card-img-top bg-secondary bg-opacity-10 position-relative overflow-hidden"
                 style="height: 200px;">
+                {% set file_token = result.token if result.token is defined else result.relative_path %}
                 <!-- Serve image through a dedicated route or static if possible. 
                          Using a placeholder logic for now, handled in app.py to serve file -->
-                <img src="{{ url_for('serve_file', filename=result.relative_path) }}"
+                <img src="{{ url_for('main.vision_file', token=file_token) }}"
                     class="w-100 h-100 object-fit-cover" alt="Resultado"
                     onerror="this.src='/static/img/placeholder.png'">
                 <div class="position-absolute top-0 end-0 p-2">
@@ -59,7 +61,7 @@
                 </p>
             </div>
             <div class="card-footer bg-transparent border-0 pt-0">
-                <a href="{{ url_for('serve_file', filename=result.relative_path) }}" target="_blank"
+                <a href="{{ url_for('main.vision_file', token=file_token) }}" target="_blank"
                     class="btn btn-sm btn-outline-light w-100 stretched-link">Ver Documento</a>
             </div>
         </div>

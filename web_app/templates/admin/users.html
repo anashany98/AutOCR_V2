@@ -98,6 +98,7 @@
     <div class="modal-dialog modal-sm modal-dialog-centered">
         <div class="modal-content bg-dark border-secondary">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="update_role">
                 <input type="hidden" name="user_id" id="role_user_id">
                 <div class="modal-header border-secondary">
@@ -124,6 +125,7 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content bg-dark border-secondary">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="update_scope">
                 <input type="hidden" name="user_id" id="scope_user_id">
                 <div class="modal-header border-secondary">

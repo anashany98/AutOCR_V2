@@ -1,72 +1,180 @@
 # AutoOCR Production Configuration
-# Optimized for Docker deployment with PostgreSQL, Redis, and MinIO
+#
+# This file is mounted as `/app/config.yaml` in `docker-compose.prod.yml`.
+# Keep this schema aligned with what the code actually reads:
+# - `postbatch` (batch processor + workers)
+# - `ocr_pipeline` (OCR engines, MinerU, PDF chunking, output formats)
+# - `database` (DBManager; in Docker it's auto-detected via `DATABASE_URL`)
+# - `vision` (CLIP/FAISS features used by the web UI/tasks)
+# - `llm` (LLMClient profiles used by chat/orchestrator)
+
+postbatch:
+  input_folder: "data/inbox"
+  processed_folder: "data/processed"
+  failed_folder: "data/errors"
+  reports_folder: "data/reports"
+  file_types:
+    - ".pdf"
+    - ".tif"
+    - ".tiff"
+    - ".jpg"
+    - ".jpeg"
+    - ".png"
+    - ".bmp"
+    - ".gif"
+    - ".webp"
+    - ".jfif"
+    - ".avif"
+    - ".eml"
+    - ".txt"
+    - ".csv"
+    - ".json"
+    - ".docx"
+    - ".xlsx"
+    - ".xlsm"
+  ocr_enabled: true
+  classification_enabled: true
+  delete_original: false
+  batch_summary_report: true
+  max_workers: 1
+  inactivity_trigger_minutes: 0
+
+  # GPU stability: PaddleOCR device selection is process-global and not thread-safe.
+  allow_gpu_threadpool: false
+
+  # QC gating:
+  # - auto_verify=true keeps unattended ingestion "verified" unless severe issues are detected.
+  # - auto_verify=false sends anything below thresholds to the verification queue ("pending").
+  auto_verify: false
+  force_pending_below: 0.45
+  review_confidence_threshold: 0.8
+  review_min_text_chars: 30
 
 app:
-  name: "AutoOCR Production"
-  version: "2.5.0"
-  debug: false
-  secret_key: ${SECRET_KEY}  # Should be set via env var
-  host: "0.0.0.0"
-  port: 8000
-  workers: 4       # Number of Gunicorn workers
-  threads: 2       # Threads per worker
+  log_level: "INFO"
+  gpu_enabled: true
+  retention:
+    enabled: true
+    exports_days: 7
+    vision_days: 7
+    uploads_days: 2
+    dry_run: false
+    max_deletions: 50000
 
 database:
-  type: postgresql
-  url: ${DATABASE_URL}  # e.g., postgresql://user:pass@postgres:5432/autoocr
-  pool_size: 20
-  max_overflow: 10
+  engine: postgresql
+  pool_size: 40
+  sqlite:
+    path: "data/digitalizerai.db"
+  postgresql:
+    host: "postgres"
+    port: 5432
+    user: "autoocr"
+    password: "autoocr_secure_password"
+    dbname: "autoocr"
+    use_pgvector: false
 
-task_queue:
-  type: celery
-  broker_url: ${CELERY_BROKER_URL}  # e.g., redis://redis:6379/0
-  result_backend: ${CELERY_RESULT_BACKEND}
-  task_routes:
-    ocr.*: ocr
-    default: default
-
-storage:
-  type: minio
-  endpoint: ${MINIO_ENDPOINT}  # e.g., minio:9000
-  access_key: ${MINIO_ACCESS_KEY}
-  secret_key: ${MINIO_SECRET_KEY}
-  bucket: ${MINIO_BUCKET}
-  secure: false  # Set true if using HTTPS for MinIO
-
-ocr:
-  primary_engine: paddlevl
-  secondary_engine: mineru
-  languages: ["spa", "eng"]
-  
-  paddleocr:
-    use_gpu: true
-    enabled: true
-    layout: true
-    tables: false  # Native tables often problematic, use MinerU instead
-    
+ocr_pipeline:
+  poppler_path: "/usr/bin"
+  pdf:
+    pages_per_chunk: 8
+    max_pages: 0
+  preprocessing:
+    deskew: true
+    denoise: false
+  primary_engine: "paddleocr"
+  secondary_engine: "easyocr"
+  engines:
+    - name: "paddleocr"
+      enabled: true
+      gpu: true
+      use_gpu: true
+      lang: "spa"
+      layout: true
+      tables: true
+      model_variant: "ppocrv4"
+      model_profile: "latin"
+      model_storage_dir: "models/paddle"
+      autodownload_models: true
+    - name: "easyocr"
+      enabled: true
+      gpu: true
+      langs: ["spa", "eng"]
+    - name: "paddlevl"
+      # Heavy transformer model; keep disabled by default in production.
+      enabled: false
+      use_gpu: true
+      model_id: "PaddlePaddle/PaddleOCR-VL-1.5"
+  fusion:
+    strategy: "confidence_vote"
+    min_confidence: 0.7
+    confidence_margin: 0.05
+    min_similarity: 0.82
+    recheck_threshold: 0.7
+    priority: []
+  output:
+    formats: ["markdown", "json"]
+    save_markdown_in_db: true
   mineru:
     enabled: true
     use_gpu: true
-    output_format: markdown
+    output_format: "markdown"
     extract_tables: true
     extract_formulas: true
     auto_detect_complex: true
 
-ocr_pipeline:
-  preprocessing:
-    deskew: true
-    denoise: false
-  output:
-    formats: ["markdown", "json"]
-    save_markdown_in_db: true
-  fusion:
-    strategy: confidence_vote
-    min_confidence: 0.7
+vision:
+  enabled: false
+  index_path: "data/vision_index.faiss"
+  embeddings_dir: "data/vision_embeddings"
+  model_name: "ViT-B-32"
+  pretrained: "laion2b_s34b_b79k"
+  gallery_dir: "data/vision_gallery"
+  auto_tagging:
+    enabled: false
+    candidates: []
 
 llm:
   enabled: true
-  provider: lmstudio  # Or openai/anthropic
-  base_url: ${LLM_BASE_URL}  # http://host.docker.internal:11434/v1
-  model: deepseek/deepseek-r1-distill-llama-70b
-  vision:
-    enabled: true
+  provider: "lmstudio"
+  base_url: "http://host.docker.internal:1234/v1"
+  model: "deepseek-r1-distill-llama-8b"
+  timeout: 90
+  routing:
+    general_chat:
+      base_url: "http://host.docker.internal:1234/v1"
+      model: "deepseek-r1-distill-llama-8b"
+    reasoning:
+      base_url: "http://host.docker.internal:1234/v1"
+      model: "deepseek-r1-distill-llama-8b"
+    vision:
+      base_url: "http://host.docker.internal:1235/v1"
+      model: "qwen2-vl-7b-instruct"
+
+
+chat:
+  fast_router: true
+  async_enabled: true
+  rag_k: 4
+  rag_hybrid_search: true
+  rag_rerank: true
+  rag_incremental_rebuild: true
+  context_chars_per_chunk: 800
+  max_total_context_chars: 7000
+  history_messages: 8
+  max_history_chars: 1800
+  history_ttl_days: 30
+  task_ttl_days: 7
+  requests_per_minute: 60
+  max_concurrent_requests_per_user: 3
+  max_async_tasks_per_user: 6
+  max_async_tasks_global: 250
+  async_recent_window_seconds: 900
+  metrics_window_minutes: 15
+  alert_p95_ms: 15000
+  alert_p99_ms: 30000
+  alert_error_rate_pct: 10.0
+  alert_queue_depth: 80
+  alert_cooldown_seconds: 300
+  llm_profile_with_context: document_chat
+  llm_profile_no_context: general_chat

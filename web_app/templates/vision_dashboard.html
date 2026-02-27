@@ -73,6 +73,7 @@
                 <div class="card-body p-5 text-center">
                     <h5 id="uploadTitle" class="mb-3 fw-bold">Subir Imagen</h5>
                     <form action="/vision/analyze" method="post" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="mode" id="visionMode" value="">
                         <input type="hidden" name="style" id="renderStyle" value="">
                         <input type="file" name="file" class="form-control mb-3 bg-dark border-0 text-white" required>

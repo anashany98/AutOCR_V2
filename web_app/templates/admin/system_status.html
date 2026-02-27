@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Estado del Sistema - AutOCR{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0 text-white"><i class="fas fa-server me-2"></i> Estado del Sistema</h2>
+        <button onclick="location.reload()" class="btn btn-sm btn-outline-light">
+            <i class="fas fa-sync-alt me-1"></i> Actualizar
+        </button>
+    </div>
+
+    <!-- Cards Row -->
+    <div class="row g-4 mb-4">
+        <!-- CPU -->
+        <div class="col-md-4">
+            <div class="card h-100 bg-dark-subtle border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-3"><i class="fas fa-microchip me-2"></i> CPU</h6>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="display-6 fw-bold text-{{ 'danger' if stats.cpu > 80 else 'success' }}">{{
+                            stats.cpu }}%</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-{{ 'danger' if stats.cpu > 80 else 'success' }}" role="progressbar"
+                            style="width: {{ stats.cpu }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RAM -->
+        <div class="col-md-4">
+            <div class="card h-100 bg-dark-subtle border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-3"><i class="fas fa-memory me-2"></i> RAM</h6>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="display-6 fw-bold text-{{ 'warning' if stats.ram_percent > 80 else 'primary' }}">{{
+                            stats.ram_percent }}%</span>
+                        <small class="text-muted">{{ stats.ram_used }}GB / {{ stats.ram_total }}GB</small>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-{{ 'warning' if stats.ram_percent > 80 else 'primary' }}"
+                            role="progressbar" style="width: {{ stats.ram_percent }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Disk -->
+        <div class="col-md-4">
+            <div class="card h-100 bg-dark-subtle border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-3"><i class="fas fa-hdd me-2"></i> Disco (Proyecto)</h6>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="display-6 fw-bold text-info">{{ stats.disk_percent }}%</span>
+                        <small class="text-muted">{{ stats.disk_free }}GB Libres</small>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-info" role="progressbar" style="width: {{ stats.disk_percent }}%">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Table -->
+    <div class="card bg-dark-subtle border-0 shadow-sm mb-4">
+        <div class="card-header bg-transparent border-secondary border-opacity-25 py-3">
+            <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i> Información General</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-2">
+                    <small class="text-muted d-block">Sistema Operativo</small>
+                    <span class="fw-medium">{{ stats.os }}</span>
+                </div>
+                <div class="col-md-4 mb-2">
+                    <small class="text-muted d-block">Python</small>
+                    <span class="fw-medium">{{ stats.python }}</span>
+                </div>
+                <div class="col-md-4 mb-2">
+                    <small class="text-muted d-block">Tiempo Activo (Uptime)</small>
+                    <span class="fw-medium">{{ stats.uptime_hours }} Horas</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="card bg-dark-subtle border-0 shadow-sm">
+        <div
+            class="card-header bg-transparent border-secondary border-opacity-25 py-3 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-terminal me-2"></i> Registros del Servidor (Últimas 100 líneas)</h6>
+            <span class="badge bg-secondary">app.log</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="bg-black p-3"
+                style="max-height: 500px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 0.85rem;">
+                {% for line in logs %}
+                <div class="text-light opacity-75 border-bottom border-secondary border-opacity-10 py-1">{{ line }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto refresh status every 30 seconds
+    setTimeout(function () {
+        location.reload();
+    }, 30000);
+</script>
+{% endblock %}

@@ -84,6 +84,7 @@ def main() -> None:
         sys.exit(1)
 
     # --- Step 3: Initialise App ---
+    try:
         # Prevent caching of static files and templates during dev
         app.config['TEMPLATES_AUTO_RELOAD'] = True
         app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -92,9 +93,6 @@ def main() -> None:
         logger.success("✅ Application initialised successfully.")
 
         # --- Start Email Importer (if enabled) ---
-        from web_app.app import post_conf # Import config dict from initialized app context (or load config again)
-        # Better: Load config here or access global config if available.
-        # Since init_app loads config but doesn't expose it easily globally here, let's load it.
         from postbatch_processor import load_config
         pipeline_conf = load_config("config.yaml")
         email_conf = pipeline_conf.get("email_importer", {})
@@ -130,7 +128,7 @@ def main() -> None:
 
     logger.info("🌐 Web interface available at {}", url)
     logger.info("📦 Flask debug mode: {}", debug_mode)
-    app.run(debug=True, host="0.0.0.0", port=port)
+    app.run(debug=debug_mode, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":

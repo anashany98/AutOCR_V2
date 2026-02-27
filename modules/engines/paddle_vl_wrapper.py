@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import logging
 import os
+from modules.torch_compat import torch_cuda_usable
 
 try:
     from transformers import AutoModel, AutoTokenizer
@@ -21,11 +22,15 @@ class PaddleVLOCHEngine(OCREngine):
     def __init__(self, config: dict, logger=None):
         super().__init__(config, logger)
         self.model_id = config.get("model_id", "PaddlePaddle/PaddleOCR-VL-1.5")
-        self.device = "cuda" if torch.cuda.is_available() and config.get("use_gpu", True) else "cpu"
+        requested_gpu = bool(config.get("use_gpu", True))
+        cuda_ok, cuda_reason = torch_cuda_usable(torch, smoke_test=False) if requested_gpu else (False, "GPU disabled by config")
+        self.device = "cuda" if cuda_ok else "cpu"
         self.model = None
         self.tokenizer = None
         self.processor = None
         self.torch_dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
+        if requested_gpu and not cuda_ok and self.logger:
+            self.logger.warning("PaddleOCR-VL GPU disabled: %s. Falling back to CPU.", cuda_reason)
 
     def initialize(self) -> bool:
         if not self.enabled:

@@ -145,15 +145,23 @@ class LayoutManager:
                 rotation = float(item.get("rotation", 0.0) or 0.0)
                 if not bbox:
                     continue
-                blocks.append(
-                    LayoutBlock(
-                        bbox=bbox,
-                        type=label,
-                        page=page_index,
-                        rotation=rotation,
-                        confidence=conf,
-                    )
+                block = LayoutBlock(
+                    bbox=bbox,
+                    type=label,
+                    page=page_index,
+                    rotation=rotation,
+                    confidence=conf,
                 )
+
+                # PPStructure returns OCR results per block; capture them so the caller can
+                # avoid re-OCRing cropped regions block-by-block.
+                if label in {"text", "title", "other"}:
+                    text, text_conf = _extract_text_from_res(item.get("res"))
+                    if text:
+                        block["text"] = text  # type: ignore[typeddict-item]
+                        block["text_confidence"] = text_conf  # type: ignore[typeddict-item]
+
+                blocks.append(block)
 
         return blocks
 
@@ -234,6 +242,44 @@ def _ensure_bbox(value: Optional[Iterable[float]]) -> List[int]:
             int(round(max(ys))),
         ]
     return []
+
+
+def _extract_text_from_res(res: object) -> tuple[str, float]:
+    """
+    Best-effort extraction of text + avg confidence from PPStructure block results.
+
+    Expected shape (common): res = [[box, (text, score)], ...]
+    """
+
+    if not res or not isinstance(res, list):
+        return "", 0.0
+
+    texts: List[str] = []
+    scores: List[float] = []
+
+    for item in res:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            continue
+        data = item[1]
+        if not isinstance(data, (list, tuple)) or not data:
+            continue
+        text = (str(data[0]) or "").strip()
+        if not text:
+            continue
+        score = 0.0
+        if len(data) > 1 and data[1] is not None:
+            try:
+                score = float(data[1])
+            except Exception:
+                score = 0.0
+        texts.append(text)
+        scores.append(score)
+
+    if not texts:
+        return "", 0.0
+
+    avg_conf = (sum(scores) / len(scores)) if scores else 0.0
+    return "\n".join(texts), float(avg_conf)
 
 
 __all__ = ["LayoutManager", "LayoutManagerConfig", "LayoutBlock"]

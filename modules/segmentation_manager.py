@@ -1,12 +1,35 @@
 import os
 import logging
+from pathlib import Path
+from typing import List, Optional, Tuple, Any
+
 import numpy as np
-import cv2
 from PIL import Image
-from segment_anything import sam_model_registry, SamPredictor
-import torch
 
 logger = logging.getLogger(__name__)
+from .torch_compat import torch_cuda_usable
+
+
+def _lazy_import_torch():
+    try:
+        import torch  # type: ignore
+    except (ImportError, OSError) as exc:
+        raise RuntimeError(
+            "SAM segmentation requires PyTorch ('torch'). Install it (and CUDA libs if you want GPU) "
+            "or disable SAM/vision segmentation features."
+        ) from exc
+    return torch
+
+
+def _lazy_import_sam():
+    try:
+        from segment_anything import sam_model_registry, SamPredictor  # type: ignore
+    except (ImportError, OSError) as exc:
+        raise RuntimeError(
+            "SAM segmentation requires the 'segment_anything' package. Install it or disable SAM/vision segmentation."
+        ) from exc
+    return sam_model_registry, SamPredictor
+
 
 class SegmentationManager:
     """
@@ -16,19 +39,42 @@ class SegmentationManager:
     def __init__(self, model_type: str = "vit_b", checkpoint_path: str = "models/sam_vit_b_01ec64.pth"):
         self.model_type = model_type
         self.checkpoint_path = checkpoint_path
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Resolve device at load time (keeps module importable without torch installed).
+        self.device = "cpu"
         self.model = None
         self.predictor = None
         self._loaded = False
+        self._torch = None
+        self._sam_model_registry = None
+        self._SamPredictor = None
 
     def load(self):
-        if self._loaded and next(self.model.parameters()).device.type == self.device:
-            return
+        if self._loaded and self.model is not None:
+            try:
+                if next(self.model.parameters()).device.type == self.device:
+                    return
+            except Exception:
+                pass
+
+        if self._torch is None:
+            self._torch = _lazy_import_torch()
+        if self._sam_model_registry is None or self._SamPredictor is None:
+            self._sam_model_registry, self._SamPredictor = _lazy_import_sam()
+
+        cuda_ok, cuda_reason = torch_cuda_usable(self._torch, smoke_test=False)
+        self.device = "cuda" if cuda_ok else "cpu"
+        if not cuda_ok:
+            logger.warning("SAM GPU disabled: %s. Falling back to CPU.", cuda_reason)
         
         # Request VRAM
-        from modules.resource_orchestrator import ResourceOrchestrator
-        ResourceOrchestrator().request_model("sam")
-        ResourceOrchestrator().register_model("sam", self)
+        try:
+            from modules.resource_orchestrator import ResourceOrchestrator
+
+            orchestrator = ResourceOrchestrator()
+            orchestrator.request_model("sam")
+            orchestrator.register_model("sam", self)
+        except Exception as exc:
+            logger.debug("Resource orchestrator unavailable: %s", exc)
 
         if not os.path.exists(self.checkpoint_path):
             logger.warning(f"SAM checkpoint not found at {self.checkpoint_path}. Downloading...")
@@ -37,11 +83,13 @@ class SegmentationManager:
         logger.info(f"Loading SAM ({self.model_type}) on {self.device}...")
         try:
             if not self.model:
-                self.model = sam_model_registry[self.model_type](checkpoint=self.checkpoint_path)
+                self.model = self._sam_model_registry[self.model_type](checkpoint=self.checkpoint_path)
                 self.model.to(device=self.device)
-                self.predictor = SamPredictor(self.model)
+                self.predictor = self._SamPredictor(self.model)
             else:
                 self.model.to(self.device)
+                if self.predictor is None:
+                    self.predictor = self._SamPredictor(self.model)
                 
             self._loaded = True
             logger.info("SAM loaded successfully.")
@@ -58,12 +106,25 @@ class SegmentationManager:
     def _download_checkpoint(self):
         """Download weights if missing."""
         import requests
-        os.makedirs(os.path.dirname(self.checkpoint_path), exist_ok=True)
+
+        dst = Path(self.checkpoint_path)
+        dst.parent.mkdir(parents=True, exist_ok=True)
         url = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
-        response = requests.get(url, stream=True)
-        with open(self.checkpoint_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
+        tmp = dst.with_suffix(dst.suffix + ".tmp")
+        try:
+            with requests.get(url, stream=True, timeout=(10, 600)) as response:
+                response.raise_for_status()
+                with open(tmp, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+            tmp.replace(dst)
+        finally:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except Exception:
+                pass
 
     def segment_by_points(self, image: Image.Image, points: List[List[int]], labels: List[int]) -> List[np.ndarray]:
         """

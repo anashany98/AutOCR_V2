@@ -24,6 +24,13 @@ postbatch:
   - .avif
   ocr_enabled: true
   classification_enabled: true
+  # QC gating:
+  # - auto_verify=true keeps unattended ingestion "verified" unless severe issues are detected.
+  # - auto_verify=false sends anything below thresholds to the verification queue ("pending").
+  auto_verify: false
+  force_pending_below: 0.45
+  review_confidence_threshold: 0.8
+  review_min_text_chars: 30
   delete_original: false
   batch_summary_report: true
   max_workers: 1
@@ -47,7 +54,7 @@ postbatch:
       - LeroyMerlin
       IKEA:
       - Ikea
-      - IKEA Ibérica
+      - IKEA IbÃƒÂ©rica
   smart_renaming:
     enabled: true
     format: '{date}_{type}_{project}_{vendor}_{filename}'
@@ -118,8 +125,11 @@ ocr_pipeline:
     min_similarity: 0.82
     priority: []
   poppler_path: /usr/bin
-  primary_engine: paddlevl
-  secondary_engine: mineru
+  pdf:
+    pages_per_chunk: 8
+    max_pages: 0
+  primary_engine: paddleocr
+  secondary_engine: easyocr
   mineru:
     enabled: true
     use_gpu: true
@@ -130,31 +140,31 @@ ocr_pipeline:
 llm:
   enabled: true
   provider: lmstudio
-  base_url: http://localhost:11434/v1
-  model: deepseek/deepseek-r1-0528-qwen3-8b
+  base_url: http://127.0.0.1:11434/v1
+  model: deepseek-r1-0528-qwen3-8b
   timeout: 90
   routing:
     enabled: true
     general_chat:
-      base_url: http://localhost:11434/v1
-      model: deepseek/deepseek-r1-0528-qwen3-8b
+      base_url: http://127.0.0.1:11434/v1
+      model: deepseek-r1-0528-qwen3-8b
     document_chat:
-      base_url: http://localhost:11434/v1
-      model: deepseek/deepseek-r1-0528-qwen3-8b
+      base_url: http://127.0.0.1:11434/v1
+      model: deepseek-r1-0528-qwen3-8b
     reasoning:
-      base_url: http://localhost:11434/v1
-      model: deepseek/deepseek-r1-0528-qwen3-8b
+      base_url: http://127.0.0.1:11434/v1
+      model: deepseek-r1-0528-qwen3-8b
   vision:
     enabled: true
     index_path: data/vision_index.faiss
     embeddings_dir: data/vision_embeddings
-    model: clip-ViT-B-32
+    model: ViT-B-32
     gallery_dir: data/vision_gallery
     auto_tagging:
       enabled: true
       candidates:
-      - Sofá
-      - Sillón
+      - SofÃƒÂ¡
+      - SillÃƒÂ³n
       - Silla
       - Mesa de Comedor
       - Mesa de Centro
@@ -164,11 +174,11 @@ llm:
       - Mesita de Noche
       - Armario
       - Vestidor
-      - Cómoda
+      - CÃƒÂ³moda
       - Sinfonier
       - Escritorio
-      - Estantería
-      - Librería
+      - EstanterÃƒÂ­a
+      - LibrerÃƒÂ­a
       - Aparador
       - Vitrina
       - Mueble TV
@@ -179,9 +189,9 @@ llm:
       - Taburete
       - Pouf
       - Chaise Longue
-      - Lámpara de Techo
-      - Lámpara de Pie
-      - Lámpara de Mesa
+      - LÃƒÂ¡mpara de Techo
+      - LÃƒÂ¡mpara de Pie
+      - LÃƒÂ¡mpara de Mesa
       - Aplique de Pared
       - Foco Empotrado
       - Tira LED
@@ -189,20 +199,20 @@ llm:
       - Cortina
       - Estor
       - Visillo
-      - Cojín
+      - CojÃƒÂ­n
       - Plaid
       - Ropa de Cama
       - Papel Pintado
       - Revestimiento de Pared
       - Moldura
-      - Rodapié
+      - RodapiÃƒÂ©
       - Suelo de Madera
       - Suelo Laminado
-      - Suelo Vinílico
-      - Suelo Cerámico
+      - Suelo VinÃƒÂ­lico
+      - Suelo CerÃƒÂ¡mico
       - Azulejo
-      - Mármol
-      - Porcelánico
+      - MÃƒÂ¡rmol
+      - PorcelÃƒÂ¡nico
       - Microcemento
       - Pintura
       - Madera Roble (Oak)
@@ -216,27 +226,27 @@ llm:
       - Madera Oscura
       - Tela Terciopelo
       - Tela Lino
-      - Tela Algodón
+      - Tela AlgodÃƒÂ³n
       - Tela Seda
       - Tela Lana
-      - Bouclé
+      - BouclÃƒÂ©
       - Jacquard
       - Chenilla
       - Polipiel
       - Cuero
-      - Cuero Sintético
+      - Cuero SintÃƒÂ©tico
       - Metal Dorado
       - Metal Plateado
       - Metal Negro
-      - Latón
+      - LatÃƒÂ³n
       - Bronce
       - Acero Inoxidable
       - Cristal
       - Espejo Envejecido
       - Mimbre
-      - Ratán
+      - RatÃƒÂ¡n
       - Yute
-      - Bambú
+      - BambÃƒÂº
       - Color Beige
       - Color Gris
       - Color Blanco
@@ -257,36 +267,30 @@ llm:
       - Tono Vibrante
       - Estilo Moderno
       - Estilo Industrial
-      - Estilo Rústico
-      - Estilo Nórdico
-      - Estilo Clásico
+      - Estilo RÃƒÂºstico
+      - Estilo NÃƒÂ³rdico
+      - Estilo ClÃƒÂ¡sico
       - Estilo Minimalista
       - Estilo Bohemio
       - Estilo Wabi-Sabi
       - Estilo Art Deco
       - Estilo Mid-Century
-      - Estilo Mediterráneo
+      - Estilo MediterrÃƒÂ¡neo
       - Estilo Japandi
-      - Plano Técnico
+      - Plano TÃƒÂ©cnico
       - Plano de Planta
       - Alzado
-      - Sección
+      - SecciÃƒÂ³n
       - Detalle Constructivo
       - Boceto a Mano
       - Sketch
       - Perspectiva
       - Render
-      - Hoja de Confección
-      - Patrón de Costura
+      - Hoja de ConfecciÃƒÂ³n
+      - PatrÃƒÂ³n de Costura
       - Despiece
       - Moodboard
       - Collage de Materiales
-  output:
-    formats:
-    - markdown
-    - json
-    save_markdown_in_db: true
-  primary_engine: paddlevl
 database:
   engine: sqlite
   sqlite:
@@ -295,6 +299,35 @@ database:
     host: localhost
     port: 5432
     user: postgres
-    password: 123
-    dbname: autocr
-    use_pgvector: false
+    password: password
+    dbname: autoocr
+    use_pgvector: true
+  redis:
+    url: "redis://redis:6379/0"
+
+chat:
+  fast_router: true
+  async_enabled: true
+  rag_k: 4
+  rag_hybrid_search: true
+  rag_rerank: true
+  rag_incremental_rebuild: true
+  context_chars_per_chunk: 800
+  max_total_context_chars: 7000
+  history_messages: 8
+  max_history_chars: 1800
+  history_ttl_days: 30
+  task_ttl_days: 7
+  requests_per_minute: 80
+  max_concurrent_requests_per_user: 4
+  max_async_tasks_per_user: 8
+  max_async_tasks_global: 300
+  async_recent_window_seconds: 900
+  metrics_window_minutes: 15
+  alert_p95_ms: 15000
+  alert_p99_ms: 30000
+  alert_error_rate_pct: 10.0
+  alert_queue_depth: 80
+  alert_cooldown_seconds: 300
+  llm_profile_with_context: document_chat
+  llm_profile_no_context: general_chat

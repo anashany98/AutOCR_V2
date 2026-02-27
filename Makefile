@@ -1,4 +1,4 @@
-.PHONY: demo test
+.PHONY: demo test quality-baseline quality-gate
 
 PYTHON ?= python
 
@@ -7,3 +7,9 @@ demo:
 
 test:
 	$(PYTHON) -m pytest
+
+quality-baseline:
+	$(PYTHON) scripts/field_quality_baseline.py
+
+quality-gate:
+	$(PYTHON) scripts/field_quality_baseline.py --gate

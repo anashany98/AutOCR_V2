@@ -1,0 +1,117 @@
+postbatch:
+  input_folder: input
+  processed_folder: processed
+  failed_folder: errors
+  reports_folder: reports
+  file_types:
+    - .pdf
+    - .tif
+    - .tiff
+    - .jpg
+    - .jpeg
+    - .png
+    - .bmp
+    - .gif
+    - .webp
+    - .jfif
+    - .avif
+  ocr_enabled: true
+  classification_enabled: true
+  delete_original: false
+  batch_summary_report: true
+  max_workers: 1
+  inactivity_trigger_minutes: 0
+  auto_verify: false
+  force_pending_below: 0.45
+  review_confidence_threshold: 0.8
+  review_min_text_chars: 30
+
+app:
+  log_level: INFO
+  gpu_enabled: false
+
+database:
+  engine: sqlite
+  pool_size: 5
+  auto_init_schema: true
+  sqlite:
+    path: data/digitalizerai.db
+  postgresql:
+    host: localhost
+    port: 5432
+    user: postgres
+    password: change_me
+    dbname: autoocr
+    use_pgvector: false
+
+ocr_pipeline:
+  poppler_path: /usr/bin
+  pdf:
+    pages_per_chunk: 8
+    max_pages: 0
+  primary_engine: paddleocr
+  secondary_engine: easyocr
+  engines:
+    - name: paddleocr
+      enabled: true
+      gpu: false
+      use_gpu: false
+      lang: spa
+      layout: true
+      tables: true
+      model_variant: ppocrv4
+      model_profile: latin
+      model_storage_dir: models/paddle
+      autodownload_models: true
+    - name: easyocr
+      enabled: true
+      gpu: false
+      langs:
+        - spa
+        - eng
+  fusion:
+    strategy: levenshtein
+    min_confidence: 0.7
+    min_similarity: 0.82
+    priority: []
+  output:
+    formats:
+      - markdown
+      - json
+    save_markdown_in_db: true
+  mineru:
+    enabled: false
+    use_gpu: false
+    output_format: markdown
+    extract_tables: true
+    extract_formulas: true
+    auto_detect_complex: true
+
+vision:
+  enabled: false
+  index_path: data/vision_index.faiss
+  embeddings_dir: data/vision_embeddings
+  model_name: ViT-B-32
+  pretrained: laion2b_s34b_b79k
+  gallery_dir: data/vision_gallery
+  auto_tagging:
+    enabled: false
+    candidates: []
+
+llm:
+  enabled: false
+  provider: lmstudio
+  base_url: http://127.0.0.1:11434/v1
+  model: deepseek-r1-0528-qwen3-8b
+  timeout: 90
+  routing:
+    enabled: true
+    general_chat:
+      base_url: http://127.0.0.1:11434/v1
+      model: deepseek-r1-0528-qwen3-8b
+    document_chat:
+      base_url: http://127.0.0.1:11434/v1
+      model: deepseek-r1-0528-qwen3-8b
+    reasoning:
+      base_url: http://127.0.0.1:11434/v1
+      model: deepseek-r1-0528-qwen3-8b

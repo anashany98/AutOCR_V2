@@ -9,15 +9,26 @@ Reference implementation for Refactoring.
 from __future__ import annotations
 
 import mimetypes
+import os
+import secrets
 import sys
 import threading
 from pathlib import Path
 from typing import Optional
 
 from flask import Flask
+from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
+
+# Try to import Flask-SocketIO (optional dependency)
+try:
+    from flask_socketio import SocketIO, emit, join_room
+    FLASK_SOCKETIO_AVAILABLE = True
+except ImportError:
+    FLASK_SOCKETIO_AVAILABLE = False
+    SocketIO = None
 
 # Re-export PROJECT_ROOT and get_logger for serve.py compatibility
 from web_app.services import (
@@ -52,13 +63,91 @@ mimetypes.add_type('image/avif', '.avif')
 
 
 CONFIG_PATH = PROJECT_ROOT / "config.yaml"
-DEFAULT_UPLOAD_DIR = PROJECT_ROOT / "web_app" / "static" / "uploads"
+# Store uploads outside of `static/` to prevent unauthenticated public access.
+DEFAULT_UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
 
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "autocr-secret-key-change-in-production" # Should load from env/config
+
+# Security: Force SECRET_KEY in production
+_secret_key = os.environ.get("FLASK_SECRET_KEY") or os.environ.get("SECRET_KEY")
+if not _secret_key:
+    if os.environ.get("FLASK_ENV") == "production":
+        raise RuntimeError(
+            "CRITICAL: FLASK_SECRET_KEY environment variable must be set in production! "
+            "Set FLASK_ENV=development for local development."
+        )
+    _secret_key = secrets.token_hex(32)  # Development only
+
+app.config["SECRET_KEY"] = _secret_key
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax" if os.environ.get("FLASK_ENV") == "production" else "None"
 app.config["UPLOAD_FOLDER"] = str(DEFAULT_UPLOAD_DIR)
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
+
+# Initialize SocketIO (optional)
+socketio = None
+if FLASK_SOCKETIO_AVAILABLE:
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+    
+    # SocketIO event handlers
+    @socketio.on('connect')
+    def handle_connect():
+        from flask_login import current_user
+        if current_user.is_authenticated:
+            # Join user-specific room for targeted notifications
+            join_room(f'user_{current_user.id}')
+            emit('connected', {'status': 'ok', 'user_id': current_user.id})
+    
+    @socketio.on('disconnect')
+    def handle_disconnect():
+        pass
+    
+    @socketio.on('join_room')
+    def handle_join_room(data):
+        room = data.get('room')
+        if room:
+            join_room(room)
+
+# Function to emit events from other parts of the app
+def emit_task_update(task_id, status, message):
+    """Emit task update to connected clients."""
+    if socketio:
+        socketio.emit('task_update', {
+            'task_id': task_id,
+            'status': status,
+            'message': message
+        }, room=f'user_0')  # Broadcast to admins
+
+def emit_document_update(document_id, action):
+    """Emit document update to connected clients."""
+    if socketio:
+        socketio.emit('document_update', {
+            'document_id': document_id,
+            'action': action
+        }, broadcast=True)
+
+# Cookie hardening for session-authenticated UI/API usage.
+app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
+app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
+if os.environ.get("FLASK_COOKIE_SECURE", "0") == "1":
+    app.config.setdefault("SESSION_COOKIE_SECURE", True)
+
+# CSRF protection for cookie-authenticated web/API endpoints.
+# JS clients must send `X-CSRFToken` for state-changing requests.
+app.config.setdefault("WTF_CSRF_HEADERS", ["X-CSRFToken", "X-CSRF-Token"])
+# Reduce UX breakage for long-lived dashboard sessions.
+app.config.setdefault("WTF_CSRF_TIME_LIMIT", 8 * 60 * 60)  # 8 hours
+csrf = CSRFProtect(app)
+
+# Defensive: ensure templates never crash if CSRF globals are missing for any reason.
+# In normal operation CSRFProtect registers `csrf_token()` automatically.
+try:  # pragma: no cover - extremely defensive
+    from flask_wtf.csrf import generate_csrf
+    app.jinja_env.globals.setdefault("csrf_token", generate_csrf)
+except Exception:
+    app.jinja_env.globals.setdefault("csrf_token", lambda: "")
 
 # Security: Rate Limiting
 limiter = Limiter(
@@ -68,9 +157,11 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
+# Export socketio for other modules
+app.socketio = socketio
+
 # Add built-in functions to Jinja2 globals
 app.jinja_env.globals.update(max=max, min=min)
-import os
 app.jinja_env.filters['basename'] = os.path.basename
 
 
@@ -214,3 +305,9 @@ def init_app():
 # I will invoke `init_app()` here.
 
 # init_app()  <-- Removed to allow lazy init controlled by serve.py
+
+if __name__ == "__main__":
+    init_app()
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1" or os.environ.get("FLASK_ENV") == "development"
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)

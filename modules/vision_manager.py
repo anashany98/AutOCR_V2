@@ -20,7 +20,11 @@ from collections import Counter
 import numpy as np
 from PIL import Image
 
-from .engines.florence_wrapper import FlorenceOCREngine
+from typing import TYPE_CHECKING
+from .torch_compat import torch_cuda_usable
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .engines.florence_wrapper import FlorenceOCREngine
 
 # Imports moved to methods/lazy to avoid DLL conflicts with PaddleOCR
 faiss = None
@@ -75,7 +79,8 @@ class VisionManager:
         self._device = "cpu"
         self._index = None
         self._metadata: List[dict] = []
-        self._florence_engine: Optional[FlorenceOCREngine] = None
+        # Lazy-loaded, because importing transformers/torchvision can hard-crash on some Windows setups.
+        self._florence_engine: Optional["FlorenceOCREngine"] = None
         self._load_runtime()
 
     # ------------------------------------------------------------------ #
@@ -87,6 +92,15 @@ class VisionManager:
         """Ensure model and index are loaded."""
         self._ensure_model()
         self._ensure_index()
+
+    # Backward-compatible public aliases expected by older helpers (e.g. Deduplicator).
+    @property
+    def index(self):
+        return self._index
+
+    @property
+    def metadata(self) -> List[dict]:
+        return self._metadata
 
     def embed_image(self, path: str) -> np.ndarray:
         """
@@ -160,6 +174,11 @@ class VisionManager:
         Sophisticated analysis for furniture and materials using Florence-2.
         """
         if self._florence_engine is None:
+            try:
+                from .engines.florence_wrapper import FlorenceOCREngine
+            except Exception as exc:
+                self.logger.error("Florence engine unavailable: %s", exc)
+                return {"error": "Florence engine unavailable"}
             self._florence_engine = FlorenceOCREngine()
         
         try:
@@ -378,10 +397,13 @@ class VisionManager:
              self.config.enabled = False
              return
 
-        if self.config.use_gpu and torch.cuda.is_available():  # type: ignore[union-attr]
-            self._device = "cuda"
-        else:
-            self._device = "cpu"
+        if self.config.use_gpu:
+            usable, reason = torch_cuda_usable(torch, smoke_test=False)
+            if usable:
+                self._device = "cuda"
+                return
+            self.logger.warning("Vision GPU disabled: %s. Falling back to CPU.", reason)
+        self._device = "cpu"
 
     def _ensure_model(self) -> None:
         if self._model is not None:

@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, jsonify, request, current_app
 from web_app.services import get_logger
+from flask_wtf.csrf import CSRFError
 
 errors_bp = Blueprint('errors', __name__)
 
@@ -15,6 +16,13 @@ def internal_error(error):
     if request.path.startswith('/api/'):
         return jsonify({"error": "Internal server error", "code": 500}), 500
     return render_template('errors/500.html'), 500
+
+@errors_bp.app_errorhandler(CSRFError)
+def handle_csrf_error(error):
+    # Return JSON for API consumers; HTML for browser navigation.
+    if request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json':
+        return jsonify({"error": "CSRF token missing or invalid", "code": 403}), 403
+    return render_template('errors/generic_error.html', error=error), 403
 
 @errors_bp.app_errorhandler(Exception)
 def handle_unexpected_exception(error):

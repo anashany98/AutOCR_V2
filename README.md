@@ -27,7 +27,7 @@ AutOCR automatiza el procesamiento posterior al escaneo en Windows combinando de
    ```
 4. Inicia la web:
    ```bash
-   python web_app/app.py
+   python run_web.py
    ```
    Luego abre `http://localhost:5000`.
 
@@ -57,6 +57,44 @@ Los tests unitarios cubren fusion de OCR, fallback de bloques, exportacion de ta
 ```bash
 make test
 ```
+
+### Calidad del nucleo de extraccion
+
+Genera el baseline de calidad (date/total/supplier) y guarda el reporte en `data/reports/field_quality_baseline.json`:
+```bash
+make quality-baseline
+```
+
+Ejecuta el quality gate (falla con codigo no-cero si cae por debajo de umbrales):
+```bash
+make quality-gate
+```
+
+En CI (`.github/workflows/quality-gate.yml`) este gate se ejecuta automaticamente en cada `push`/`pull_request` a `main` o `master`.
+La suite completa (`.github/workflows/core-suite.yml`) corre solo si hay cambios en archivos del nucleo OCR/extraccion definidos en `paths`, y se divide en 3 jobs paralelos balanceados (`core`, `security`, `pipeline`).
+Cada job exporta reporte de duraciones (JUnit XML + JSON + Markdown) como artifact para ajustar el balance con datos reales.
+
+### Escalado para 400GB
+
+Para cargas grandes, procesa en lotes con control de espacio:
+```yaml
+postbatch:
+  max_input_gb_per_run: 50
+  max_input_free_disk_ratio: 0.35 # % del disco libre en ese momento (dinamico)
+  max_files_per_run: 0            # 0 = sin limite por cantidad
+  processing_order: small_first   # as_found | small_first | large_first
+  min_free_disk_gb: 80
+  expected_output_multiplier: 1.2
+  delete_original: true
+```
+
+Notas operativas:
+- `max_input_gb_per_run` limita cada corrida por tamano absoluto.
+- `max_input_free_disk_ratio` adapta automaticamente el lote segun el espacio libre real (si ambas existen, se usa el limite mas estricto).
+- `max_files_per_run` te protege cuando entran miles de archivos pequenos.
+- `min_free_disk_gb` y `expected_output_multiplier` activan pre-chequeo de disco antes de iniciar.
+- `delete_original: true` evita duplicar almacenamiento cuando el lote es muy grande.
+- Para PDFs pesados, reduce `ocr_pipeline.pdf.pages_per_chunk` (por ejemplo `4`) para bajar picos de RAM.
 
 ## Dashboard
 

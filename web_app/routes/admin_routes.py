@@ -1,9 +1,14 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, abort
 from flask_login import login_required, current_user
-from web_app.services import get_db
+from web_app.services import get_db, PROJECT_ROOT
 from modules.auth_manager import AuthManager, User
 from web_app.security.security_decorators import require_role
 import json
+import psutil
+import shutil
+import platform
+import os
+import time
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -79,17 +84,30 @@ def manage_users():
 @admin_bp.route('/audit')
 def view_audit():
     db = get_db()
-    # Need to add get_audit_logs to DBManager
-    query = """
-        SELECT a.id, a.user_id, u.username, a.action, a.resource_type, a.resource_id, a.details, a.timestamp
-        FROM audit_logs a
-        LEFT JOIN users u ON a.user_id = u.id
-        ORDER BY a.timestamp DESC LIMIT 500
-    """
     with db.get_connection() as conn:
         cursor = db.get_cursor(conn)
-        cursor.execute(query)
-        logs = cursor.fetchall()
+        logs = []
+        queries = [
+            """
+            SELECT a.id, a.user_id, u.username, a.action, a.resource_type, a.resource_id, a.details, a.created_at
+            FROM audit_logs a
+            LEFT JOIN users u ON CAST(a.user_id AS TEXT) = CAST(u.id AS TEXT)
+            ORDER BY a.created_at DESC LIMIT 500
+            """,
+            """
+            SELECT a.id, a.user_id, u.username, a.action, a.resource_type, a.resource_id, a.details, a.timestamp
+            FROM audit_logs a
+            LEFT JOIN users u ON CAST(a.user_id AS TEXT) = CAST(u.id AS TEXT)
+            ORDER BY a.timestamp DESC LIMIT 500
+            """,
+        ]
+        for query in queries:
+            try:
+                cursor.execute(query)
+                logs = cursor.fetchall()
+                break
+            except Exception:
+                continue
         
     return render_template('admin/audit.html', logs=logs)
 
@@ -123,3 +141,69 @@ def monitor_queue():
         active = {}
         
     return render_template('admin/queue.html', stats=stats, active_tasks=active)
+
+@admin_bp.route('/system')
+@login_required
+@require_role(["ADMIN"])
+def monitor_system():
+    """
+    Monitor System Health (CPU, RAM, Disk, Logs).
+    """
+    # CPU
+    cpu_percent = psutil.cpu_percent(interval=None)
+    
+    # RAM
+    mem = psutil.virtual_memory()
+    ram_percent = mem.percent
+    ram_used = round(mem.used / (1024 ** 3), 2)
+    ram_total = round(mem.total / (1024 ** 3), 2)
+    
+    # Disk (Project Drive)
+    # Get drive of PROJECT_ROOT
+    drive = os.path.splitdrive(PROJECT_ROOT)[0] if os.path.splitdrive(PROJECT_ROOT)[0] else '.'
+    try:
+        total, used, free = shutil.disk_usage(drive)
+        disk_percent = round((used / total) * 100, 1)
+        disk_free_gb = round(free / (1024 ** 3), 2)
+        disk_total_gb = round(total / (1024 ** 3), 2)
+    except Exception:
+        disk_percent = 0
+        disk_free_gb = 0
+        disk_total_gb = 0
+        
+    # OS Info
+    os_info = f"{platform.system()} {platform.release()}"
+    python_version = platform.python_version()
+    
+    # Uptime
+    boot_time = psutil.boot_time()
+    uptime_seconds = time.time() - boot_time
+    uptime_hours = round(uptime_seconds / 3600, 1)
+    
+    # Logs (Last 100 lines)
+    log_path = os.path.join(PROJECT_ROOT, 'app.log') # Using app.log from root since we redirected there
+    logs = []
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
+                # Naive read last lines (good enough for small logs)
+                lines = f.readlines()
+                logs = lines[-100:]
+                logs.reverse() # Show newest first
+        except Exception as e:
+            logs = [f"Error reading logs: {e}"]
+            
+    stats = {
+        "cpu": cpu_percent,
+        "ram_percent": ram_percent,
+        "ram_used": ram_used,
+        "ram_total": ram_total,
+        "disk_percent": disk_percent,
+        "disk_free": disk_free_gb,
+        "disk_total": disk_total_gb,
+        "os": os_info,
+        "python": python_version,
+        "uptime_hours": uptime_hours
+    }
+    
+    return render_template('admin/system_status.html', stats=stats, logs=logs)

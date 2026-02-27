@@ -22,9 +22,11 @@ import cv2
 
 from .lang_map import map_code, map_codes
 from .paddle_models import ensure_ppocrv4_models
-from .engines import SuryaOCREngine, OCREngine, PaddleVLOCHEngine
+from .engines.base import OCREngine
+from .engines.surya_wrapper import SuryaOCREngine
 from .image_utils import detect_handwriting_probability, enhance_image, deskew_image, denoise_image
 from .paddle_singleton import get_ppstructure_v3_instance
+from .torch_compat import torch_cuda_usable
 
 try:
     from pdf2image import convert_from_path  # type: ignore
@@ -49,32 +51,66 @@ if os.name == "nt":
     except Exception:
         pass
 
-# Selective backends for OCR engines are loaded lazily via get_paddle_ocr() singleton.
-# However, we need top-level imports for device detection methods below.
-try:
-    from paddleocr import PaddleOCR  # type: ignore
-except (ImportError, OSError):
-    PaddleOCR = None
-
-try:
-    import paddle  # type: ignore
-except (ImportError, OSError):
-    paddle = None
-
-try:
-    import easyocr  # type: ignore
-except (ImportError, OSError):
-    easyocr = None
-
-try:
-    import torch  # type: ignore
-except (ImportError, OSError):
-    torch = None
+# Avoid importing heavy OCR backends at module import time.
+# On Windows, `easyocr/torchvision` can hard-crash the interpreter if DLLs are mismatched.
+# We lazy-import these backends only when the corresponding engine is enabled.
+PaddleOCR = None  # type: ignore[assignment]
+paddle = None  # type: ignore[assignment]
+easyocr = None  # type: ignore[assignment]
+torch = None  # type: ignore[assignment]
 
 try:
     from pdf2image import convert_from_path  # type: ignore
 except ImportError:
     convert_from_path = None
+
+
+def _lazy_import_paddleocr():
+    global PaddleOCR
+    if PaddleOCR is not None:
+        return PaddleOCR
+    try:
+        from paddleocr import PaddleOCR as _PaddleOCR  # type: ignore
+    except (ImportError, OSError):
+        return None
+    PaddleOCR = _PaddleOCR
+    return PaddleOCR
+
+
+def _lazy_import_paddle():
+    global paddle
+    if paddle is not None:
+        return paddle
+    try:
+        import paddle as _paddle  # type: ignore
+    except (ImportError, OSError):
+        return None
+    paddle = _paddle
+    return paddle
+
+
+def _lazy_import_easyocr():
+    global easyocr
+    if easyocr is not None:
+        return easyocr
+    try:
+        import easyocr as _easyocr  # type: ignore
+    except (ImportError, OSError):
+        return None
+    easyocr = _easyocr
+    return easyocr
+
+
+def _lazy_import_torch():
+    global torch
+    if torch is not None:
+        return torch
+    try:
+        import torch as _torch  # type: ignore
+    except (ImportError, OSError):
+        return None
+    torch = _torch
+    return torch
 
 
 DEFAULT_LANGUAGES: Tuple[str, ...] = ("spa", "eng")
@@ -91,7 +127,8 @@ def get_paddle_ocr(lang: str, use_gpu: bool, gpu_id: int = 0, **kwargs: Any) -> 
     """
     global _PADDLE_SINGLETON, _PADDLE_CONFIG
 
-    if PaddleOCR is None:
+    paddleocr_cls = _lazy_import_paddleocr()
+    if paddleocr_cls is None:
         return None
 
     requested_cuda = bool(use_gpu)
@@ -121,7 +158,7 @@ def get_paddle_ocr(lang: str, use_gpu: bool, gpu_id: int = 0, **kwargs: Any) -> 
     
     if key not in globals()["_PADDLE_SINGLETON_MAP"]:
         try:
-            instance = PaddleOCR(**params)
+            instance = paddleocr_cls(**params)
             globals()["_PADDLE_SINGLETON_MAP"][key] = instance
             _LOGGER.info(f"PaddleOCR loaded successfully for {key}.")
         except Exception as exc:
@@ -244,10 +281,11 @@ class OCRManager:
         self._initialise_extra_engines()
 
         if not self._paddle_ocr and not self._easy_reader and not self.extra_engines:
-            self.logger.error("OCR initialization failed: No engines available.")
-            raise RuntimeError(
-                "Neither PaddleOCR, EasyOCR nor extra engines are available. Install at least one OCR backend."
-            )
+            # Production robustness: do not crash the whole app if OCR backends are missing/broken.
+            # The web UI and background workers can still run (chat/RAG/admin), while OCR endpoints
+            # will fail gracefully with empty output and clear logs.
+            self.logger.error("OCR initialization failed: No engines available. OCR will be disabled.")
+            self.enabled = False
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -526,6 +564,10 @@ class OCRManager:
         paddlevl_conf = self.engine_configs.get("paddlevl", {})
         if paddlevl_conf.get("enabled", False):
             try:
+                # Lazy import: this backend pulls in torch/transformers and should not be imported
+                # unless explicitly enabled in config.
+                from .engines.paddle_vl_wrapper import PaddleVLOCHEngine  # type: ignore
+
                 pvl = PaddleVLOCHEngine(paddlevl_conf, logger=self.logger)
                 if pvl.initialize():
                     self.extra_engines["paddlevl"] = pvl
@@ -563,14 +605,18 @@ class OCRManager:
             self.logger.warning("Automatic PP-OCRv4 model setup failed: %s", exc)
 
     def _initialise_easy(self) -> None:
-        if not self._easy_enabled or easyocr is None:
+        if not self._easy_enabled:
             return
         if self.primary_engine != "easyocr" and self.secondary_engine != "easyocr":
+            return
+        easy = _lazy_import_easyocr()
+        if easy is None:
+            self.logger.info("EasyOCR unavailable; skipping initialization.")
             return
         try:
             # easyocr.Reader doesn't always support gpu_id in all versions.
             # It uses the current torch device.
-            self._easy_reader = easyocr.Reader(self._easy_langs, gpu=self._easy_use_gpu)  # type: ignore[arg-type]
+            self._easy_reader = easy.Reader(self._easy_langs, gpu=self._easy_use_gpu)  # type: ignore[arg-type]
             self.logger.info(
                 "EasyOCR initialised (langs=%s, gpu=%s).",
                 ",".join(self._easy_langs),
@@ -585,10 +631,11 @@ class OCRManager:
     def _determine_paddle_gpu(self, requested: bool) -> bool:
         has_cuda = False
         gpu_count = 0
-        if paddle is not None:
+        paddle_mod = _lazy_import_paddle()
+        if paddle_mod is not None:
             try:
-                has_cuda = bool(paddle.device.is_compiled_with_cuda())
-                gpu_count = paddle.device.cuda.device_count() if has_cuda else 0
+                has_cuda = bool(paddle_mod.device.is_compiled_with_cuda())
+                gpu_count = paddle_mod.device.cuda.device_count() if has_cuda else 0
                 has_cuda = has_cuda and gpu_count > 0
             except Exception:  # pragma: no cover - defensive
                 has_cuda = False
@@ -608,17 +655,19 @@ class OCRManager:
     def _determine_easy_gpu(self, requested: bool) -> bool:
         if not requested:
             return False
-        if torch is None:
+        torch_mod = _lazy_import_torch()
+        if torch_mod is None:
             self.logger.info("PyTorch not installed with CUDA support; EasyOCR will run on CPU.")
             return False
-        try:
-            if torch.cuda.is_available():  # type: ignore[union-attr]
-                gpu_count = torch.cuda.device_count()  # type: ignore[union-attr]
-                self.logger.info("CUDA detected; enabling EasyOCR GPU execution on %d GPU(s).", gpu_count)
-                return True
-        except Exception:  # pragma: no cover - defensive
-            pass
-        self.logger.info("CUDA not available; EasyOCR will run on CPU.")
+        usable, reason = torch_cuda_usable(torch_mod, smoke_test=False)
+        if usable:
+            try:
+                gpu_count = torch_mod.cuda.device_count()  # type: ignore[union-attr]
+            except Exception:
+                gpu_count = 1
+            self.logger.info("CUDA detected; enabling EasyOCR GPU execution on %d GPU(s).", gpu_count)
+            return True
+        self.logger.warning("EasyOCR GPU disabled: %s. Falling back to CPU.", reason)
         return False
 
     @staticmethod
@@ -642,7 +691,7 @@ class OCRManager:
         return image.crop((left, top, right, bottom))
 
     def _load_document_images(self, path: str) -> List[Image.Image]:
-        print(f"DEBUG: _load_document_images called for {path}")
+        self.logger.debug("Loading document images from %s", path)
         suffix = Path(path).suffix.lower()
         if suffix == ".pdf":
             if convert_from_path is None:
@@ -653,7 +702,6 @@ class OCRManager:
             # Use poppler_path if provided in config
             kwargs = {}
             if self.poppler_path:
-                print(f"DEBUG: Using poppler_path: {self.poppler_path}")
                 self.logger.info(f"PDF OCR: Using poppler_path: {self.poppler_path}")
                 
                 # Cross-platform check
@@ -661,13 +709,11 @@ class OCRManager:
                 pdfinfo_path = os.path.join(self.poppler_path, pdfinfo_bin)
                 
                 if os.path.exists(pdfinfo_path):
-                    print(f"DEBUG: Verified {pdfinfo_bin} at {pdfinfo_path}")
                     self.logger.info(f"PDF OCR: Verified {pdfinfo_bin} at {pdfinfo_path}")
                     kwargs["poppler_path"] = self.poppler_path
                     
                     # Fix for Windows: Ensure poppler bin is in PATH for DLL loading
                     if os.name == 'nt':
-                        import os
                         current_path = os.environ.get("PATH", "")
                         if self.poppler_path not in current_path:
                             os.environ["PATH"] = self.poppler_path + os.pathsep + current_path
@@ -706,29 +752,30 @@ class OCRManager:
                     apply_clahe=bool(pre_conf.get("apply_clahe", False))
                 )
 
-            # Convert PIL to BGR (OpenCV format)
-            img_np = np.array(pil_image.convert("RGB"))[:, :, ::-1].copy()
+            # Convert to grayscale for denoise/deskew helpers (they expect 1-channel).
+            img_rgb = np.array(pil_image.convert("RGB"))
+            gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
 
             # 1. Upscale if too small (width < 1500px)
-            height, width = img_np.shape[:2]
+            height, width = gray.shape[:2]
             if width < 1500:
                 scale = 1500 / width
-                img_np = cv2.resize(img_np, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-            
+                gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+             
             # 2. Denoise (Centralized)
-            img_np = denoise_image(img_np)
+            gray = denoise_image(gray)
 
             # 3. Sharpening (Unsharp Masking style)
-            gaussian = cv2.GaussianBlur(img_np, (0, 0), 3.0)
-            img_np = cv2.addWeighted(img_np, 1.5, gaussian, -0.5, 0)
-            
+            gaussian = cv2.GaussianBlur(gray, (0, 0), 3.0)
+            gray = cv2.addWeighted(gray, 1.5, gaussian, -0.5, 0)
+             
             # 4. Deskew (Centralized)
-            img_np, angle = deskew_image(img_np)
+            gray, angle = deskew_image(gray)
             if abs(angle) > 0.5:
                 self.logger.info(f"📐 Fixed skew: {angle:.2f}°")
 
-            # Convert back to PIL RGB
-            return Image.fromarray(img_np[:, :, ::-1])
+            # Convert back to PIL RGB (model input expects 3-channel images in many backends).
+            return Image.fromarray(gray).convert("RGB")
         except Exception as e:
             self.logger.warning(f"Image preprocessing failed, using original: {e}")
             return pil_image

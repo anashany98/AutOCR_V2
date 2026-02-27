@@ -4,150 +4,446 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}AutOCR Next{% endblock %}</title>
+    <meta name="description" content="AutoOCR - Sistema de procesamiento de documentos con IA">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}AutoOCR{% endblock %}</title>
+    
     <!-- Fonts -->
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@300;400;500;700&display=swap"
-        rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
     <!-- Icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- Bootstrap 5.3 (Dark Mode Native) -->
+    
+    <!-- Socket.IO Client (for real-time updates) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    
+    <!-- Bootstrap 5.3 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Custom Modern CSS -->
-    <link href="{{ url_for('static', filename='css/modern.css') }}" rel="stylesheet">
+    
+    <!-- Obsidian Flow Design System -->
+    <link href="{{ url_for('static', filename='css/obsidian.css') }}" rel="stylesheet">
+    
+    {% block extra_css %}{% endblock %}
 </head>
 
 <body>
-    <div class="layout-wrapper {{ 'auth-layout' if not current_user.is_authenticated else '' }}">
+    {% if current_user.is_authenticated %}
+    <!-- App Layout -->
+    <div class="app-layout">
+        <!-- Sidebar Toggle Button -->
+        <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+            <i class="fas fa-bars"></i>
+        </button>
+
         <!-- Sidebar -->
-        {% if current_user.is_authenticated %}
-        <nav class="sidebar">
+        <aside class="app-sidebar" id="appSidebar">
             <div class="sidebar-brand">
-                <i class="fas fa-cube me-2"></i> AutOCR <span style="font-size: 0.8rem; opacity: 0.5;">v2.5</span>
+                <i class="fas fa-cube"></i>
+                <span>AutoOCR</span>
             </div>
 
-            <div class="nav flex-column">
+            <nav class="sidebar-nav">
+                <!-- Main Navigation -->
                 {% if current_user.role != 'client' %}
-                <a class="nav-link {{ 'active' if request.endpoint == 'main.dashboard' else '' }}"
-                    href="{{ url_for('main.dashboard') }}">
-                    <i class="fas fa-chart-pie"></i> Dashboard
-                </a>
-                {% endif %}
-                <a class="nav-link {{ 'active' if request.endpoint == 'main.documents' else '' }}"
-                    href="{{ url_for('main.documents') }}">
-                    <i class="fas fa-layer-group"></i> Mis Documentos
-                </a>
-                {% if current_user.role != 'client' %}
-                <a class="nav-link {{ 'active' if request.endpoint == 'main.upload' else '' }}"
-                    href="{{ url_for('main.upload') }}">
-                    <i class="fas fa-cloud-upload-alt"></i> Subir
-                </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'main.batch_process' else '' }}"
-                    href="{{ url_for('main.batch_process') }}">
-                    <i class="fas fa-boxes-stacked"></i> Procesar Lote
-                </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'main.tasks_page' else '' }}"
-                    href="{{ url_for('main.tasks_page') }}">
-                    <i class="fas fa-tasks"></i> Monitor de Tareas
-                </a>
-                {% endif %}
-                <a class="nav-link {{ 'active' if request.endpoint == 'main.chat' else '' }}"
-                    href="{{ url_for('main.chat') }}">
-                    <i class="fas fa-robot"></i> Asesor IA
-                </a>
-                <a href="{{ url_for('main.vision_studio') }}"
-                    class="nav-link text-white py-3 border-bottom border-secondary opacity-75">
-                    <i class="fas fa-magic me-2"></i> Vision Studio
-                </a>
-                <a href="{{ url_for('main.vision_canvas') }}"
-                    class="nav-link text-white py-3 border-bottom border-secondary opacity-75">
-                    <i class="fas fa-layer-group me-2"></i> Moodboard Canvas
-                </a>
-                {% if current_user.role != 'client' %}
-                <div class="mt-4 mb-2 text-muted text-uppercase" style="font-size: 0.75rem; padding-left: 1rem;">Sistema
+                <div class="nav-group">
+                    <div class="nav-group-title">Principal</div>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'main.dashboard' else '' }}"
+                        href="{{ url_for('main.dashboard') }}">
+                        <i class="fas fa-chart-pie"></i>
+                        <span class="nav-label">Dashboard</span>
+                    </a>
                 </div>
-                <a class="nav-link {{ 'active' if request.endpoint == 'main.gallery' else '' }}"
-                    href="{{ url_for('main.gallery') }}">
-                    <i class="fas fa-images"></i> Galería Visual
-                </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'main.settings' else '' }}"
-                    href="{{ url_for('main.settings') }}">
-                    <i class="fas fa-cog"></i> Configuración
-                </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'main.duplicates_page' else '' }}"
-                    href="{{ url_for('main.duplicates_page') }}">
-                    <i class="fas fa-clone"></i> Limpiar Duplicados
-                </a>
+                {% endif %}
+
+                <div class="nav-group">
+                    <div class="nav-group-title">Documentos</div>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'main.documents' else '' }}"
+                        href="{{ url_for('main.documents') }}">
+                        <i class="fas fa-folder-open"></i>
+                        <span class="nav-label">Mis Documentos</span>
+                    </a>
+                    {% if current_user.role != 'client' %}
+                    <a class="nav-link {{ 'active' if request.endpoint == 'main.upload' else '' }}"
+                        href="{{ url_for('main.upload') }}">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <span class="nav-label">Subir</span>
+                    </a>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'main.batch_process' else '' }}"
+                        href="{{ url_for('main.batch_process') }}">
+                        <i class="fas fa-layer-group"></i>
+                        <span class="nav-label">Procesar Lote</span>
+                    </a>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'main.tasks_page' else '' }}"
+                        href="{{ url_for('main.tasks_page') }}">
+                        <i class="fas fa-tasks"></i>
+                        <span class="nav-label">Monitor de Tareas</span>
+                    </a>
+                    {% endif %}
+                </div>
+
+                <div class="nav-group">
+                    <div class="nav-group-title">Inteligencia</div>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'main.chat' else '' }}"
+                        href="{{ url_for('main.chat') }}">
+                        <i class="fas fa-robot"></i>
+                        <span class="nav-label">Asesor IA</span>
+                    </a>
+                    <a href="{{ url_for('main.vision_studio') }}" class="nav-link">
+                        <i class="fas fa-magic"></i>
+                        <span class="nav-label">Vision Studio</span>
+                    </a>
+                    <a href="{{ url_for('main.vision_canvas') }}" class="nav-link">
+                        <i class="fas fa-palette"></i>
+                        <span class="nav-label">Moodboard</span>
+                    </a>
+                </div>
+
+                {% if current_user.role != 'client' %}
+                <div class="nav-group">
+                    <div class="nav-group-title">Sistema</div>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'main.gallery' else '' }}"
+                        href="{{ url_for('main.gallery') }}">
+                        <i class="fas fa-images"></i>
+                        <span class="nav-label">Galería Visual</span>
+                    </a>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'main.settings' else '' }}"
+                        href="{{ url_for('main.settings') }}">
+                        <i class="fas fa-cog"></i>
+                        <span class="nav-label">Configuración</span>
+                    </a>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'main.duplicates_page' else '' }}"
+                        href="{{ url_for('main.duplicates_page') }}">
+                        <i class="fas fa-clone"></i>
+                        <span class="nav-label">Duplicados</span>
+                    </a>
+                </div>
                 {% endif %}
 
                 {% if current_user.role == 'ADMIN' %}
-                <div class="mt-4 mb-2 text-muted text-uppercase" style="font-size: 0.75rem; padding-left: 1rem;">
-                    Administración
-                </div>
-                <a class="nav-link {{ 'active' if request.endpoint == 'admin.manage_hotels' else '' }}"
-                    href="{{ url_for('admin.manage_hotels') }}">
-                    <i class="fas fa-hotel"></i> Gestión de Hoteles
-                </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'admin.manage_users' else '' }}"
-                    href="{{ url_for('admin.manage_users') }}">
-                    <i class="fas fa-users-cog"></i> Gestión de Usuarios
-                </a>
-                <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_audit' else '' }}"
-                    href="{{ url_for('admin.view_audit') }}">
-                    <i class="fas fa-shield-halved"></i> Auditoría
-                </a>
-                {% endif %}
-
-                <!-- User Info & Logout -->
-                <div class="mt-auto pt-4" style="border-top: 1px solid rgba(255,255,255,0.1);">
-                    <div class="text-muted small px-3 mb-2">
-                        <i class="fas fa-user-circle me-1"></i> {{ current_user.username }}
-                        <span
-                            class="badge bg-{{ 'warning' if current_user.role == 'ADMIN' else 'info' if current_user.role == 'DIRECCION' else 'primary' if current_user.role == 'GESTOR' else 'secondary' }} ms-1">
-                            {{ current_user.role }}
-                        </span>
-                    </div>
-                    <a class="nav-link text-danger" href="{{ url_for('auth.logout') }}">
-                        <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                <div class="nav-group">
+                    <div class="nav-group-title">Administración</div>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'admin.manage_hotels' else '' }}"
+                        href="{{ url_for('admin.manage_hotels') }}">
+                        <i class="fas fa-hotel"></i>
+                        <span class="nav-label">Hoteles</span>
+                    </a>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'admin.manage_users' else '' }}"
+                        href="{{ url_for('admin.manage_users') }}">
+                        <i class="fas fa-users"></i>
+                        <span class="nav-label">Usuarios</span>
+                    </a>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_audit' else '' }}"
+                        href="{{ url_for('admin.view_audit') }}">
+                        <i class="fas fa-shield-halved"></i>
+                        <span class="nav-label">Auditoría</span>
+                    </a>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'admin.monitor_system' else '' }}"
+                        href="{{ url_for('admin.monitor_system') }}">
+                        <i class="fas fa-server"></i>
+                        <span class="nav-label">Sistema</span>
                     </a>
                 </div>
+                {% endif %}
+            </nav>
+
+            <!-- User Footer -->
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        {{ current_user.username[0]|upper }}
+                    </div>
+                    <div class="user-details">
+                        <div class="user-name">{{ current_user.username }}</div>
+                        <div class="user-role">
+                            <span class="badge badge-{{ 'warning' if current_user.role == 'ADMIN' else 'info' if current_user.role == 'DIRECCION' else 'neutral' }}">
+                                {{ current_user.role }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <form method="post" action="{{ url_for('auth.logout') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="nav-link w-100 text-start text-error">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span class="nav-label">Cerrar Sesión</span>
+                    </button>
+                </form>
             </div>
-        </nav>
-        {% endif %}
+        </aside>
 
         <!-- Main Content -->
-        <main class="main-content">
-            <!-- Header/Breadcrumbs could go here -->
+        <main class="app-main">
+            <!-- Top Bar -->
+            <header class="app-topbar">
+                <!-- Breadcrumbs -->
+                <nav class="breadcrumbs" aria-label="Breadcrumb">
+                    {% block breadcrumbs %}
+                    <a href="{{ url_for('main.index') }}" class="breadcrumb-item">
+                        <i class="fas fa-home"></i>
+                    </a>
+                    {% if request.endpoint %}
+                    <span class="breadcrumb-separator">/</span>
+                    <span class="breadcrumb-item active">{{ request.endpoint.split('.')[1]|title }}</span>
+                    {% endif %}
+                    {% endblock %}
+                </nav>
 
-            <!-- Flash Messages -->
-            {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-            {% for category, message in messages %}
-            <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'error' else 'info' }} alert-dismissible fade show shadow-sm"
-                style="border-radius: var(--radius-md);">
-                <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' }} me-2"></i>
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <!-- Quick Actions -->
+                <div class="d-flex align-items-center gap-3">
+                    <!-- Search -->
+                    <div class="search-wrapper">
+                        <i class="fas fa-search"></i>
+                        <input type="text" class="form-input" placeholder="Buscar... (Ctrl+K)" 
+                               id="globalSearch" aria-label="Búsqueda global">
+                    </div>
+
+                    <!-- Notifications -->
+                    <button class="btn btn-ghost btn-icon" id="notificationBtn" aria-label="Notificaciones">
+                        <i class="fas fa-bell"></i>
+                        <span class="notification-dot"></span>
+                    </button>
+
+                    <!-- System Status -->
+                    <div class="system-status">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Online</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <div class="app-content">
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'error' else 'info' }} alert-dismissible fade show"
+                        role="alert">
+                        <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' if category == 'error' else 'info-circle' }}"></i>
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
             </div>
-            {% endfor %}
-            {% endif %}
-            {% endwith %}
-
-            {% block content %}{% endblock %}
         </main>
     </div>
 
+    {% else %}
+    <!-- Auth Layout -->
+    <div class="auth-layout">
+        {% block auth_content %}{% endblock %}
+    </div>
+    {% endif %}
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    {% block extra_js %}{% endblock %}
+    
     <script>
-        // PWA Service Worker Registration
+        // CSRF Token Handler
+        (function() {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            const token = meta ? meta.getAttribute('content') : '';
+            if (!token || typeof window.fetch !== 'function') return;
+
+            function isSameOrigin(url) {
+                try {
+                    const target = new URL(url, window.location.href);
+                    return target.origin === window.location.origin;
+                } catch (_) {
+                    return true;
+                }
+            }
+
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = function(input, init) {
+                const opts = init ? {...init} : {};
+                const method = String(opts.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+                const url = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+
+                if (isSameOrigin(url) && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+                    const headers = new Headers(opts.headers || (input instanceof Request ? input.headers : undefined));
+                    headers.set('X-CSRFToken', token);
+                    opts.headers = headers;
+                }
+                return originalFetch(input, opts);
+            };
+            window.__csrfToken = token;
+        })();
+
+        // Sidebar Toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const sidebar = document.getElementById('appSidebar');
+            
+            if (sidebarToggle && sidebar) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('collapsed');
+                    localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+                });
+
+                // Restore sidebar state
+                const savedState = localStorage.getItem('sidebarCollapsed');
+                if (savedState === 'true') {
+                    sidebar.classList.add('collapsed');
+                }
+            }
+
+            // Auto-hide alerts
+            setTimeout(function() {
+                const alerts = document.querySelectorAll('.alert');
+                alerts.forEach(function(alert) {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                });
+            }, 5000);
+
+            // Global Search (Ctrl+K)
+            document.addEventListener('keydown', function(e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                    e.preventDefault();
+                    const searchInput = document.getElementById('globalSearch');
+                    if (searchInput) {
+                        searchInput.focus();
+                    }
+                }
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                // Escape to close sidebar on mobile
+                if (e.key === 'Escape') {
+                    const sidebar = document.getElementById('appSidebar');
+                    if (sidebar && window.innerWidth < 1024) {
+                        sidebar.classList.remove('open');
+                    }
+                }
+            });
+        });
+
+        // Toast Notification System
+        window.showToast = function(message, type = 'info', duration = 4000) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            
+            const icons = {
+                success: 'check-circle',
+                error: 'exclamation-circle',
+                warning: 'exclamation-triangle',
+                info: 'info-circle'
+            };
+            
+            toast.innerHTML = `
+                <i class="fas fa-${icons[type] || 'info-circle'}"></i>
+                <span>${message}</span>
+                <button class="btn-close ms-auto" onclick="this.parentElement.remove()"></button>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(function() {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(function() {
+                    toast.remove();
+                }, 300);
+            }, duration);
+        };
+
+        // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}")
+                    .then(function(registration) {
+                        console.log('SW registered:', registration.scope);
+                    })
+                    .catch(function(error) {
+                        console.log('SW registration failed:', error);
+                    });
             });
         }
+
+        // Real-time updates with WebSocket
+        (function() {
+            // Only connect if user is authenticated
+            if (!document.querySelector('.app-layout')) return;
+            
+            // Check if Socket.IO is available
+            if (typeof io === 'undefined') {
+                console.log('Socket.IO not available, using polling fallback');
+                initPolling();
+                return;
+            }
+            
+            const socket = io();
+            
+            socket.on('connect', function() {
+                console.log('WebSocket connected');
+                updateConnectionStatus(true);
+            });
+            
+            socket.on('disconnect', function() {
+                console.log('WebSocket disconnected');
+                updateConnectionStatus(false);
+            });
+            
+            socket.on('task_update', function(data) {
+                showToast(`Tarea ${data.task_id}: ${data.message}`, 'info');
+                // Could update task list automatically
+                const event = new CustomEvent('taskUpdate', { detail: data });
+                document.dispatchEvent(event);
+            });
+            
+            socket.on('document_update', function(data) {
+                showToast(`Documento actualizado: ${data.action}`, 'info');
+                const event = new CustomEvent('documentUpdate', { detail: data });
+                document.dispatchEvent(event);
+            });
+            
+            socket.on('notification', function(data) {
+                showToast(data.message, data.type || 'info');
+            });
+            
+            function updateConnectionStatus(connected) {
+                const statusEl = document.querySelector('.system-status .status-dot');
+                const textEl = document.querySelector('.system-status .status-text');
+                if (statusEl && textEl) {
+                    statusEl.classList.toggle('online', connected);
+                    textEl.textContent = connected ? 'Online' : 'Reconectando...';
+                }
+            }
+        })();
+
+        // Fallback polling for real-time updates
+        function initPolling() {
+            // Poll for task updates every 30 seconds
+            setInterval(function() {
+                fetch('/api/tasks/active', {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    // Dispatch event for components to handle
+                    const event = new CustomEvent('taskPoll', { detail: data });
+                    document.dispatchEvent(event);
+                })
+                .catch(function() {});
+            }, 30000);
+        }
     </script>
+    
+    {% block extra_js %}{% endblock %}
 </body>
 
 </html>

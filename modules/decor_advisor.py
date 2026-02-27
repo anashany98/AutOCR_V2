@@ -37,13 +37,31 @@ class DecorAdvisor:
         
         return list(set(advice)) # Deduplicate
 
-    def generate_ai_advice(self, caption: str, objects: List[str], llm_client) -> str:
+
+            
+    def generate_ai_advice(self, caption: str, objects: List[str], llm_client, image_path: str = None) -> str:
         """
         Uses LLM to provide professional decor advice based on visual analysis.
         """
         if not llm_client:
             return "El asesor inteligente está desactivado por el momento."
 
+        # If we have an image path and the client supports vision, prefer visual analysis
+        if image_path and hasattr(llm_client, 'analyze_decor_vision'):
+             result = llm_client.analyze_decor_vision(image_path)
+             if result.get("success"):
+                 # Return the raw JSON string (or dict if we parsed it)
+                 # The LLM Client returns string in 'analysis'. 
+                 # We'll let the frontend parse it or parse it here.
+                 # Let's try to parse here to be safe
+                 import json
+                 try:
+                    return json.loads(result.get("analysis"))
+                 except:
+                    return result.get("analysis") # Fallback to string
+             # Fallback if vision fails
+        
+        # Text-based fallback (Prompt Engineering based on tags/caption)
         prompt = (
             f"Como experto en diseño de interiores y arquitectura, analiza estos datos visuales y da 3 consejos cortos y profesionales.\n"
             f"ESCENA: {caption}\n"
@@ -52,10 +70,7 @@ class DecorAdvisor:
         )
 
         try:
-            # We use analyze_document generic method as a base for custom prompts if supported
-            # or add a specific chat-like method. Let's use custom prompt logic.
             result = llm_client.analyze_document(text=prompt, doc_type="Diseño de Interiores", reason="Asesoría Estética")
-            # Usually analyze_document returns JSON, we might want just text for advice
             if isinstance(result, dict) and "analysis" in result:
                 return result["analysis"]
             return str(result)

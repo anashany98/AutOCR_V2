@@ -25,8 +25,10 @@ class DummyTableEngine:
         ]
 
 
-def test_table_manager_exports_structures(tmp_path):
+def test_table_manager_exports_structures(tmp_path, monkeypatch):
     output_dir = tmp_path / "tables"
+    # Avoid loading the real Paddle table engine in unit tests.
+    monkeypatch.setattr(TableManager, "_initialise_engine", lambda self: None)
     manager = TableManager(TableManagerConfig(use_gpu=False, output_dir=str(output_dir)))
     manager._engine = DummyTableEngine()
     manager._load_document_images = lambda path: [Image.new("RGB", (20, 20), "white")]

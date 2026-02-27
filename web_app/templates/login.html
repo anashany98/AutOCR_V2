@@ -1,79 +1,60 @@
-{% extends "base.html" %}
+{% extends "base_auth.html" %}
 
-{% block title %}Acceso - AutoOCR Next{% endblock %}
+{% block title %}AutoOCR - Iniciar Sesión{% endblock %}
 
 {% block content %}
-<div class="auth-card card">
-    <div class="card-header text-center py-5">
-        <div class="mb-3">
-            <i class="fas fa-cube fa-3x"
-                style="color: var(--primary-color); filter: drop-shadow(0 0 10px var(--primary-glow));"></i>
-        </div>
-        <h2 class="h3 mb-0" style="letter-spacing: 2px; text-transform: uppercase; color: var(--text-main);">
-            AutOCR <span style="font-weight: 300; opacity: 0.7;">Next</span>
-        </h2>
-        <p class="text-muted small mt-2">Detección Inteligente & Gestión Documental</p>
-    </div>
-
-    <div class="card-body p-4 p-lg-5">
-        <form method="POST" action="{{ request.path }}">
-            <div class="mb-4">
-                <label class="form-label small text-uppercase fw-bold"
-                    style="letter-spacing: 1px; color: var(--text-muted);">Usuario</label>
-                <div class="input-group">
-                    <span class="input-group-text">
-                        <i class="fas fa-user-circle"></i>
-                    </span>
-                    <input type="text" name="username" class="form-control form-control-lg bg-dark text-light"
-                        placeholder="Ingresa tu usuario" required autofocus>
-                </div>
-            </div>
-
-            <div class="mb-5">
-                <label class="form-label small text-uppercase fw-bold"
-                    style="letter-spacing: 1px; color: var(--text-muted);">Contraseña</label>
-                <div class="input-group">
-                    <span class="input-group-text">
-                        <i class="fas fa-key"></i>
-                    </span>
-                    <input type="password" name="password" class="form-control form-control-lg bg-dark text-light"
-                        placeholder="••••••••" required>
-                </div>
-            </div>
-
-            <div class="d-grid mb-4">
-                <button type="submit" class="btn btn-primary btn-lg py-3 shadow-lg">
-                    {% if register_mode %}CREAR CUENTA{% else %}INICIAR SESIÓN{% endif %}
-                </button>
-            </div>
-        </form>
-    </div>
-
-    <div class="card-footer bg-transparent border-0 text-center pb-5">
-        {% if register_mode %}
-        <a href="{{ url_for('auth.login') }}" class="text-decoration-none text-muted small hover-gold">
-            ¿Ya eres miembro? <span style="color: var(--primary-color);">Entrar aquí</span>
-        </a>
-        {% else %}
-        <a href="{{ url_for('auth.register') }}" class="text-decoration-none text-muted small hover-gold">
-            ¿Nuevo aquí? <span style="color: var(--primary-color);">Registra una cuenta demo</span>
-        </a>
-        {% endif %}
-    </div>
+<div class="auth-logo">
+    <h1><i class="fas fa-cube" style="color: var(--color-primary);"></i> Auto<span>OCR</span></h1>
+    <p>Inicia sesión para continuar</p>
 </div>
 
-<style>
-    .hover-gold:hover span {
-        text-decoration: underline;
-    }
+<form method="POST" class="animate-slide-up">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    
+    <div class="form-group">
+        <label class="form-label" for="username">Usuario</label>
+        <div class="position-relative">
+            <i class="fas fa-user form-icon"></i>
+            <input type="text" name="username" id="username" 
+                   class="form-input form-input-with-icon" 
+                   placeholder="Tu nombre de usuario" 
+                   required 
+                   autocomplete="username"
+                   aria-describedby="usernameHelp">
+        </div>
+    </div>
 
-    .form-control {
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        font-family: 'Inter', sans-serif;
-    }
+    <div class="form-group">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <label class="form-label mb-0" for="password">Contraseña</label>
+            <a href="{{ url_for('auth.forgot_password') }}" class="text-sm" style="font-size: var(--text-sm);">
+                ¿Olvidaste tu contraseña?
+            </a>
+        </div>
+        <div class="position-relative">
+            <i class="fas fa-lock form-icon"></i>
+            <input type="password" name="password" id="password" 
+                   class="form-input form-input-with-icon" 
+                   placeholder="••••••••" 
+                   required 
+                   autocomplete="current-password">
+        </div>
+    </div>
 
-    .form-control::placeholder {
-        color: rgba(255, 255, 255, 0.2);
-    }
-</style>
+    <div class="form-group">
+        <button type="submit" class="btn btn-primary w-full" style="height: 48px;">
+            <i class="fas fa-sign-in-alt"></i>
+            Iniciar Sesión
+        </button>
+    </div>
+</form>
+
+<div class="auth-divider">o</div>
+
+<div class="auth-footer">
+    <p class="mb-0">
+        ¿No tienes cuenta? 
+        <a href="{{ url_for('auth.register') }}">Regístrate aquí</a>
+    </p>
+</div>
 {% endblock %}

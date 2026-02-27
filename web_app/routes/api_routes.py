@@ -3,13 +3,14 @@ import json
 import threading
 import tempfile
 from pathlib import Path
-from flask import Blueprint, jsonify, request, url_for, send_from_directory, send_file
+from typing import Any, Dict, Optional
+from flask import Blueprint, jsonify, request, url_for, send_from_directory, send_file, current_app
 from PIL import Image
 
 from pydantic import ValidationError
 
-from web_app.services import get_db, get_pipeline, get_logger, PROJECT_ROOT
-from web_app.security.security_decorators import require_role, hotel_scoped, financial_access_required
+from web_app.services import get_db, get_pipeline, get_vision_manager, get_logger, PROJECT_ROOT
+from web_app.security.security_decorators import require_role, hotel_scoped, owner_scoped, financial_access_required
 from flask_login import login_required, current_user
 from web_app.utils import safe_json_parse, ensure_within_project, encode_path
 
@@ -17,15 +18,100 @@ from modules.schemas import DocumentUpdateSchema
 from modules.moodboard import MoodboardGenerator
 from modules.deduplicator import Deduplicator
 from modules.learning import ModelTrainer
-from modules.learning import ModelTrainer
 from modules.image_utils import enhance_image
 from modules.tasks import huey
 
 api_bp = Blueprint('api', __name__)
 
+
+ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".jfif", ".avif", ".gif", ".tif", ".tiff"}
+
+
+def _documents_has_column(db, column_name: str) -> bool:
+    try:
+        with db.get_connection() as conn:
+            cursor = db.get_cursor(conn)
+            cursor.execute(f"SELECT {column_name} FROM documents LIMIT 1")
+        return True
+    except Exception:
+        return False
+
+
+def _documents_schema(db) -> Dict[str, Any]:
+    return {
+        "created_col": "created_at" if _documents_has_column(db, "created_at") else "datetime",
+        "path_col": "file_path" if _documents_has_column(db, "file_path") else "path",
+        "type_col": "doc_type" if _documents_has_column(db, "doc_type") else "type",
+    }
+
+
+def _row_get(row: Any, key: str, index: Optional[int] = None, default: Any = None) -> Any:
+    if row is None:
+        return default
+    try:
+        return row[key]
+    except Exception:
+        pass
+    if index is not None:
+        try:
+            return row[index]
+        except Exception:
+            pass
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return default
+
+
+def _abs_doc_path(path_value: Optional[str]) -> Optional[Path]:
+    if not path_value:
+        return None
+    path_obj = Path(str(path_value))
+    if not path_obj.is_absolute():
+        path_obj = PROJECT_ROOT / path_obj
+    try:
+        return path_obj.resolve(strict=False)
+    except Exception:
+        return path_obj
+
+
+def _path_candidates(path_value: Optional[str]) -> list[str]:
+    candidates: list[str] = []
+
+    def _add_variants(value: Optional[str]) -> None:
+        if not value:
+            return
+        variants = {value, value.replace("\\", "/"), value.replace("/", "\\")}
+        for v in variants:
+            if v and v not in candidates:
+                candidates.append(v)
+
+    _add_variants(str(path_value) if path_value else None)
+    abs_path = _abs_doc_path(path_value)
+    if abs_path:
+        abs_str = str(abs_path)
+        _add_variants(abs_str)
+        try:
+            rel_str = str(abs_path.relative_to(PROJECT_ROOT.resolve()))
+            _add_variants(rel_str)
+        except Exception:
+            pass
+    return candidates
+
+
+def _find_document_by_path(db, path_col: str, path_value: Optional[str], select_sql: str):
+    candidates = _path_candidates(path_value)
+    if not candidates:
+        return None
+
+    placeholders = ",".join([db.placeholder] * len(candidates))
+    query = f"SELECT {select_sql} FROM documents WHERE {path_col} IN ({placeholders}) LIMIT 1"
+    return db.execute(query, tuple(candidates)).fetchone()
+
+
 @api_bp.route("/api/document/<int:doc_id>/update", methods=["POST"])
 @login_required
 @hotel_scoped('doc_id')
+@owner_scoped("doc_id")
 def api_update_document(doc_id: int):
     """Update document data with Pydantic validation."""
     try:
@@ -33,6 +119,8 @@ def api_update_document(doc_id: int):
         validated = DocumentUpdateSchema(**data)
         
         db = get_db()
+        doc_schema = _documents_schema(db)
+        type_col = doc_schema["type_col"]
         with db.get_connection() as conn:
             cursor = db.get_cursor(conn)
             
@@ -44,7 +132,7 @@ def api_update_document(doc_id: int):
                 doc_updates.append(f"filename = {db.placeholder}")
                 doc_params.append(validated.filename)
             if validated.type:
-                doc_updates.append(f"type = {db.placeholder}")
+                doc_updates.append(f"{type_col} = {db.placeholder}")
                 doc_params.append(validated.type)
             if validated.status:
                 doc_updates.append(f"status = {db.placeholder}")
@@ -107,6 +195,7 @@ def api_update_document(doc_id: int):
 
 @api_bp.route("/api/create_moodboard", methods=["POST"])
 @login_required
+@require_role(['GESTOR', 'DIRECCION', 'ADMIN'])
 def api_create_moodboard():
     data = request.json
     doc_ids = data.get("ids", [])
@@ -116,23 +205,53 @@ def api_create_moodboard():
         return jsonify({"error": "No documents selected"}), 400
 
     db = get_db()
+    schema = _documents_schema(db)
+    path_col = schema["path_col"]
     
+    # Enforce access controls for every selected document (multi-tenant isolation).
+    try:
+        doc_ids = [int(x) for x in doc_ids]
+    except Exception:
+        return jsonify({"error": "Invalid document IDs"}), 400
+
     with db.get_connection() as conn:
         cursor = db.get_cursor(conn)
         ph = db.placeholder
         placeholders = ",".join(ph for _ in doc_ids)
-        query = f"SELECT path FROM documents WHERE id IN ({placeholders})"
+        query = f"SELECT id, {path_col} AS path, owner_id, hotel_id FROM documents WHERE id IN ({placeholders})"
         cursor.execute(query, tuple(doc_ids))
         rows = cursor.fetchall()
+
+    # Filter to documents accessible by the current user.
+    role = str(getattr(current_user, "role", "")).upper()
+    scope_set = {str(h) for h in (getattr(current_user, "hotel_scope", []) or [])}
+    allowed_paths = []
+    for row in rows:
+        path_val = _row_get(row, "path", 1)
+        owner_val = _row_get(row, "owner_id", 2)
+        hotel_val = _row_get(row, "hotel_id", 3)
+
+        if role != "ADMIN":
+            if hotel_val is None or str(hotel_val) not in scope_set:
+                continue
+        if role in {"CLIENTE", "CLIENT"} and str(owner_val) != str(current_user.id):
+            continue
+
+        # Normalise path to absolute for the generator.
+        abs_path = _abs_doc_path(path_val)
+        if not abs_path or not abs_path.exists():
+            continue
+        allowed_paths.append(str(abs_path))
+
+    if len(allowed_paths) != len(doc_ids):
+        return jsonify({"error": "Access denied for one or more documents"}), 403
     
-    paths = [(row["path"] if isinstance(row, dict) else row[0]) for row in rows]
-    
-    if not paths:
+    if not allowed_paths:
         return jsonify({"error": "No valid images found for selected IDs"}), 404
 
     generator = MoodboardGenerator(output_dir=PROJECT_ROOT / "data" / "moodboards")
     try:
-        output_path = generator.create(paths, title)
+        output_path = generator.create(allowed_paths, title)
         if not output_path:
              return jsonify({"error": "Failed to generate moodboard (invalid images?)"}), 500
              
@@ -145,6 +264,8 @@ def api_create_moodboard():
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/moodboard_file/<filename>")
+@login_required
+@require_role(['GESTOR', 'DIRECCION', 'ADMIN'])
 def serve_moodboard(filename):
     return send_from_directory(PROJECT_ROOT / "data" / "moodboards", filename)
 
@@ -152,12 +273,12 @@ def serve_moodboard(filename):
 @login_required
 @require_role(['GESTOR', 'DIRECCION', 'ADMIN'])
 def api_scan_duplicates():
-    pipeline = get_pipeline()
-    if not pipeline.vision_manager:
+    vision_manager = get_vision_manager()
+    if not vision_manager:
         return jsonify([])
     
     try:
-        deduper = Deduplicator(pipeline.vision_manager)
+        deduper = Deduplicator(vision_manager)
         visual_dupes = deduper.find_duplicates()
         
         results = []
@@ -168,7 +289,7 @@ def api_scan_duplicates():
                 token = encode_path(str(p))
                 # Assuming main.vision_preview handles /vision/preview/<token>
                 url = f"/vision/preview/{token}" 
-            except:
+            except Exception:
                 url = "/static/img/placeholder.png"
                 
             return {
@@ -195,6 +316,7 @@ def api_scan_duplicates():
 @api_bp.route("/api/document/<int:doc_id>/verify", methods=["POST"])
 @login_required
 @hotel_scoped('doc_id')
+@owner_scoped("doc_id")
 def api_verify_document(doc_id):
     db = get_db()
     if db.update_document_state(doc_id, "verified"):
@@ -205,6 +327,7 @@ def api_verify_document(doc_id):
 @api_bp.route("/api/document/<int:doc_id>/fields", methods=["POST"])
 @login_required
 @hotel_scoped('doc_id')
+@owner_scoped("doc_id")
 def api_update_fields(doc_id):
     db = get_db()
     data = request.json
@@ -234,6 +357,8 @@ def api_update_fields(doc_id):
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/providers/search")
+@login_required
+@require_role(["GESTOR", "DIRECCION", "ADMIN"])
 def api_search_providers():
     query = request.args.get('q', '').lower()
     try:
@@ -261,56 +386,70 @@ def api_search_providers():
         return jsonify([])
 
 @api_bp.route("/api/document/<int:doc_id>/dismiss-anomaly", methods=["POST"])
+@login_required
+@hotel_scoped("doc_id")
+@owner_scoped("doc_id")
 def api_dismiss_anomaly(doc_id):
     db = get_db()
-    data = request.json
-    
-    if not data or 'anomaly' not in data:
+
+    data = request.json or {}
+    anomaly = data.get("anomaly")
+    if not anomaly:
         return jsonify({"error": "Missing anomaly code"}), 400
-    
+
     try:
-        cursor = db.execute("SELECT structured_data FROM ocr_texts WHERE id_doc = ?", (doc_id,))
-        row = cursor.fetchone()
+        row = db.execute(
+            f"SELECT structured_data FROM ocr_texts WHERE id_doc = {db.placeholder}",
+            (doc_id,),
+        ).fetchone()
         if not row:
             return jsonify({"error": "Document not found"}), 404
-        
-        structured_data = json.loads(row[0]) if row[0] else {}
-        anomalies = structured_data.get('anomalies', [])
-        
-        if data['anomaly'] in anomalies:
-            anomalies.remove(data['anomaly'])
-            structured_data['anomalies'] = anomalies
-            
+
+        structured_json = row[0] if isinstance(row, (tuple, list)) else row["structured_data"]
+        structured_data = safe_json_parse(structured_json, {})
+        if not isinstance(structured_data, dict):
+            structured_data = {}
+
+        anomalies = structured_data.get("anomalies", [])
+
+        if isinstance(anomalies, list) and anomaly in anomalies:
+            structured_data["anomalies"] = [a for a in anomalies if a != anomaly]
+
             db.execute(
-                "UPDATE ocr_texts SET structured_data = ? WHERE id_doc = ?",
-                (json.dumps(structured_data), doc_id)
+                f"UPDATE ocr_texts SET structured_data = {db.placeholder} WHERE id_doc = {db.placeholder}",
+                (json.dumps(structured_data), doc_id),
+                commit=True,
             )
-            db.conn.commit()
-        
+
         return jsonify({"success": True})
     except Exception as e:
+        get_logger().error(f"Dismiss anomaly failed: {e}")
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/document/<int:doc_id>", methods=["DELETE"])
 @login_required
 @hotel_scoped('doc_id')
+@owner_scoped("doc_id")
 def api_delete_document(doc_id):
     db = get_db()
-    
-    row = db.execute("SELECT path FROM documents WHERE id = ?", (doc_id,)).fetchone()
-    if not row:
+
+    doc = db.get_document(doc_id)
+    if not doc:
         return jsonify({"error": "Not found"}), 404
-        
-    path_str = (row["path"] if isinstance(row, dict) else row[0])
+
+    path_str = doc.get("path")
     
     try:
         # 1. Database Cleanup
-        db.delete_document(doc_id)
+        deleted = db.delete_document(doc_id)
+        if not deleted:
+            return jsonify({"error": "Delete failed"}), 500
 
         # 2. File Cleanup
         try:
-            if path_str and os.path.exists(path_str):
-                os.remove(path_str)
+            abs_path = _abs_doc_path(path_str)
+            if abs_path and abs_path.exists():
+                os.remove(abs_path)
         except OSError as e:
             get_logger().error(f"Failed to delete file {path_str}: {e}")
             
@@ -321,6 +460,8 @@ def api_delete_document(doc_id):
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/train", methods=["POST"])
+@login_required
+@require_role(["DIRECCION", "ADMIN"])
 def api_train_model():
     db = get_db()
     model_path = PROJECT_ROOT / "data" / "models" / "classifier.pkl"
@@ -338,6 +479,7 @@ def api_train_model():
 @api_bp.route("/api/document/<int:doc_id>/enhance", methods=["POST"])
 @login_required
 @hotel_scoped('doc_id')
+@owner_scoped("doc_id")
 def api_enhance_document(doc_id):
     try:
         data = request.json
@@ -404,76 +546,124 @@ def api_enhance_document(doc_id):
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/shutdown", methods=["POST"])
+@login_required
+@require_role(["ADMIN"])
 def shutdown():
+    # Never expose server shutdown in production deployments.
+    if not current_app.debug:
+        return jsonify({"error": "Not found"}), 404
+
     shutdown_func = request.environ.get("werkzeug.server.shutdown")
     if shutdown_func:
         shutdown_func()
-    return "Server shutting down..."
+        return "Server shutting down..."
+    return jsonify({"error": "Shutdown not supported"}), 400
 
 @api_bp.route("/api/visual_search")
 @login_required
 def api_visual_search():
     query = request.args.get("q", "").strip()
     k = int(request.args.get("k", 50))
-    
-    pipeline = get_pipeline()
-    vision_manager = pipeline.vision_manager
-    results = []
+
+    vision_manager = get_vision_manager()
 
     if not vision_manager or not vision_manager.config.enabled:
         return jsonify([])
 
+    role = str(getattr(current_user, "role", "")).upper()
+    scope_list = list(getattr(current_user, "hotel_scope", []) or [])
+    scope_set = {str(h) for h in scope_list}
+    owner_filter = current_user.id if role in {"CLIENTE", "CLIENT"} else None
+
+    # Fail closed: unscoped users must not see global results.
+    if role != "ADMIN" and not scope_list:
+        return jsonify([])
+
     try:
-        ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".jfif", ".avif", ".gif", ".tif", ".tiff"}
+        db = get_db()
+        schema = _documents_schema(db)
+        path_col = schema["path_col"]
+        created_col = schema["created_col"]
         if query:
             raw_results = vision_manager.search_by_text(query, k=k)
         else:
             get_logger().info("Empty query, fetching recent docs from DB")
-            db = get_db()
-            rows = db.execute(
-                "SELECT id, filename, path, datetime, tags FROM documents ORDER BY id DESC LIMIT ?", 
-                (k,)
-            ).fetchall()
-            
+            q = (
+                f"SELECT id, filename, {path_col} AS path, {created_col} AS created_at, "
+                "tags, owner_id, hotel_id FROM documents WHERE 1=1"
+            )
+            params = []
+            if role != "ADMIN":
+                placeholders = ",".join([db.placeholder] * len(scope_list))
+                q += f" AND hotel_id IN ({placeholders})"
+                params.extend(scope_list)
+            if owner_filter is not None:
+                q += f" AND owner_id = {db.placeholder}"
+                params.append(owner_filter)
+            q += f" ORDER BY id DESC LIMIT {db.placeholder}"
+            params.append(k)
+            rows = db.execute(q, tuple(params)).fetchall()
+
             clean_results = []
             for r in rows:
-                if Path(r["path"]).suffix.lower() in ALLOWED_IMAGE_EXTS:
+                row_path = _row_get(r, "path")
+                if row_path and Path(row_path).suffix.lower() in ALLOWED_IMAGE_EXTS:
                     clean_results.append({
-                        "id": r["id"],
-                        "filename": r["filename"],
-                        "path": r["path"],
+                        "id": _row_get(r, "id"),
+                        "filename": _row_get(r, "filename"),
+                        "path": row_path,
                         "score": 0.0,
-                        "date": r["datetime"],
-                        "tags": json.loads(r["tags"]) if r["tags"] else []
+                        "date": _row_get(r, "created_at"),
+                        "tags": safe_json_parse(_row_get(r, "tags"), []),
                     })
             return jsonify(clean_results)
 
-        db = get_db()
         clean_results = []
         for res in raw_results:
-            path = res["path"]
-            row = db.execute(
-                "SELECT id, filename, datetime, tags FROM documents WHERE path = ?", 
-                (path,)
-            ).fetchone()
-            
+            path = res.get("path")
+            if not path or Path(path).suffix.lower() not in ALLOWED_IMAGE_EXTS:
+                continue
+
+            row = _find_document_by_path(
+                db,
+                path_col,
+                path,
+                f"id, filename, {path_col} AS path, {created_col} AS created_at, tags, owner_id, hotel_id",
+            )
+
             if row:
-                tags = json.loads(row["tags"]) if row["tags"] else []
+                owner_id = _row_get(row, "owner_id")
+                hotel_id = _row_get(row, "hotel_id")
+
+                if role != "ADMIN":
+                    if hotel_id is None or str(hotel_id) not in scope_set:
+                        continue
+                if owner_filter is not None and str(owner_id) != str(owner_filter):
+                    continue
+
+                tags = safe_json_parse(_row_get(row, "tags"), [])
                 has_color_tags = any(t.startswith("color:") for t in tags)
-                if not has_color_tags and vision_manager and os.path.exists(path):
+                row_path = _row_get(row, "path")
+                abs_row_path = _abs_doc_path(row_path)
+                if (
+                    not has_color_tags
+                    and vision_manager
+                    and abs_row_path
+                    and abs_row_path.exists()
+                ):
                      try:
-                         colors = vision_manager.analyze_colors(path, num_colors=4)
+                         colors = vision_manager.analyze_colors(str(abs_row_path), num_colors=4)
                          for c in colors:
                              tags.append(f"color:{c['hex']}")
                      except Exception:
                          pass
 
                 clean_results.append({
-                    "id": row["id"],
-                    "filename": row["filename"],
-                    "path": path,
+                    "id": _row_get(row, "id"),
+                    "filename": _row_get(row, "filename"),
+                    "path": row_path or path,
                     "score": res["score"],
-                    "date": row["datetime"],
+                    "date": _row_get(row, "created_at"),
                     "tags": tags
                 })
         return jsonify(clean_results)
@@ -487,34 +677,58 @@ def api_visual_search():
 def api_search():
     """API endpoint for full-text search."""
     query = request.args.get("q", "")
+
+    role = str(getattr(current_user, "role", "")).upper()
+    scope_list = list(getattr(current_user, "hotel_scope", []) or [])
+    owner_filter = current_user.id if role in {"CLIENTE", "CLIENT"} else None
+
+    # Fail closed for unscoped users.
+    if role != "ADMIN" and not scope_list:
+        return jsonify([])
+
     if not query:
         db = get_db()
-        rows = db.execute("SELECT id, filename, path, datetime, tags FROM documents ORDER BY id DESC LIMIT 20").fetchall()
+        schema = _documents_schema(db)
+        path_col = schema["path_col"]
+        created_col = schema["created_col"]
+        q = f"SELECT id, filename, {path_col} AS path, {created_col} AS created_at, tags FROM documents WHERE 1=1"
+        params = []
+        if role != "ADMIN":
+            placeholders = ",".join([db.placeholder] * len(scope_list))
+            q += f" AND hotel_id IN ({placeholders})"
+            params.extend(scope_list)
+        if owner_filter is not None:
+            q += f" AND owner_id = {db.placeholder}"
+            params.append(owner_filter)
+        q += " ORDER BY id DESC LIMIT 20"
+        rows = db.execute(q, tuple(params)).fetchall()
         clean_results = []
         for r in rows:
             clean_results.append({
-                "id": r["id"],
-                "filename": r["filename"],
-                "path": r["path"],
-                "date": r["datetime"],
-                "tags": json.loads(r["tags"]) if r["tags"] else []
+                "id": _row_get(r, "id"),
+                "filename": _row_get(r, "filename"),
+                "path": _row_get(r, "path"),
+                "date": _row_get(r, "created_at"),
+                "tags": safe_json_parse(_row_get(r, "tags"), []),
             })
         return jsonify(clean_results)
-    
+
     local_db = get_db()
-    results = local_db.search_documents(query)
+    results = local_db.search_documents(
+        query, hotel_ids=None if role == "ADMIN" else scope_list, owner_id=owner_filter
+    )
     return jsonify([
-        {"id": r[0], "filename": r[1], "snippet": r[2]} 
+        {"id": r[0], "filename": r[1], "snippet": r[2]}
         for r in results
     ])
 
 @api_bp.route("/api/search/similar/<int:doc_id>")
 @login_required
 @hotel_scoped('doc_id')
+@owner_scoped("doc_id")
 def api_search_similar(doc_id):
     db = get_db()
-    pipeline = get_pipeline()
-    vision_manager = pipeline.vision_manager
+    vision_manager = get_vision_manager()
     
     if not vision_manager or not vision_manager.config.enabled:
         return jsonify([])
@@ -523,54 +737,92 @@ def api_search_similar(doc_id):
     if not doc:
         return jsonify({"error": "Document not found"}), 404
 
-    file_path = doc.get("path")
-    if not file_path or not os.path.exists(file_path):
+    source_path = _abs_doc_path(doc.get("path"))
+    if not source_path or not source_path.exists():
         return jsonify([])
 
     try:
-        results = vision_manager.search_similar(file_path, k=10)
+        results = vision_manager.search_similar(str(source_path), k=10)
         formatted_results = []
+        role = str(getattr(current_user, "role", "")).upper()
+        scope_set = {str(h) for h in getattr(current_user, "hotel_scope", []) or []}
+        schema = _documents_schema(db)
+        path_col = schema["path_col"]
+
         for item in results:
-            if os.path.abspath(item["path"]) == os.path.abspath(file_path):
+            item_path = item.get("path")
+            item_abs = _abs_doc_path(item_path)
+            if item_abs and os.path.abspath(str(item_abs)) == os.path.abspath(str(source_path)):
                 continue
 
-            path_obj = Path(item["path"])
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT id, filename FROM documents WHERE path = %s", (str(path_obj),))
-                db_doc = cursor.fetchone()
-                
-            if db_doc:
-                formatted_results.append({
-                    "id": db_doc[0],
-                    "filename": db_doc[1],
-                    "path": str(path_obj),
-                    "score": round(float(item["score"]), 4)
-                })
+            db_doc = _find_document_by_path(
+                db,
+                path_col,
+                item_path,
+                f"id, filename, {path_col} AS path, owner_id, hotel_id",
+            )
+
+            if not db_doc:
+                continue
+
+            owner_id = _row_get(db_doc, "owner_id")
+            hotel_id = _row_get(db_doc, "hotel_id")
+
+            # Multi-tenant isolation: never leak other hotels' documents.
+            if role != "ADMIN":
+                if hotel_id is None or str(hotel_id) not in scope_set:
+                    continue
+            if role in {"CLIENTE", "CLIENT"} and str(owner_id) != str(current_user.id):
+                continue
+
+            formatted_results.append(
+                {
+                    "id": _row_get(db_doc, "id"),
+                    "filename": _row_get(db_doc, "filename"),
+                    "path": _row_get(db_doc, "path") or (str(item_abs) if item_abs else item_path),
+                    "score": round(float(item["score"]), 4),
+                }
+            )
         return jsonify(formatted_results)
     except Exception as e:
         get_logger().error(f"Similar search failed: {e}")
         return jsonify([])
 
 @api_bp.route("/api/tasks")
+@login_required
+@require_role(["GESTOR", "DIRECCION", "ADMIN"])
 def api_tasks():
     try:
-        # Huey specific: pending() returns list of tasks in queue
-        pending_tasks = huey.pending() 
-        scheduled_tasks = huey.scheduled()
-        
+        role = str(getattr(current_user, "role", "")).upper()
+        scope_list = list(getattr(current_user, "hotel_scope", []) or [])
+
+        # Huey is global; don't leak cross-tenant task payloads to non-admin users.
+        pending_tasks = huey.pending() if role == "ADMIN" else []
+        scheduled_tasks = huey.scheduled() if role == "ADMIN" else []
+
         # Format for UI
         tasks_list = []
-        
+
         # 1. Get DB "Processing" documents (The real "active" tasks from user perspective)
         db = get_db()
-        processing_docs = db.execute("SELECT id, filename, type FROM documents WHERE status = 'processing'").fetchall()
+        if role != "ADMIN" and not scope_list:
+            processing_docs = []
+        else:
+            schema = _documents_schema(db)
+            type_col = schema["type_col"]
+            q = f"SELECT id, filename, {type_col} AS doc_type FROM documents WHERE status = 'processing'"
+            params = []
+            if role != "ADMIN":
+                placeholders = ",".join([db.placeholder] * len(scope_list))
+                q += f" AND hotel_id IN ({placeholders})"
+                params.extend(scope_list)
+            processing_docs = db.execute(q, tuple(params)).fetchall()
         
         for doc in processing_docs:
             tasks_list.append({
-                "id": f"DOC-{doc[0]}",
-                "name": f"Procesando: {doc[1]}",
-                "args": f"Tipo: {doc[2] or 'Detectando...'}",
+                "id": f"DOC-{_row_get(doc, 'id', 0)}",
+                "name": f"Procesando: {_row_get(doc, 'filename', 1)}",
+                "args": f"Tipo: {_row_get(doc, 'doc_type', 2) or 'Detectando...'}",
                 "status": "active", # Custom status
                 "progress": 50 # Mock progress or fetch if available
             })
@@ -586,21 +838,25 @@ def api_tasks():
             })
 
         return jsonify({
-            "pending_count": len(pending_tasks),
-            "scheduled_count": len(scheduled_tasks),
-            "pending_details": tasks_list[:50] 
+            "pending_count": len(pending_tasks) if role == "ADMIN" else 0,
+            "scheduled_count": len(scheduled_tasks) if role == "ADMIN" else 0,
+            "pending_details": tasks_list[:50]
         })
     except Exception as e:
         get_logger().error(f"Task monitor error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/templates", methods=["GET"])
+@login_required
+@require_role(["GESTOR", "DIRECCION", "ADMIN"])
 def api_list_templates():
     db = get_db()
     templates = db.get_templates()
     return jsonify(templates)
 
 @api_bp.route("/api/templates/create", methods=["POST"])
+@login_required
+@require_role(["GESTOR", "DIRECCION", "ADMIN"])
 def api_create_template():
     data = request.json
     name = data.get("name")
@@ -619,6 +875,8 @@ def api_create_template():
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/templates/<int:t_id>", methods=["DELETE"])
+@login_required
+@require_role(["GESTOR", "DIRECCION", "ADMIN"])
 def api_delete_template(t_id):
     db = get_db()
     if db.delete_template(t_id):
@@ -628,6 +886,7 @@ def api_delete_template(t_id):
 @api_bp.route("/api/document/<int:doc_id>/export/dxf", methods=["POST"])
 @login_required
 @hotel_scoped('doc_id')
+@owner_scoped("doc_id")
 def api_export_dxf(doc_id):
     """
     Export a document (image) to DXF format for CAD.
@@ -637,8 +896,8 @@ def api_export_dxf(doc_id):
     if not document:
         return jsonify({"error": "Document not found"}), 404
     
-    file_path = document.get("path")
-    if not file_path or not os.path.exists(file_path):
+    file_path = _abs_doc_path(document.get("path"))
+    if not file_path or not file_path.exists():
         return jsonify({"error": "File parsing failed: File not found on disk"}), 404
 
     # Output path
@@ -652,30 +911,40 @@ def api_export_dxf(doc_id):
     os.close(fd)
     
     try:
+        from modules.vectorization_manager import VectorizationManager
         vm = VectorizationManager(logger=get_logger())
-        success = vm.raster_to_dxf(file_path, temp_path)
+        success = vm.raster_to_dxf(str(file_path), temp_path)
         
         if success:
-            return send_file(
+            response = send_file(
                 temp_path,
                 as_attachment=True,
                 download_name=output_filename,
                 mimetype="application/dxf"
             )
+            # Clean up temp file after the response is fully sent (Windows-safe).
+            response.call_on_close(lambda: os.path.exists(temp_path) and os.remove(temp_path))
+            return response
         else:
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
             return jsonify({"error": "Vectorization failed (could not detect edges or empty result)"}), 500
             
     except Exception as e:
         get_logger().error(f"DXF Export failed: {e}")
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
         return jsonify({"error": str(e)}), 500
-    finally:
-        # Cleanup temp file if it exists and we are done (send_file might need it open? No, usually it reads it)
-        # Note: send_file usually handles file closing. Deleting it might need logic.
-        # safe way: use after_request or assume text file.
-        # For this prototype: we rely on OS temp cleanup or manual later.
-        pass
 
 @api_bp.route("/api/metrics/history")
+@login_required
+@require_role(["DIRECCION", "ADMIN"])
 def api_metrics_history():
     try:
         limit = int(request.args.get("limit", 20))
@@ -708,6 +977,7 @@ def api_metrics_history():
 @api_bp.route("/api/document/<int:doc_id>/generate_proposal", methods=["POST"])
 @login_required
 @hotel_scoped('doc_id')
+@owner_scoped("doc_id")
 def api_generate_proposal(doc_id):
     """
     Generates a PDF proposal (dossier) for the document.
@@ -728,21 +998,27 @@ def api_generate_proposal(doc_id):
         items = []
         
         # 1. Add the main image itself
-        items.append({
-            'label': f"Vista General ({doc.get('type', 'Unknown')})",
-            'image_path': doc.get('path'),
-            'price': 'Consultar'
-        })
+        main_image_path = _abs_doc_path(doc.get("path"))
+        if main_image_path and main_image_path.exists():
+            items.append({
+                'label': f"Vista General ({doc.get('type') or doc.get('doc_type') or 'Unknown'})",
+                'image_path': str(main_image_path),
+                'price': 'Consultar'
+            })
         
         # 2. Add crops if available (assuming structured_data['crops'] contains paths)
         if 'crops' in structured_data:
             for crop in structured_data['crops']:
-                if os.path.exists(crop.get('path', '')):
+                crop_path = _abs_doc_path(crop.get('path', ''))
+                if crop_path and crop_path.exists():
                     items.append({
                         'label': crop.get('label', 'Elemento'),
-                        'image_path': crop.get('path'),
+                        'image_path': str(crop_path),
                         'price': 'Consultar'
                     })
+
+        if not items:
+            return jsonify({"error": "No valid images found for proposal generation"}), 404
         
         # Output setup
         filename = f"Propuesta_{doc.get('filename')}_{doc_id}.pdf"
@@ -754,22 +1030,35 @@ def api_generate_proposal(doc_id):
         success = pm.generate_proposal(doc.get('filename'), items, temp_path)
         
         if success and os.path.exists(temp_path):
-            return send_file(
+            response = send_file(
                 temp_path,
                 as_attachment=True,
                 download_name=filename,
                 mimetype="application/pdf"
             )
+            response.call_on_close(lambda: os.path.exists(temp_path) and os.remove(temp_path))
+            return response
         else:
-             return jsonify({"error": "Failed to generate PDF"}), 500
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
+            return jsonify({"error": "Failed to generate PDF"}), 500
 
     except Exception as e:
         get_logger().error(f"Proposal generation failed: {e}")
+        try:
+            if "temp_path" in locals() and os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
         return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/api/document/<int:doc_id>/generate_order", methods=["POST"])
 @login_required
 @hotel_scoped('doc_id')
+@owner_scoped("doc_id")
 def api_generate_order(doc_id):
     """
     Export detected items to an Excel order list ('Del Moodboard al Pedido').
@@ -829,19 +1118,29 @@ def api_generate_order(doc_id):
         
         df.to_excel(temp_path, index=False)
         
-        return send_file(
+        response = send_file(
             temp_path,
             as_attachment=True,
             download_name=filename,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+        response.call_on_close(lambda: os.path.exists(temp_path) and os.remove(temp_path))
+        return response
 
     except Exception as e:
         get_logger().error(f"Order generation failed: {e}")
+        try:
+            if "temp_path" in locals() and os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
         return jsonify({"error": str(e)}), 500
 
 
 @api_bp.route("/api/document/<int:doc_id>/interpret_blueprint", methods=["POST"])
+@login_required
+@hotel_scoped("doc_id")
+@owner_scoped("doc_id")
 def api_interpret_blueprint(doc_id):
     """
     Analyze OCR text to extracting blueprint metadata (Scale, Rooms, Areas).
@@ -849,25 +1148,26 @@ def api_interpret_blueprint(doc_id):
     try:
         from modules.blueprint_interpreter import BlueprintInterpreter
         from web_app.services import get_llm_client
-        
+
         db = get_db()
 
-        
-        # We need the full text for analysis.
-        # Check if text is in 'extracted_text' column or 'ocr_texts' table
-        # Based on previous code, let's look at ocr_texts
-        cursor = db.execute("SELECT raw_text FROM ocr_texts WHERE id_doc = ?", (doc_id,))
-        row = cursor.fetchone()
-        
-        if not row or not row[0]:
-             # Return valid empty response or error? Let's try vision if we have path even without text
-             raw_text = ""
-        else:
-             raw_text = row[0]
-        
-        # Get image path for Vision
-        image_path = doc.get("path")
-        
+        doc = db.get_document(doc_id)
+        if not doc:
+            return jsonify({"error": "Document not found"}), 404
+
+        # We need the OCR text for analysis.
+        row = db.execute(
+            f"SELECT text FROM ocr_texts WHERE id_doc = {db.placeholder}",
+            (doc_id,),
+        ).fetchone()
+        raw_text = ""
+        if row:
+            raw_text = row[0] if isinstance(row, (tuple, list)) else (row["text"] or "")
+
+        # Get image path for optional multimodal analysis.
+        image_path_obj = _abs_doc_path(doc.get("path") if isinstance(doc, dict) else None)
+        image_path = str(image_path_obj) if image_path_obj and image_path_obj.exists() else None
+
         interpreter = BlueprintInterpreter()
         llm = get_llm_client()
         
@@ -875,7 +1175,7 @@ def api_interpret_blueprint(doc_id):
         metadata = interpreter.infer_metadata(
             text=raw_text, 
             llm_client=llm, 
-            image_path=image_path if image_path and os.path.exists(image_path) else None
+            image_path=image_path
         )
         
         # Save this metadata back to DB (optional, in 'structured_data' or tags)

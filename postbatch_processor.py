@@ -59,9 +59,11 @@ from modules.table_manager import TableManager, TableManagerConfig, TableResult
 from modules.vision_manager import VisionManager, VisionManagerConfig
 from modules.decor_advisor import DecorAdvisor
 from modules.color_extractor import ColorExtractor
+from modules.config_normalizer import normalize_config
 
 
 TEXT_BLOCK_TYPES = {"text", "title", "other"}
+BYTES_PER_GIB = 1024 ** 3
 
 
 @dataclass
@@ -116,7 +118,8 @@ def _clear_worker_components() -> None:
 def load_config(config_path: str) -> dict:
     """Load configuration from a YAML file."""
     with open(config_path, "r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle)
+        raw = yaml.safe_load(handle) or {}
+        return normalize_config(raw if isinstance(raw, dict) else {})
 
 
 def resolve_path(base_dir: str, value: str | None) -> str:
@@ -126,6 +129,152 @@ def resolve_path(base_dir: str, value: str | None) -> str:
     if path.is_absolute():
         return str(path)
     return str(Path(base_dir) / path)
+
+
+def _resolve_disk_probe_path(path: str) -> str:
+    probe_path = path
+    if not os.path.exists(probe_path):
+        probe_path = os.path.dirname(probe_path) or "."
+    return probe_path
+
+
+def _safe_file_size(path: str) -> int:
+    try:
+        return max(0, int(os.path.getsize(path)))
+    except OSError:
+        return 0
+
+
+def resolve_max_input_bytes_per_run(
+    target_path: str,
+    *,
+    max_input_gb_per_run: float = 0.0,
+    max_input_free_disk_ratio: float = 0.0,
+) -> Tuple[int, Dict[str, int | float]]:
+    """
+    Resolve the effective per-run input cap in bytes.
+
+    The cap is the minimum of:
+    - fixed absolute cap (GiB), if configured
+    - ratio of current free disk, if configured
+    """
+    fixed_bytes = int(max(0.0, float(max_input_gb_per_run or 0.0)) * BYTES_PER_GIB)
+    ratio = max(0.0, min(1.0, float(max_input_free_disk_ratio or 0.0)))
+
+    free_bytes = 0
+    ratio_bytes = 0
+    if ratio > 0.0:
+        usage = shutil.disk_usage(_resolve_disk_probe_path(target_path))
+        free_bytes = int(usage.free)
+        ratio_bytes = int(free_bytes * ratio)
+
+    candidates = [cap for cap in (fixed_bytes, ratio_bytes) if cap > 0]
+    effective_bytes = min(candidates) if candidates else 0
+    return effective_bytes, {
+        "effective_bytes": int(effective_bytes),
+        "fixed_bytes": int(fixed_bytes),
+        "ratio": float(ratio),
+        "ratio_bytes": int(ratio_bytes),
+        "free_bytes": int(free_bytes),
+    }
+
+
+def plan_processing_batch(
+    files: List[str],
+    *,
+    max_input_gb_per_run: float = 0.0,
+    max_input_bytes_per_run: int = 0,
+    max_files_per_run: int = 0,
+    processing_order: str = "as_found",
+) -> Tuple[List[str], List[str], int, int]:
+    """
+    Select a bounded processing batch by total input size.
+
+    Returns:
+    - selected files
+    - deferred files
+    - selected bytes
+    - discovered bytes
+    """
+    if not files:
+        return [], [], 0, 0
+
+    order = str(processing_order or "as_found").strip().lower()
+    indexed_items = [
+        (path, _safe_file_size(path), idx)
+        for idx, path in enumerate(files)
+    ]
+
+    if order == "small_first":
+        indexed_items.sort(key=lambda item: (item[1], item[0]))
+    elif order == "large_first":
+        indexed_items.sort(key=lambda item: (-item[1], item[0]))
+    else:
+        order = "as_found"
+
+    discovered_bytes = sum(size for _, size, _ in indexed_items)
+    max_bytes = int(max(0, int(max_input_bytes_per_run or 0)))
+    if max_bytes <= 0:
+        max_bytes = int(max(0.0, float(max_input_gb_per_run or 0.0)) * BYTES_PER_GIB)
+    if max_bytes <= 0:
+        selected_all = [path for path, _, _ in indexed_items]
+        if int(max_files_per_run or 0) > 0:
+            selected_all = selected_all[: int(max_files_per_run)]
+            selected_set = set(selected_all)
+            deferred_all = [path for path, _, _ in indexed_items if path not in selected_set]
+            selected_bytes_all = sum(size for path, size, _ in indexed_items if path in selected_set)
+            return selected_all, deferred_all, selected_bytes_all, discovered_bytes
+        return selected_all, [], discovered_bytes, discovered_bytes
+
+    selected_paths: List[str] = []
+    size_by_path: Dict[str, int] = {}
+    selected_bytes = 0
+
+    for path, size, _ in indexed_items:
+        if not selected_paths:
+            # Always take at least one file to avoid starvation with very large inputs.
+            selected_paths.append(path)
+            size_by_path[path] = size
+            selected_bytes += size
+            continue
+
+        if selected_bytes + size <= max_bytes:
+            selected_paths.append(path)
+            size_by_path[path] = size
+            selected_bytes += size
+
+    max_files = int(max_files_per_run or 0)
+    if max_files > 0 and len(selected_paths) > max_files:
+        selected_paths = selected_paths[:max_files]
+        selected_bytes = sum(size_by_path[path] for path in selected_paths)
+
+    selected_set = set(selected_paths)
+    deferred_paths = [path for path, _, _ in indexed_items if path not in selected_set]
+    return selected_paths, deferred_paths, selected_bytes, discovered_bytes
+
+
+def check_disk_headroom(
+    target_path: str,
+    *,
+    min_free_gb: float = 0.0,
+    required_bytes: int = 0,
+) -> Tuple[bool, Dict[str, int]]:
+    """Return whether free disk space satisfies configured headroom requirements."""
+    usage = shutil.disk_usage(_resolve_disk_probe_path(target_path))
+    free_bytes = int(usage.free)
+    min_free_bytes = int(max(0.0, float(min_free_gb or 0.0)) * BYTES_PER_GIB)
+    required_bytes = max(0, int(required_bytes))
+    required_min = max(min_free_bytes, required_bytes)
+
+    return (
+        free_bytes >= required_min,
+        {
+            "free_bytes": free_bytes,
+            "min_free_bytes": min_free_bytes,
+            "required_bytes": required_bytes,
+            "required_min_bytes": required_min,
+        },
+    )
 
 
 def is_visual_document(file_path: str) -> bool:
@@ -141,9 +290,9 @@ def load_document_pages(file_path: str, poppler_path: Optional[str] = None) -> L
                 "pdf2image is required for PDF processing but is not installed"
             )
         kwargs = {}
-        if poppler_path:
+        if poppler_path and os.path.exists(poppler_path):
             kwargs["poppler_path"] = poppler_path
-            
+             
         pages = convert_from_path(file_path, **kwargs)
         return [page.convert("RGB") for page in pages]
 
@@ -159,6 +308,69 @@ def load_document_pages(file_path: str, poppler_path: Optional[str] = None) -> L
         if not frames:
             frames.append(image.convert("RGB").copy())
         return frames
+
+def _validate_poppler_path(poppler_path: Optional[str], logger: logging.Logger) -> Optional[str]:
+    if not poppler_path:
+        return None
+    if os.path.exists(poppler_path):
+        return poppler_path
+    logger.warning("Poppler path does not exist; ignoring: %s", poppler_path)
+    return None
+
+
+def _get_pdf_page_count(file_path: str, logger: logging.Logger) -> int:
+    try:
+        with fitz.open(file_path) as doc:
+            return int(len(doc))
+    except Exception as exc:
+        raise RuntimeError(f"Unable to open PDF for page count: {exc}") from exc
+
+
+def iter_pdf_page_chunks(
+    file_path: str,
+    *,
+    logger: logging.Logger,
+    pages_per_chunk: int = 8,
+    poppler_path: Optional[str] = None,
+    total_pages: Optional[int] = None,
+) -> Iterable[Tuple[int, List[Image.Image]]]:
+    """
+    Yield (page_offset, [PIL pages]) for a PDF without loading it entirely in RAM.
+
+    page_offset is 0-based and must be added to the local page indices of the chunk.
+    """
+
+    if convert_from_path is None:
+        raise RuntimeError("pdf2image is required for PDF processing but is not installed")
+
+    pages_per_chunk = int(pages_per_chunk or 0)
+    if pages_per_chunk < 1:
+        pages_per_chunk = 8
+
+    poppler_path = _validate_poppler_path(poppler_path, logger)
+
+    if total_pages is None:
+        total_pages = _get_pdf_page_count(file_path, logger)
+    total_pages = int(total_pages or 0)
+    if total_pages <= 0:
+        raise RuntimeError("PDF has zero pages")
+
+    kwargs = {}
+    if poppler_path:
+        kwargs["poppler_path"] = poppler_path
+
+    # pdf2image first_page/last_page are 1-based inclusive.
+    for first in range(1, total_pages + 1, pages_per_chunk):
+        last = min(first + pages_per_chunk - 1, total_pages)
+        try:
+            chunk = convert_from_path(file_path, first_page=first, last_page=last, **kwargs)
+        except Exception as exc:
+            logger.error("PDF rasterization failed for pages %s-%s: %s", first, last, exc, exc_info=True)
+            raise
+
+        pages = [page.convert("RGB") for page in chunk]
+        yield (first - 1), pages
+
 
 import json
 import threading
@@ -257,61 +469,60 @@ def try_extract_native_pdf(
     (sufficient text density). Returns None if it looks like a scan.
     """
     try:
-        doc = fitz.open(file_path)
-        total_text_len = 0
-        total_pages = len(doc)
+        with fitz.open(file_path) as doc:
+            total_text_len = 0
+            total_pages = len(doc)
         
-        if total_pages == 0:
-            return None
+            if total_pages == 0:
+                return None
 
-        # 1. Quick Density Check (Check first few pages)
-        check_pages = min(3, total_pages)
-        for i in range(check_pages):
-            total_text_len += len(doc[i].get_text())
-        
-        avg_chars = total_text_len / check_pages
-        if avg_chars < text_threshold:
-            logger.info(f"PDF text density low ({avg_chars:.1f} chars/page). Treating as SCAN.")
-            return None
+            # 1. Quick Density Check (Check first few pages)
+            check_pages = min(3, total_pages)
+            for i in range(check_pages):
+                total_text_len += len(doc[i].get_text())
+            
+            avg_chars = total_text_len / check_pages
+            if avg_chars < text_threshold:
+                logger.info(f"PDF text density low ({avg_chars:.1f} chars/page). Treating as SCAN.")
+                return None
 
-        # 2. Extract Blocks
-        logger.info(f"PDF appears natively digital ({avg_chars:.1f} chars/page). Extracting text directly.")
-        output_blocks = []
-        block_id_counter = 0
+            # 2. Extract Blocks
+            logger.info(f"PDF appears natively digital ({avg_chars:.1f} chars/page). Extracting text directly.")
+            output_blocks = []
+            block_id_counter = 0
 
-        for page_index, page in enumerate(doc):
-            # get_text("dict") returns blocks with bbox and text spans
-            page_dict = page.get_text("dict")
-            for block in page_dict.get("blocks", []):
-                if block.get("type") != 0:  # 0 is text
-                    continue
-                
-                # Extract text lines
-                block_text = ""
-                for line in block.get("lines", []):
-                    for span in line.get("spans", []):
-                        block_text += span.get("text", "") + " "
-                    block_text += "\n"
-                
-                block_text = block_text.strip()
-                if not block_text:
-                    continue
+            for page_index, page in enumerate(doc):
+                # get_text("dict") returns blocks with bbox and text spans
+                page_dict = page.get_text("dict")
+                for block in page_dict.get("blocks", []):
+                    if block.get("type") != 0:  # 0 is text
+                        continue
+                    
+                    # Extract text lines
+                    block_text = ""
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            block_text += span.get("text", "") + " "
+                        block_text += "\n"
+                    
+                    block_text = block_text.strip()
+                    if not block_text:
+                        continue
 
-                output_blocks.append({
-                    "id": block_id_counter,
-                    "page": page_index,
-                    "bbox": block.get("bbox"), # [x0, y0, x1, y1]
-                    "type": "text",
-                    "rotation": 0.0,
-                    "text": block_text,
-                    "confidence": 0.99, # Native text is high confidence
-                    "primary_confidence": 0.99,
-                    "secondary_confidence": 0.0
-                })
-                block_id_counter += 1
-                
-        doc.close()
-        return output_blocks
+                    output_blocks.append({
+                        "id": block_id_counter,
+                        "page": page_index,
+                        "bbox": block.get("bbox"), # [x0, y0, x1, y1]
+                        "type": "text",
+                        "rotation": 0.0,
+                        "text": block_text,
+                        "confidence": 0.99, # Native text is high confidence
+                        "primary_confidence": 0.99,
+                        "secondary_confidence": 0.0
+                    })
+                    block_id_counter += 1
+                    
+            return output_blocks
 
     except Exception as e:
         logger.warning(f"Native extraction failed: {e}. Falling back to OCR.")
@@ -404,6 +615,175 @@ def process_text_blocks(
     return [_run(block) for block in text_blocks]
 
 
+def process_layout_blocks(
+    pipeline: PipelineComponents,
+    pages: List[Image.Image],
+    layout_blocks: List[Dict[str, Any]],
+    logger: logging.Logger,
+    *,
+    handwriting_mode: bool = False,
+    page_offset: int = 0,
+    block_id_start: int = 0,
+) -> Tuple[List[Dict[str, Any]], List[str], List[float], int, List[Dict[str, Any]]]:
+    """
+    Convert layout blocks + page images into merged block outputs and aggregated stats.
+
+    Supports two modes:
+    - Fast path: when layout blocks already contain OCR text (PPStructure `res` captured by LayoutManager).
+    - Fallback path: OCR each text block crop via OCRManager.
+
+    Returns:
+    - block_outputs (global ids/pages applied)
+    - texts_join
+    - confidences
+    - next_block_id
+    - sorted layout_blocks (local pages preserved; ids local)
+    """
+
+    sorted_blocks = sort_blocks(layout_blocks)
+    block_outputs: List[Dict[str, Any]] = []
+    texts_join: List[str] = []
+    confidences: List[float] = []
+
+    next_id = int(block_id_start)
+
+    has_prefilled_text = any(
+        (str(b.get("text", "") or "").strip())
+        for b in sorted_blocks
+        if str(b.get("type", "")).lower() in TEXT_BLOCK_TYPES
+    )
+
+    if has_prefilled_text:
+        for block in sorted_blocks:
+            block_type = str(block.get("type", "")).lower()
+            page_index_local = int(block.get("page", 0))
+            page_index_global = page_offset + page_index_local
+
+            if block_type not in TEXT_BLOCK_TYPES:
+                block_outputs.append(
+                    {
+                        "id": next_id,
+                        "page": page_index_global,
+                        "bbox": block.get("bbox"),
+                        "type": block.get("type"),
+                        "rotation": block.get("rotation", 0.0),
+                        "text": "",
+                        "confidence": 0.0,
+                        "primary_confidence": 0.0,
+                        "secondary_confidence": 0.0,
+                    }
+                )
+                next_id += 1
+                continue
+
+            primary_text = str(block.get("text", "") or "")
+            primary_conf = float(
+                block.get("text_confidence")
+                or block.get("confidence", 0.0)
+                or 0.0
+            )
+            if not primary_text.strip():
+                # If a text block is present but contains no OCR text, force recheck.
+                primary_conf = 0.0
+
+            secondary_text = ""
+            secondary_conf = 0.0
+            if (
+                pipeline.recheck_threshold > 0
+                and primary_conf < pipeline.recheck_threshold
+                and pipeline.ocr_manager.secondary_engine
+                and 0 <= page_index_local < len(pages)
+            ):
+                secondary_text, secondary_conf = pipeline.ocr_manager.extract_block(
+                    pages[page_index_local], block.get("bbox", []), engine="secondary"
+                )
+
+            fused_text, fused_conf = pipeline.fusion_manager.fuse(
+                primary_text,
+                primary_conf,
+                secondary_text,
+                secondary_conf,
+                {
+                    "type": block.get("type"),
+                    "primary_engine": "paddleocr_ppstructure",
+                    "secondary_engine": pipeline.ocr_manager.secondary_engine,
+                },
+            )
+
+            merged_block = {
+                "id": next_id,
+                "page": page_index_global,
+                "bbox": block.get("bbox"),
+                "type": block.get("type"),
+                "rotation": block.get("rotation", 0.0),
+                "text": fused_text,
+                "confidence": fused_conf,
+                "primary_confidence": primary_conf,
+                "secondary_confidence": secondary_conf,
+            }
+            block_outputs.append(merged_block)
+            next_id += 1
+
+            if fused_text:
+                texts_join.append(fused_text)
+                confidences.append(float(fused_conf))
+
+        return block_outputs, texts_join, confidences, next_id, sorted_blocks
+
+    # Fallback: OCR crops block-by-block.
+    text_results = process_text_blocks(
+        pipeline,
+        pages,
+        sorted_blocks,
+        logger,
+        handwriting_mode=handwriting_mode,
+    )
+    results_by_id = {
+        result.get("id"): result for result in text_results if result.get("id") is not None
+    }
+
+    for block in sorted_blocks:
+        page_index_local = int(block.get("page", 0))
+        page_index_global = page_offset + page_index_local
+        result = results_by_id.get(block.get("id"))
+
+        if result:
+            merged_block = {
+                "id": next_id,
+                "page": page_index_global,
+                "bbox": block.get("bbox"),
+                "type": block.get("type"),
+                "rotation": block.get("rotation", 0.0),
+                "text": result.get("text", ""),
+                "confidence": result.get("confidence", 0.0),
+                "primary_confidence": result.get("primary_confidence", 0.0),
+                "secondary_confidence": result.get("secondary_confidence", 0.0),
+            }
+            block_outputs.append(merged_block)
+            text_value = merged_block["text"]
+            if text_value:
+                texts_join.append(text_value)
+                confidences.append(float(merged_block["confidence"]))
+        else:
+            block_outputs.append(
+                {
+                    "id": next_id,
+                    "page": page_index_global,
+                    "bbox": block.get("bbox"),
+                    "type": block.get("type"),
+                    "rotation": block.get("rotation", 0.0),
+                    "text": "",
+                    "confidence": 0.0,
+                    "primary_confidence": 0.0,
+                    "secondary_confidence": 0.0,
+                }
+            )
+
+        next_id += 1
+
+    return block_outputs, texts_join, confidences, next_id, sorted_blocks
+
+
 def save_additional_outputs(
     dest_path: str,
     summary: Dict[str, Any],
@@ -414,12 +794,16 @@ def save_additional_outputs(
     summary.setdefault("path", dest_path)
 
     if "json" in pipeline.output_formats:
-        json_path = base_path.with_suffix(".json")
+        # Never overwrite the source file (e.g. if the input itself is `.json`).
+        # Also avoid naming collisions with input scans when `.json` is included in `postbatch.file_types`.
+        json_path = base_path.with_name(base_path.name + ".ocr.json")
+        summary.setdefault("summary_json_path", str(json_path))
         with open(json_path, "w", encoding="utf-8") as handle:
             json.dump(summary, handle, ensure_ascii=False, indent=2)
 
     if markdown_text and "markdown" in pipeline.output_formats:
-        markdown_path = base_path.with_suffix(".md")
+        markdown_path = base_path.with_name(base_path.name + ".ocr.md")
+        summary.setdefault("markdown_path", str(markdown_path))
         with open(markdown_path, "w", encoding="utf-8") as handle:
             handle.write(markdown_text)
 
@@ -457,14 +841,44 @@ def initialise_pipeline(
         seen = set()
         languages = [lang for lang in languages if not (lang in seen or seen.add(lang))]
 
-    fusion_conf = pipeline_conf.get("fusion", {})
-    priority = fusion_conf.get("priority", ["paddleocr", "easyocr"])
-    primary_engine = str(priority[0]).lower() if priority else "paddleocr"
-    secondary_engine = (
-        str(priority[1]).lower()
-        if len(priority) > 1
-        else ("easyocr" if primary_engine != "easyocr" else "paddleocr")
-    )
+    fusion_conf = pipeline_conf.get("fusion", {}) or {}
+
+    # Engine selection:
+    # - If fusion.priority is explicitly set and non-empty, it controls primary/secondary ordering.
+    # - Otherwise respect ocr_pipeline.primary_engine/secondary_engine (UI writes these).
+    priority_raw = fusion_conf.get("priority")
+    if isinstance(priority_raw, (list, tuple)):
+        priority_list = [str(item).strip().lower() for item in priority_raw if str(item).strip()]
+    else:
+        priority_list = []
+
+    configured_primary = str(pipeline_conf.get("primary_engine") or "").strip().lower()
+    configured_secondary = str(pipeline_conf.get("secondary_engine") or "").strip().lower()
+
+    known_ocr_engines = {"auto", "paddleocr", "easyocr", "surya", "paddlevl"}
+
+    def _normalise_engine(name: str, fallback: str) -> str:
+        if not name:
+            return fallback
+        if name in known_ocr_engines:
+            return name
+        logger.warning("Unknown OCR engine '%s'; falling back to '%s'.", name, fallback)
+        return fallback
+
+    if priority_list:
+        primary_engine = _normalise_engine(priority_list[0], "paddleocr")
+        secondary_default = "easyocr" if primary_engine != "easyocr" else "paddleocr"
+        secondary_engine = _normalise_engine(priority_list[1] if len(priority_list) > 1 else "", secondary_default)
+    else:
+        primary_engine = _normalise_engine(configured_primary, "paddleocr")
+        secondary_default = "easyocr" if primary_engine != "easyocr" else "paddleocr"
+        secondary_engine = _normalise_engine(configured_secondary, secondary_default)
+
+    if secondary_engine == primary_engine:
+        secondary_engine = "easyocr" if primary_engine != "easyocr" else "paddleocr"
+
+    # Fusion priority list is only used for tie-breaking; default to the selected engines.
+    priority = tuple(priority_list) if priority_list else (primary_engine, secondary_engine)
 
     ocr_conf = OCRConfig(
         enabled=bool(post_conf.get("ocr_enabled", True)),
@@ -523,16 +937,32 @@ def initialise_pipeline(
             min_confidence_primary=float(fusion_conf.get("min_confidence", 0.6)),
             confidence_margin=float(fusion_conf.get("confidence_margin", 0.05)),
             min_similarity=float(fusion_conf.get("min_similarity", 0.82)),
-            priority=tuple(str(engine).lower() for engine in priority),
+            priority=tuple(str(engine).lower() for engine in priority if engine),
         )
     )
     recheck_threshold = float(fusion_conf.get("recheck_threshold", fusion_conf.get("min_confidence", 0.6)))
 
-    vision_conf = pipeline_conf.get("vision", {})
+    # Vision config is canonical at top-level `vision` (the web UI writes it),
+    # but `config_test.yaml` and older configs used `ocr_pipeline.vision`.
+    vision_conf: Dict[str, Any] = {}
+    top_vision = config.get("vision")
+    if isinstance(top_vision, dict):
+        vision_conf = top_vision
+    if not vision_conf:
+        legacy_vision = pipeline_conf.get("vision")
+        if isinstance(legacy_vision, dict):
+            vision_conf = legacy_vision
     vision_manager: Optional[VisionManager] = None
-    if vision_conf.get("enabled", True):
+    # Default to disabled unless explicitly enabled in config to avoid unexpected
+    # heavy imports/DLL issues in production and test environments.
+    if vision_conf.get("enabled", False):
         logger.info("Initializing VisionManager...")
         try:
+            model_name = (
+                vision_conf.get("model_name")
+                or vision_conf.get("model")
+                or "ViT-B-32"
+            )
             vision_manager = VisionManager(
                 VisionManagerConfig(
                     enabled=True,
@@ -540,7 +970,8 @@ def initialise_pipeline(
                     embeddings_dir=resolve_path(
                         project_root, vision_conf.get("embeddings_dir", "data/vision_embeddings")
                     ),
-                    model_name=vision_conf.get("model", "ViT-B-32"),
+                    model_name=model_name,
+                    pretrained=str(vision_conf.get("pretrained", "laion2b_s34b_b79k")),
                     use_gpu=ocr_manager.use_gpu,
                 ),
                 logger=logger,
@@ -550,7 +981,8 @@ def initialise_pipeline(
             logger.error(f"Failed to initialize VisionManager: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            raise
+            # Vision is optional; continue without it.
+            vision_manager = None
 
     output_conf = pipeline_conf.get("output", {})
     output_formats = [fmt.lower() for fmt in output_conf.get("formats", ["markdown", "json"])]
@@ -558,7 +990,7 @@ def initialise_pipeline(
 
     # Initialize MinerU secondary engine if enabled
     mineru_engine = None
-    mineru_conf = config.get("ocr", {}).get("mineru", {})
+    mineru_conf = pipeline_conf.get("mineru", {})
     if mineru_conf.get("enabled", False):
         try:
             from modules.engines.mineru_wrapper import MinerUEngine
@@ -690,70 +1122,127 @@ def process_single_file(
             else:
                 # Fallback to standard OCR
                 poppler_path = pipeline.ocr_manager.poppler_path if pipeline.ocr_manager else None
-                pages = load_document_pages(file_path, poppler_path=poppler_path)
 
-                layout_blocks: List[Dict[str, Any]] = []
-                if pipeline.layout_manager:
-                    try:
-                        layout_blocks = pipeline.layout_manager.detect_blocks(file_path, pages)
-                    except Exception as exc:
-                        logger.error("Layout detection failed for %s: %s", filename, exc, exc_info=True)
+                if file_path.lower().endswith(".pdf"):
+                    # Chunk PDF pages to avoid loading large PDFs fully into RAM.
+                    pdf_conf = (pipeline_conf.get("ocr_pipeline", {}) or {}).get("pdf", {}) if pipeline_conf else {}
+                    pages_per_chunk = int(pdf_conf.get("pages_per_chunk", 8) or 8)
+                    max_pages = int(pdf_conf.get("max_pages", 0) or 0)
 
-                if not layout_blocks:
-                    layout_blocks = fallback_blocks(pages)
+                    total_pages = _get_pdf_page_count(file_path, logger)
+                    if max_pages > 0 and total_pages > max_pages:
+                        logger.warning(
+                            "PDF has %d pages; limiting OCR to first %d page(s) (ocr_pipeline.pdf.max_pages).",
+                            total_pages,
+                            max_pages,
+                        )
+                        total_pages = max_pages
 
-                layout_blocks = sort_blocks(layout_blocks)
-                text_results = process_text_blocks(pipeline, pages, layout_blocks, logger, handwriting_mode=handwriting_mode)
-                results_by_id = {
-                    result.get("id"): result for result in text_results if result.get("id") is not None
-                }
-
-                for block in layout_blocks:
-                    result = results_by_id.get(block.get("id"))
-                    if result:
-                        merged_block = {
-                            "id": block.get("id"),
-                            "page": block.get("page"),
-                            "bbox": block.get("bbox"),
-                            "type": block.get("type"),
-                            "rotation": block.get("rotation", 0.0),
-                            "text": result.get("text", ""),
-                            "confidence": result.get("confidence", 0.0),
-                            "primary_confidence": result.get("primary_confidence", 0.0),
-                            "secondary_confidence": result.get("secondary_confidence", 0.0),
-                        }
-                        block_outputs.append(merged_block)
-                        text_value = merged_block["text"]
-                        if text_value:
-                            texts_join.append(text_value)
-                            confidences.append(float(merged_block["confidence"]))
-                    else:
-                        block_outputs.append(
-                            {
-                                "id": block.get("id"),
-                                "page": block.get("page"),
-                                "bbox": block.get("bbox"),
-                                "type": block.get("type"),
-                                "rotation": block.get("rotation", 0.0),
-                            "text": "",
-                            "confidence": 0.0,
-                        }
-                    )
-
-            aggregated_text = "\n".join(texts_join).strip()
-            confidence = statistics.mean(confidences) if confidences else 0.0
-            language = pipeline.ocr_manager.languages[0] if aggregated_text else None
-
-            if pipeline.table_manager:
-                try:
-                    table_results = pipeline.table_manager.extract_tables(
+                    block_id_counter = 0
+                    for page_offset, chunk_pages in iter_pdf_page_chunks(
                         file_path,
+                        logger=logger,
+                        pages_per_chunk=pages_per_chunk,
+                        poppler_path=poppler_path,
+                        total_pages=total_pages,
+                    ):
+                        chunk_layout_blocks: List[Dict[str, Any]] = []
+                        if pipeline.layout_manager:
+                            try:
+                                chunk_layout_blocks = pipeline.layout_manager.detect_blocks(
+                                    file_path, chunk_pages
+                                )
+                            except Exception as exc:
+                                logger.error(
+                                    "Layout detection failed for %s (pages %s-%s): %s",
+                                    filename,
+                                    page_offset + 1,
+                                    page_offset + len(chunk_pages),
+                                    exc,
+                                    exc_info=True,
+                                )
+
+                        if not chunk_layout_blocks:
+                            chunk_layout_blocks = fallback_blocks(chunk_pages)
+
+                        chunk_block_outputs, chunk_texts, chunk_confs, block_id_counter, sorted_blocks = process_layout_blocks(
+                            pipeline,
+                            chunk_pages,
+                            chunk_layout_blocks,
+                            logger,
+                            handwriting_mode=handwriting_mode,
+                            page_offset=page_offset,
+                            block_id_start=block_id_counter,
+                        )
+                        block_outputs.extend(chunk_block_outputs)
+                        texts_join.extend(chunk_texts)
+                        confidences.extend(chunk_confs)
+
+                        if pipeline.table_manager:
+                            try:
+                                chunk_tables = pipeline.table_manager.extract_tables(
+                                    file_path,
+                                    sorted_blocks,
+                                    pages=chunk_pages,
+                                )
+                                for table in chunk_tables:
+                                    if "page" in table and table["page"] is not None:
+                                        table["page"] = int(table["page"]) + int(page_offset)
+                                table_results.extend(chunk_tables)
+                            except Exception as exc:
+                                logger.error(
+                                    "Table extraction failed for %s (pages %s-%s): %s",
+                                    filename,
+                                    page_offset + 1,
+                                    page_offset + len(chunk_pages),
+                                    exc,
+                                    exc_info=True,
+                                )
+
+                    aggregated_text = "\n".join(texts_join).strip()
+                    confidence = statistics.mean(confidences) if confidences else 0.0
+                    language = pipeline.ocr_manager.languages[0] if aggregated_text else None
+
+                else:
+                    pages = load_document_pages(file_path, poppler_path=poppler_path)
+
+                    layout_blocks: List[Dict[str, Any]] = []
+                    if pipeline.layout_manager:
+                        try:
+                            layout_blocks = pipeline.layout_manager.detect_blocks(file_path, pages)
+                        except Exception as exc:
+                            logger.error("Layout detection failed for %s: %s", filename, exc, exc_info=True)
+
+                    if not layout_blocks:
+                        layout_blocks = fallback_blocks(pages)
+
+                    block_outputs_chunk, chunk_texts, chunk_confs, _, sorted_blocks = process_layout_blocks(
+                        pipeline,
+                        pages,
                         layout_blocks,
-                        pages=pages,
+                        logger,
+                        handwriting_mode=handwriting_mode,
+                        page_offset=0,
+                        block_id_start=0,
                     )
-                except Exception as exc:
-                    logger.error("Table extraction failed for %s: %s", filename, exc, exc_info=True)
-                    table_results = []
+                    block_outputs.extend(block_outputs_chunk)
+                    texts_join.extend(chunk_texts)
+                    confidences.extend(chunk_confs)
+
+                    aggregated_text = "\n".join(texts_join).strip()
+                    confidence = statistics.mean(confidences) if confidences else 0.0
+                    language = pipeline.ocr_manager.languages[0] if aggregated_text else None
+
+                    if pipeline.table_manager:
+                        try:
+                            table_results = pipeline.table_manager.extract_tables(
+                                file_path,
+                                sorted_blocks,
+                                pages=pages,
+                            )
+                        except Exception as exc:
+                            logger.error("Table extraction failed for %s: %s", filename, exc, exc_info=True)
+                            table_results = []
 
             summary_payload.update(
                 {
@@ -834,12 +1323,8 @@ def process_single_file(
         if doc_type == "Unknown" and is_visual_document(file_path):
             doc_type = "Imagen"
 
-        # Determine Workflow State
-        # MOMENTUM: User requested disabling manual verification. Auto-verifying unconditionally.
+        # Default workflow state; final decision happens later once structured_data is available.
         workflow_state = "verified"
-        # if confidence < 0.8 or doc_type == "Unknown" or doc_type == "Imagen":
-        #    workflow_state = "verified" # Was verified, logic removed to be clearer
-        logger.info(f"Document Auto-Verified (Confidence: {confidence:.2f}, Type: {doc_type}) - Manual Review Disabled by User Request")
 
         # ------------------------------------------------------------------ #
         # NUEVO: Enrutador de Interpretación Avanzada (LLM) - DISABLED BY USER REQUEST
@@ -1040,50 +1525,43 @@ def process_single_file(
                 logger.error(f"Smart renaming failed: {e}")
                 filename = original_filename
 
-        # DEST_PATH UPDATE:
-        # User requested to disable file movement for Decoration Mode to keep files in place (or input folder).
-        # We skip the move_file call effectively.
-        # dest_path = move_file(...) -> We just set dest_path = file_path
-        logger.info("Configuration (Decoration): File movement disabled. Keeping file at source.")
-        dest_path = file_path 
-        # But we might need to rename if smart renaming was active? 
-        # For now, simplistic approach: just keep it.
-        # If we wanted to rename in place, we'd need os.rename.
-        # User only said "desactiva lo de guardar", implying don't move to processed.
-        
-        # NOTE: logic below uses dest_path for DB insertion.
+        # ------------------------------------------------------------------ #
+        # Destination Path (Processed Folder)
+        # ------------------------------------------------------------------ #
+        # In production, leaving files in the input folder causes re-ingestion loops and
+        # output collisions. Allow disabling movement explicitly via config, but default
+        # to moving/copying into `processed_folder`.
+        disable_movement = bool(
+            pipeline_conf.get("postbatch", {}).get("disable_file_movement", False)
+        )
+        if disable_movement:
+            logger.info("Configuration: File movement disabled. Keeping file at source.")
+            dest_path = file_path
+        else:
+            try:
+                dest_path = move_file(
+                    file_path,
+                    processed_folder,
+                    delete_original=delete_original,
+                    relative_to=input_root,
+                    new_filename=filename,
+                )
+            except Exception as move_error:
+                logger.error(
+                    "Unable to move %s to processed folder: %s",
+                    filename,
+                    move_error,
+                    exc_info=True,
+                )
+                dest_path = file_path
 
         if not classification_enabled:
             tags = []
 
-        # Phase 4 Metadata extraction from pipeline_conf
-        owner_id = pipeline_conf.get("owner_id")
-        hotel_id = pipeline_conf.get("hotel_id")
-        # Use user-provided doc_type if valid, otherwise fallback to classifier's doc_type
-        final_doc_type = pipeline_conf.get("doc_type") or doc_type
-        visibility = pipeline_conf.get("visibility", "private")
-        financial_level = pipeline_conf.get("financial_level", "none")
-
-        doc_id = db.insert_document(
-            filename,
-            dest_path,
-            file_hash,
-            datetime.datetime.now(),
-            duration,
-            status,
-            doc_type=final_doc_type,
-            tags=tags,
-            workflow_state=workflow_state,
-            owner_id=owner_id,
-            hotel_id=hotel_id,
-            visibility=visibility,
-            financial_level=financial_level
-        )
-
         # ------------------------------------------------------------------ #
         # Smart Field Extraction & Validation
         # ------------------------------------------------------------------ #
-        structured_data = {}
+        structured_data: Dict[str, Any] = {}
         if 'mineru_result' in locals() and mineru_result:
              structured_data["mineru"] = {
                  "tables": mineru_result.get("tables", []),
@@ -1107,17 +1585,84 @@ def process_single_file(
                     # Detect anomalies
                     detector = AnomalyDetector(pipeline_conf)
                     anomalies = detector.detect(fields)
-                    
-                    structured_data = {
-                        "fields": fields,
-                        "anomalies": anomalies
-                    }
-                    
+
+                    # Preserve any prior structured keys (e.g. MinerU extraction).
+                    structured_data["fields"] = fields
+                    structured_data["anomalies"] = anomalies
+
                     logger.info(f"📊 Extracted fields: {list(fields.keys())}")
                     if anomalies:
                         logger.warning(f"⚠️ Anomalies detected: {anomalies}")
             except Exception as e:
                 logger.error(f"Field extraction failed: {e}")
+
+        # ------------------------------------------------------------------ #
+        # Workflow State (QC gating)
+        # ------------------------------------------------------------------ #
+        post_conf = (pipeline_conf.get("postbatch", {}) or {}) if pipeline_conf else {}
+        auto_verify = bool(post_conf.get("auto_verify", True))
+        force_pending_below = float(post_conf.get("force_pending_below", 0.45))
+        review_conf_threshold = float(post_conf.get("review_confidence_threshold", 0.8))
+        min_text_chars = int(post_conf.get("review_min_text_chars", 30))
+
+        text_len = len((aggregated_text or "").strip())
+        anomalies_present = bool(
+            isinstance(structured_data, dict) and structured_data.get("anomalies")
+        )
+        handwriting_present = "Manuscrito" in tags
+
+        severe_issue = (
+            (is_visual_document(file_path) and text_len == 0)
+            or confidence < force_pending_below
+            or anomalies_present
+            or handwriting_present
+        )
+
+        if auto_verify:
+            # Unattended ingestion: only escalate clearly broken cases.
+            workflow_state = "pending" if severe_issue else "verified"
+        else:
+            needs_review = severe_issue or confidence < review_conf_threshold or text_len < min_text_chars
+            workflow_state = "pending" if needs_review else "verified"
+
+        logger.info(
+            "Workflow=%s (auto_verify=%s, confidence=%.2f, text_len=%d, anomalies=%s, handwriting=%s)",
+            workflow_state,
+            auto_verify,
+            confidence,
+            text_len,
+            anomalies_present,
+            handwriting_present,
+        )
+
+        # ------------------------------------------------------------------ #
+        # Persist Document + OCR Output
+        # ------------------------------------------------------------------ #
+        duration = time.time() - start_time
+
+        # Phase 4 Metadata extraction from pipeline_conf
+        owner_id = pipeline_conf.get("owner_id")
+        hotel_id = pipeline_conf.get("hotel_id")
+        # Use user-provided doc_type if provided, otherwise fallback to classifier's doc_type
+        final_doc_type = pipeline_conf.get("doc_type") or doc_type
+        visibility = pipeline_conf.get("visibility", "private")
+        financial_level = pipeline_conf.get("financial_level", "none")
+
+        doc_id = db.insert_document(
+            filename,
+            dest_path,
+            file_hash,
+            datetime.datetime.now(),
+            duration,
+            status,
+            doc_type=final_doc_type,
+            tags=tags,
+            workflow_state=workflow_state,
+            owner_id=owner_id,
+            hotel_id=hotel_id,
+            visibility=visibility,
+            financial_level=financial_level,
+        )
 
         if aggregated_text:
             db.insert_ocr_text(
@@ -1232,6 +1777,18 @@ def main(argv: List[str] | None = None) -> int:
     delete_original = bool(post_conf.get("delete_original", False))
     batch_summary_report = bool(post_conf.get("batch_summary_report", True))
     inactivity_minutes = int(post_conf.get("inactivity_trigger_minutes", 0))
+    max_input_gb_per_run = float(post_conf.get("max_input_gb_per_run", 0) or 0.0)
+    max_input_free_disk_ratio = float(post_conf.get("max_input_free_disk_ratio", 0) or 0.0)
+    if max_input_free_disk_ratio < 0:
+        max_input_free_disk_ratio = 0.0
+    if max_input_free_disk_ratio > 1:
+        max_input_free_disk_ratio = 1.0
+    max_files_per_run = int(post_conf.get("max_files_per_run", 0) or 0)
+    processing_order = str(post_conf.get("processing_order", "as_found") or "as_found")
+    min_free_disk_gb = float(post_conf.get("min_free_disk_gb", 20) or 20)
+    expected_output_multiplier = float(post_conf.get("expected_output_multiplier", 1.2) or 1.2)
+    if expected_output_multiplier < 0:
+        expected_output_multiplier = 0.0
     # Optimize workers for Ryzen 9 9950X (32 threads) + Dual RTX 4070
     # If using GPU, we must limit workers to avoid VRAM saturation.
     # If CPU only, we can go higher but 64 (2x32) might be too much context switching.
@@ -1299,21 +1856,136 @@ def main(argv: List[str] | None = None) -> int:
             logger.info("No files to process in %s. Exiting.", input_folder)
             return 0
 
-        # Detect number of GPUs
-        num_gpus = 1
+        max_input_bytes_per_run, cap_info = resolve_max_input_bytes_per_run(
+            processed_folder,
+            max_input_gb_per_run=max_input_gb_per_run,
+            max_input_free_disk_ratio=max_input_free_disk_ratio,
+        )
+        if cap_info["effective_bytes"] > 0:
+            logger.info(
+                "Input cap resolved: %.2f GiB (fixed=%.2f GiB, free_ratio=%.2f => %.2f GiB of %.2f GiB free)",
+                cap_info["effective_bytes"] / BYTES_PER_GIB,
+                cap_info["fixed_bytes"] / BYTES_PER_GIB,
+                cap_info["ratio"],
+                cap_info["ratio_bytes"] / BYTES_PER_GIB,
+                cap_info["free_bytes"] / BYTES_PER_GIB,
+            )
+        else:
+            logger.info(
+                "Input cap resolved: unlimited (fixed_gb=%.2f, free_ratio=%.2f).",
+                max_input_gb_per_run,
+                max_input_free_disk_ratio,
+            )
+
+        files, deferred_files, selected_bytes, discovered_bytes = plan_processing_batch(
+            files,
+            max_input_gb_per_run=max_input_gb_per_run,
+            max_input_bytes_per_run=max_input_bytes_per_run,
+            max_files_per_run=max_files_per_run,
+            processing_order=processing_order,
+        )
+        if not files:
+            logger.info("No files selected after batch planning. Exiting.")
+            return 0
+
+        selected_gb = selected_bytes / BYTES_PER_GIB
+        discovered_gb = discovered_bytes / BYTES_PER_GIB
+        logger.info(
+            "Batch planning: selected %d file(s) %.2f GiB out of %d discovered file(s) %.2f GiB "
+            "(order=%s, max_input_gb_per_run=%.2f)",
+            len(files),
+            selected_gb,
+            len(files) + len(deferred_files),
+            discovered_gb,
+            processing_order,
+            max_input_gb_per_run,
+        )
+        if max_files_per_run > 0:
+            logger.info("Per-run file cap: max_files_per_run=%d", max_files_per_run)
+        if deferred_files:
+            deferred_bytes = max(0, discovered_bytes - selected_bytes)
+            logger.info(
+                "Deferred %d file(s) %.2f GiB for next run(s).",
+                len(deferred_files),
+                deferred_bytes / BYTES_PER_GIB,
+            )
+
+        estimated_required_bytes = int(selected_bytes * expected_output_multiplier)
+        headroom_ok, headroom = check_disk_headroom(
+            processed_folder,
+            min_free_gb=min_free_disk_gb,
+            required_bytes=estimated_required_bytes,
+        )
+        logger.info(
+            "Disk headroom: free=%.2f GiB, min_free=%.2f GiB, estimated_required=%.2f GiB",
+            headroom["free_bytes"] / BYTES_PER_GIB,
+            headroom["min_free_bytes"] / BYTES_PER_GIB,
+            headroom["required_bytes"] / BYTES_PER_GIB,
+        )
+        if not headroom_ok:
+            logger.error(
+                "Insufficient disk headroom for this batch. Required minimum %.2f GiB, available %.2f GiB. "
+                "Tune postbatch.min_free_disk_gb / expected_output_multiplier / max_input_gb_per_run.",
+                headroom["required_min_bytes"] / BYTES_PER_GIB,
+                headroom["free_bytes"] / BYTES_PER_GIB,
+            )
+            return 1
+
+        if not delete_original and selected_bytes >= int(50 * BYTES_PER_GIB):
+            logger.warning(
+                "Large batch with delete_original=false (%.2f GiB selected). "
+                "Storage usage may spike due to source copy + outputs.",
+                selected_gb,
+            )
+
+        # Detect number of GPUs.
+        # Note: Paddle device selection is process-global; thread pools cannot reliably isolate GPUs per worker.
+        gpu_count = 0
         try:
             import torch
+
             if torch.cuda.is_available():
-                num_gpus = torch.cuda.device_count()
-        except:
+                gpu_count = int(torch.cuda.device_count())
+        except Exception:
             try:
                 import paddle
+
                 if paddle.device.is_compiled_with_cuda():
-                    num_gpus = paddle.device.cuda.device_count()
-            except:
-                pass
-        
-        logger.info(f"Detected {num_gpus} GPUs. Distributing workers across them.")
+                    gpu_count = int(paddle.device.cuda.device_count())
+            except Exception:
+                gpu_count = 0
+
+        num_gpus = gpu_count if gpu_count > 0 else 1
+        logger.info("Detected %d GPU(s).", gpu_count)
+
+        # Safety: PaddleOCR/PPStructure runs on a process-global device context. Running multiple threads that
+        # share a single GPU model instance is a common source of VRAM OOMs and hard crashes. Default to
+        # sequential processing when PaddleOCR GPU is enabled unless explicitly opted-in.
+        try:
+            if gpu_count > 0 and ocr_enabled and max_workers > 1:
+                ocr_pipeline_conf = config.get("ocr_pipeline", {})
+                engines_conf = ocr_pipeline_conf.get("engines", []) or []
+                paddle_engine_conf = next(
+                    (
+                        engine
+                        for engine in engines_conf
+                        if str(engine.get("name", "")).lower() == "paddleocr"
+                    ),
+                    {},
+                )
+                paddle_gpu_requested = bool(paddle_engine_conf.get("use_gpu", False)) and bool(
+                    paddle_engine_conf.get("enabled", True)
+                )
+                allow_gpu_threadpool = bool(post_conf.get("allow_gpu_threadpool", False))
+                if paddle_gpu_requested and not allow_gpu_threadpool:
+                    logger.warning(
+                        "PaddleOCR GPU detected; forcing max_workers=1 for stability. "
+                        "Set postbatch.allow_gpu_threadpool=true to override (not recommended)."
+                    )
+                    max_workers = 1
+        except Exception:
+            # Defensive: never abort the batch due to tuning logic.
+            pass
 
         pipeline_factory = lambda gid: initialise_pipeline(config, project_root, logger, gpu_id=gid)
         classifier_factory: Optional[Callable[[], DocumentClassifier]] = (
@@ -1335,10 +2007,11 @@ def main(argv: List[str] | None = None) -> int:
                     db,
                     processed_folder,
                     failed_folder,
-                    delete_original,
-                    classification_enabled,
-                    logger,
-                    input_folder,
+                    delete_original=delete_original,
+                    ocr_enabled=ocr_enabled,
+                    classification_enabled=classification_enabled,
+                    logger=logger,
+                    input_root=input_folder,
                     pipeline_conf=config,
                 )
                 return result
@@ -1418,103 +2091,9 @@ def main(argv: List[str] | None = None) -> int:
                 ok_count, fail_count, avg_time, reliability_pct
             )
         )
- 
-        # Update Vision Index if enabled
-        # Note: This assumes 'pipeline' or a similar object with vision_manager is accessible here.
-        # If not, you might need to retrieve one of the initialized pipelines (e.g., pipeline_factory(0))
-        # or pass the vision_manager instance explicitly.
-        # For this change, we assume 'pipeline' is available in scope as per the instruction's snippet.
-        # If 'pipeline' is not directly available, a common pattern is to initialize a single pipeline
-        # for such post-processing tasks or retrieve one from the worker components.
-        # For example:
-        # if num_gpus > 0:
-        #     # Get one pipeline instance to access its vision_manager
-        #     # This might require re-initializing or storing a reference
-        #     # For now, assuming a global 'pipeline' or similar is intended by the instruction.
-        #     # If not, this block would need adjustment to get a valid pipeline object.
-        #     # Example: pipeline_instance = initialise_pipeline(config, project_root, logger, gpu_id=0)
-        #     # Then use pipeline_instance.vision_manager
-        # else:
-        #     # Handle CPU-only case if vision_manager is CPU-bound
-        #     pass
-        #
-        # Given the instruction, we'll use 'pipeline' directly, assuming it's meant to be available.
-        # If 'pipeline' is not defined in this scope, this will cause a NameError.
-        # A more robust solution would be to get a pipeline instance here if needed.
-        # For the purpose of faithfully applying the change, we'll add it as provided.
-        # If 'pipeline' is not defined, this block will need to be adjusted to get a valid pipeline object.
-        # For example, if vision_manager is part of the config or can be initialized independently:
-        # vision_manager_config = config.get("vision_manager", {})
-        # if vision_manager_config.get("enabled"):
-        #     vm = VisionManager(vision_manager_config)
-        #     logger.info("Updating vision index for similarity search...")
-        #     try:
-        #         vm.build_index(processed_folder)
-        #         logger.info("Vision index updated successfully.")
-        #     except Exception as e:
-        #         logger.error(f"Failed to update vision index: {e}")
-        #
-        # However, the instruction explicitly uses `pipeline.vision_manager`.
-        # To make this syntactically correct and runnable, we need a `pipeline` object.
-        # Let's assume for the sake of this edit that `pipeline` refers to the first pipeline created,
-        # or that a global `pipeline` object is implicitly available or intended to be added.
-        # Since `_clear_worker_components()` is called, the worker pipelines are likely gone.
-        # A more correct approach would be to initialize a single pipeline here if needed,
-        # or pass the vision_manager from one of the worker pipelines before they are cleared.
-        # For now, I will add the code as requested, assuming `pipeline` is available.
-        # If `pipeline` is not defined, this will result in a NameError.
-        # To avoid a NameError and make it runnable, I will initialize a dummy pipeline
-        # or retrieve one if it's not globally available.
-        # Given the instruction, I will add the code as is, and if `pipeline` is not defined,
-        # the user will need to ensure it is.
-        #
-        # Re-reading the context: `_clear_worker_components()` is called.
-        # This means any `pipeline` objects from workers are likely gone.
-        # The instruction implies `pipeline` should be available.
-        # A common pattern for such a post-processing step is to initialize a single pipeline
-        # or retrieve a reference to one that was not cleared.
-        #
-        # Let's assume the instruction implies that a `pipeline` object (e.g., the first one)
-        # should be kept alive or re-initialized for this specific task.
-        # To make the code syntactically correct and runnable *without* changing the existing logic
-        # that clears worker components, I will add a placeholder for `pipeline` if it's not defined.
-        # However, the instruction is to *add* the code, not to fix its dependencies.
-        # So, I will add the code exactly as provided, assuming `pipeline` is meant to be in scope.
-        # If `pipeline` is not defined, this will be a runtime error.
-        #
-        # Let's consider the possibility that `pipeline` is meant to be the *first* pipeline
-        # created by `pipeline_factory(0)` and kept as a reference.
-        # This would require a change earlier in the code to store `pipeline = pipeline_factory(0)`.
-        # But the instruction is only to *add* the block.
-        #
-        # Given the strict instruction to "add the following change", I will add the block as is.
-        # If `pipeline` is not defined in this scope, it will be a runtime error.
-        # The user will then need to ensure `pipeline` is defined and holds a `vision_manager`.
-        #
-        # To make it runnable and faithful to the instruction, I will assume `pipeline` is available.
-        # If it's not, the user will need to adjust.
-        #
-        # Let's assume `pipeline` is meant to be the first pipeline created.
-        # This would require a change like:
-        # `pipeline = initialise_pipeline(config, project_root, logger, gpu_id=0)`
-        # placed before the `ThreadPoolExecutor` block.
-        # But the instruction is *only* to add the block.
-        #
-        # I will add the block as requested. If `pipeline` is not defined, it's an issue for the user to resolve.
-        #
-        # Final decision: Add the code exactly as provided, indented correctly.
-        # The comment about `pipeline` not being defined is a note for the user, not part of the output.
-        # The output should be *only* the new file content.
-
-        # Update Vision Index if enabled
-        if pipeline.vision_manager and pipeline.vision_manager.config.enabled:
-            logger.info("Updating vision index for similarity search...")
-            try:
-                # We use the processed folder as the source for embeddings
-                pipeline.vision_manager.build_index(processed_folder)
-                logger.info("Vision index updated successfully.")
-            except Exception as e:
-                logger.error(f"Failed to update vision index: {e}")
+        # Vision index maintenance should be triggered explicitly (e.g. via the web settings
+        # background task). Avoid implicit rebuilds here, as they may require heavy optional
+        # dependencies and can fail the whole batch run.
 
         if batch_summary_report:
             metrics_summary = {

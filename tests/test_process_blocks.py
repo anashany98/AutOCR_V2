@@ -15,7 +15,7 @@ class DummyOCR:
         self.secondary_engine = "easyocr"
         self.calls = []
 
-    def extract_block(self, image, bbox, engine="primary"):
+    def extract_block(self, image, bbox, engine="primary", min_confidence=None):
         self.calls.append(engine)
         if engine == "primary":
             return ("primary-result", 0.3)
