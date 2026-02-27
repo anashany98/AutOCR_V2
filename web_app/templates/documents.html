@@ -298,7 +298,156 @@
 
 {% block extra_js %}
 <script>
-    const checkboxes = document.querySelectorAll('.doc-checkbox');
+// AJAX Document Search
+let searchTimeout = null;
+
+function searchDocuments(page = 1) {
+    const status = document.getElementById('status')?.value || '';
+    const type = document.getElementById('type')?.value || '';
+    const search = document.getElementById('search')?.value || '';
+    
+    const params = new URLSearchParams({
+        page: page,
+        per_page: 20,
+        status: status,
+        type: type,
+        search: search
+    });
+    
+    fetch(`/api/documents/search?${params}`, {
+        headers: { 'Accept': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        updateDocumentsTable(data.documents);
+        updatePagination(data.page, data.total_pages, data.total);
+    })
+    .catch(error => {
+        console.error('Search error:', error);
+        // Fallback to regular form submission on error
+        document.querySelector('form[method="get"]').submit();
+    });
+}
+
+function updateDocumentsTable(documents) {
+    const tbody = document.querySelector('tbody');
+    if (!tbody) return;
+    
+    if (documents.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-muted">No se encontraron documentos</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = documents.map(doc => {
+        const typeBadge = getTypeBadge(doc.doc_type);
+        const statusBadge = getStatusBadge(doc.status);
+        const date = doc.created_at ? new Date(doc.created_at).toLocaleDateString('es-ES') : '-';
+        
+        return `<tr>
+            <td class="ps-4"><input type="checkbox" class="form-check-input doc-checkbox" value="${doc.id}"></td>
+            <td class="ps-2">
+                <div class="d-flex align-items-center">
+                    <div class="icon-square bg-secondary bg-opacity-10 text-muted rounded-3 p-2 me-3">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div style="max-width: 180px; overflow: hidden;">
+                        <h6 class="mb-0 fw-bold text-light text-truncate" title="${doc.filename}">${doc.filename}</h6>
+                        ${doc.error_message ? `<small class="text-muted text-truncate d-block" style="max-width: 180px;">${doc.error_message}</small>` : ''}
+                    </div>
+                </div>
+            </td>
+            <td>${typeBadge}</td>
+            <td>${statusBadge}</td>
+            <td>${date}</td>
+            <td class="py-3 text-end pe-4">
+                <a href="/document/${doc.id}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                    <i class="fas fa-eye"></i>
+                </a>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function getTypeBadge(type) {
+    const colors = {
+        'Invoice': 'primary',
+        'Receipt': 'success',
+        'Contract': 'info',
+        'Report': 'warning',
+        'Letter': 'secondary'
+    };
+    const color = colors[type] || 'secondary';
+    const displayType = type || 'Desconocido';
+    return `<span class="badge bg-${color} bg-opacity-25 text-light border border-${color} border-opacity-25 px-3 py-2 rounded-pill">${displayType}</span>`;
+}
+
+function getStatusBadge(status) {
+    if (status === 'OK') {
+        return '<span class="text-success small fw-bold"><i class="fas fa-check-circle me-1"></i> OK</span>';
+    } else if (status === 'FAILED') {
+        return '<span class="text-danger small fw-bold"><i class="fas fa-times-circle me-1"></i> Fallido</span>';
+    }
+    return '<span class="text-warning small fw-bold">' + (status || 'Pendiente') + '</span>';
+}
+
+function updatePagination(page, totalPages, total) {
+    const container = document.querySelector('.pagination');
+    if (!container) return;
+    
+    let html = '';
+    if (page > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="searchDocuments(${page - 1}); return false;">Anterior</a></li>`;
+    }
+    
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= page - 2 && i <= page + 2)) {
+            html += `<li class="page-item ${i === page ? 'active' : ''}"><a class="page-link" href="#" onclick="searchDocuments(${i}); return false;">${i}</a></li>`;
+        } else if (i === page - 3 || i === page + 3) {
+            html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+    }
+    
+    if (page < totalPages) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="searchDocuments(${page + 1}); return false;">Siguiente</a></li>`;
+    }
+    
+    container.innerHTML = html;
+}
+
+// Attach event listeners for AJAX search
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('search');
+    const statusSelect = document.getElementById('status');
+    const typeSelect = document.getElementById('type');
+    const filterBtn = document.querySelector('button[type="submit"]');
+    
+    // Debounced search on input
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => searchDocuments(1), 500);
+        });
+    }
+    
+    // Search on filter change
+    if (statusSelect) {
+        statusSelect.addEventListener('change', () => searchDocuments(1));
+    }
+    if (typeSelect) {
+        typeSelect.addEventListener('change', () => searchDocuments(1));
+    }
+    
+    // Filter button click
+    if (filterBtn) {
+        filterBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            searchDocuments(1);
+        });
+    }
+});
+
+// Original checkbox code
+const checkboxes = document.querySelectorAll('.doc-checkbox');
     const selectAll = document.getElementById('selectAll');
     const batchBar = document.getElementById('batch-actions');
     const countSpan = document.getElementById('selected-count');

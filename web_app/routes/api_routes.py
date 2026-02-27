@@ -672,6 +672,120 @@ def api_visual_search():
         get_logger().error(f"Gallery API failed: {e}")
         return jsonify({"error": str(e)}), 500
 
+@api_bp.route("/api/documents/search")
+@login_required
+def api_documents_search():
+    """API endpoint for documents search with filters (AJAX)."""
+    db = get_db()
+    role = str(getattr(current_user, "role", "")).upper()
+    
+    # Get filter parameters
+    page = int(request.args.get("page", 1))
+    per_page = int(request.args.get("per_page", 20))
+    offset = (page - 1) * per_page
+    status_filter = request.args.get("status", "")
+    type_filter = request.args.get("type", "")
+    search_term = request.args.get("search", "")
+    
+    schema = _documents_schema(db)
+    created_col = schema["created_col"]
+    path_col = schema["path_col"]
+    type_col = schema["type_col"]
+    file_size_select = "file_size" if schema["has_file_size"] else "NULL"
+    
+    # Filter by hotel_scope
+    scope_filter = ""
+    scope_params = []
+    if current_user.role != 'ADMIN':
+        if not current_user.hotel_scope:
+            return jsonify({"documents": [], "total": 0, "page": 1, "total_pages": 1})
+        placeholders = ",".join([db.placeholder] * len(current_user.hotel_scope))
+        scope_filter = f" AND hotel_id IN ({placeholders})"
+        scope_params = list(current_user.hotel_scope)
+    
+    # Client isolation
+    owner_filter = ""
+    owner_params = []
+    if role in {"CLIENTE", "CLIENT"}:
+        owner_filter = f" AND owner_id = {db.placeholder}"
+        owner_params = [current_user.id]
+    
+    with db.get_connection() as conn:
+        cursor = db.get_cursor(conn)
+        
+        query = f"""
+            SELECT id, filename, {path_col}, {type_col}, status, {created_col}, {file_size_select}, tags, error_message
+            FROM documents
+            WHERE 1=1
+        """
+        query += scope_filter
+        query += owner_filter
+        
+        params = []
+        params.extend(scope_params)
+        params.extend(owner_params)
+        
+        if status_filter:
+            query += f" AND status = {db.placeholder}"
+            params.append(status_filter)
+        if type_filter:
+            query += f" AND {type_col} = {db.placeholder}"
+            params.append(type_filter)
+        if search_term:
+            query += (
+                f" AND (LOWER(filename) LIKE LOWER({db.placeholder})"
+                f" OR LOWER({type_col}) LIKE LOWER({db.placeholder}))"
+            )
+            params.extend([f"%{search_term}%", f"%{search_term}%"])
+        
+        # Get total count
+        count_query = "SELECT COUNT(*) FROM documents WHERE 1=1" + scope_filter + owner_filter
+        count_params = list(params[:len(scope_params) + len(owner_params)])
+        
+        if status_filter:
+            count_query += f" AND status = {db.placeholder}"
+            count_params.append(status_filter)
+        if type_filter:
+            count_query += f" AND {type_col} = {db.placeholder}"
+            count_params.append(type_filter)
+        if search_term:
+            count_query += f" AND (LOWER(filename) LIKE LOWER({db.placeholder}) OR LOWER({type_col}) LIKE LOWER({db.placeholder}))"
+            count_params.extend([f"%{search_term}%", f"%{search_term}%"])
+        
+        cursor.execute(count_query, count_params)
+        total_docs = cursor.fetchone()[0]
+        
+        query += f" ORDER BY {created_col} DESC LIMIT {db.placeholder} OFFSET {db.placeholder}"
+        params.extend([per_page, offset])
+        cursor.execute(query, params)
+        documents_rows = cursor.fetchall()
+    
+    total_pages = max(1, (total_docs + per_page - 1) // per_page)
+    
+    # Convert to dict
+    documents = []
+    for row in documents_rows:
+        doc = {
+            "id": row[0],
+            "filename": row[1],
+            "path": row[2],
+            "doc_type": row[3],
+            "status": row[4],
+            "created_at": str(row[5]) if row[5] else None,
+            "file_size": row[6],
+            "tags": row[7] if isinstance(row[7], list) else [],
+            "error_message": row[8]
+        }
+        documents.append(doc)
+    
+    return jsonify({
+        "documents": documents,
+        "total": total_docs,
+        "page": page,
+        "total_pages": total_pages
+    })
+
+
 @api_bp.route("/api/search")
 @login_required
 def api_search():
