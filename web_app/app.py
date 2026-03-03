@@ -69,6 +69,27 @@ DEFAULT_UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
 
 app = Flask(__name__)
 
+
+def create_app(testing=False):
+    """Create and configure the Flask application.
+    
+    Args:
+        testing: If True, configure app for testing mode.
+        
+    Returns:
+        The configured Flask application.
+    """
+    # Import the global app and configure it for testing
+    import web_app.app as app_module
+    app_instance = app_module.app
+    
+    if testing:
+        app_instance.config["TESTING"] = True
+        app_instance.config["WTF_CSRF_ENABLED"] = False
+    
+    return app_instance
+
+
 # Security: Force SECRET_KEY in production
 _secret_key = os.environ.get("FLASK_SECRET_KEY") or os.environ.get("SECRET_KEY")
 if not _secret_key:
@@ -82,14 +103,20 @@ if not _secret_key:
 app.config["SECRET_KEY"] = _secret_key
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax" if os.environ.get("FLASK_ENV") == "production" else "None"
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["UPLOAD_FOLDER"] = str(DEFAULT_UPLOAD_DIR)
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 
 # Initialize SocketIO (optional)
 socketio = None
 if FLASK_SOCKETIO_AVAILABLE:
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+    cors_origins_env = (os.environ.get("SOCKETIO_CORS_ALLOWED_ORIGINS") or "").strip()
+    cors_allowed_origins = None
+    if cors_origins_env:
+        cors_allowed_origins = [
+            o.strip() for o in cors_origins_env.split(",") if o.strip()
+        ] or None
+    socketio = SocketIO(app, cors_allowed_origins=cors_allowed_origins, async_mode='threading')
     
     # SocketIO event handlers
     @socketio.on('connect')
@@ -150,11 +177,19 @@ except Exception:
     app.jinja_env.globals.setdefault("csrf_token", lambda: "")
 
 # Security: Rate Limiting
+_rate_limit_storage = (os.environ.get("RATELIMIT_STORAGE_URI") or "").strip()
+if not _rate_limit_storage:
+    if os.environ.get("AUTOOCR_ENV") == "production":
+        # Default to Redis-backed storage in production for multi-worker consistency.
+        _rate_limit_storage = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/2")
+    else:
+        _rate_limit_storage = "memory://"
+
 limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["200 per minute", "10 per second"],
-    storage_uri="memory://",
+    storage_uri=_rate_limit_storage,
 )
 
 # Export socketio for other modules
@@ -175,6 +210,14 @@ login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
 login_manager.init_app(app)
 
+@login_manager.unauthorized_handler
+def _handle_unauthorized():
+    from flask import jsonify, redirect, request, url_for
+
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "authentication_required"}), 401
+    return redirect(url_for("auth.login"))
+
 @login_manager.user_loader
 def load_user(user_id):
     from web_app.services import get_db
@@ -188,12 +231,45 @@ from web_app.routes.error_handlers import errors_bp
 from web_app.routes.auth_routes import auth_bp
 from web_app.routes.admin_routes import admin_bp
 
+# Telegram Bot integration (optional)
+try:
+    from web_app.routes.telegram_routes import telegram_bp
+    TELEGRAM_AVAILABLE = True
+except ImportError:
+    telegram_bp = None
+    TELEGRAM_AVAILABLE = False
+
+# API Documentation (optional)
+try:
+    from web_app.routes.api_docs import api_docs_bp, init_swagger
+    API_DOCS_AVAILABLE = True
+except ImportError:
+    api_docs_bp = None
+    init_swagger = None
+    API_DOCS_AVAILABLE = False
+
 app.register_blueprint(main_bp)
 app.register_blueprint(api_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(errors_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(admin_bp)
+
+# Register API docs blueprint (optional)
+if api_docs_bp and API_DOCS_AVAILABLE:
+    app.register_blueprint(api_docs_bp)
+    if init_swagger:
+        init_swagger(app)
+    print("✅ API documentation enabled at /api/docs")
+else:
+    print("⚠️ API docs not available (install flasgger)")
+
+# Register Telegram bot blueprint (optional)
+if telegram_bp and TELEGRAM_AVAILABLE:
+    app.register_blueprint(telegram_bp)
+    print("✅ Telegram bot integration enabled")
+else:
+    print("⚠️ Telegram bot not available (install python-telegram-bot)")
 
 # --------------------------------------------------------------------------- #
 # Hot Folder Logic (Kept here or moved to separate background manager)

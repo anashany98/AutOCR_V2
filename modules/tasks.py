@@ -2,6 +2,9 @@ from huey import SqliteHuey, crontab
 from pathlib import Path
 import os
 import sys
+import hmac
+import hashlib
+import json
 
 # Ensure project root is in path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -19,11 +22,32 @@ else:
 
 
 
+def use_celery_backend() -> bool:
+    """
+    Decide whether task dispatch should use Celery or Huey.
+
+    Priority order:
+    1) `AUTOOCR_QUEUE_BACKEND=celery|huey` explicit override
+    2) production env (`AUTOOCR_ENV=production`)
+    3) presence of a Celery broker URL
+    """
+    forced = (os.environ.get("AUTOOCR_QUEUE_BACKEND") or "").strip().lower()
+    if forced == "celery":
+        return True
+    if forced == "huey":
+        return False
+
+    if (os.environ.get("AUTOOCR_ENV") or "").strip().lower() == "production":
+        return True
+
+    return bool((os.environ.get("CELERY_BROKER_URL") or "").strip())
+
+
 def _process_document_logic(file_path, options):
     """
     Core logic for processing a single document.
     """
-    from postbatch_processor import process_single_file, initialise_pipeline
+    from postbatch_processor import process_single_file
     from web_app.services import get_db, get_logger, resolve_path, load_configuration, get_pipeline, get_classifier, get_llm_client
     
     logger = get_logger()
@@ -88,7 +112,6 @@ def _process_document_logic(file_path, options):
                         if sum_res.get("success"):
                             summary = sum_res.get("summary")
                             if summary and doc_id_int:
-                                import json
                                 with db.get_connection() as conn:
                                     cursor = db.get_cursor(conn)
                                     cursor.execute(
@@ -137,7 +160,24 @@ def _process_document_logic(file_path, options):
                     "filename": os.path.basename(file_path),
                     "data": result
                 }
-                requests.post(webhook_url, json=payload, timeout=5)
+                webhook_secret = (
+                    os.environ.get("WEBHOOK_SIGNING_SECRET")
+                    or os.environ.get("AUTOOCR_WEBHOOK_SECRET")
+                    or config.get("app", {}).get("webhook_secret")
+                    or ""
+                )
+
+                headers = {}
+                if webhook_secret:
+                    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                    signature = hmac.new(
+                        webhook_secret.encode("utf-8"),
+                        body.encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    headers["X-AutoOCR-Signature"] = f"sha256={signature}"
+
+                requests.post(webhook_url, json=payload, timeout=5, headers=headers or None)
             except Exception as e:
                 logger.error(f"Webhook failed: {e}")
 
@@ -159,7 +199,7 @@ def _process_document_task_huey(file_path, options):
 # 2. Celery Task (Production / Docker)
 try:
     from celery_app import celery_app
-    @celery_app.task(queue="ocr")
+    @celery_app.task(queue="ocr_default")
     def _process_document_task_celery(file_path, options):
         return _process_document_logic(file_path, options)
 except (ImportError, ModuleNotFoundError):
@@ -171,7 +211,7 @@ def process_document_task(file_path, options):
     """
     Dispatch task to appropriate queue backend based on environment.
     """
-    if os.environ.get("AUTOOCR_ENV") == "production" and _process_document_task_celery:
+    if use_celery_backend() and _process_document_task_celery:
         # Determine priority based on file size or options
         queue_name = "ocr_batch" # Default
         
@@ -251,7 +291,7 @@ def rebuild_vision_index_task():
     """
     Dispatch rebuild index task.
     """
-    if os.environ.get("AUTOOCR_ENV") == "production" and _rebuild_index_task_celery:
+    if use_celery_backend() and _rebuild_index_task_celery:
         return _rebuild_index_task_celery.delay()
     else:
         return _rebuild_index_task_huey()
@@ -265,8 +305,7 @@ def _chat_inference_logic(query, session_id, hotel_id, doc_id, user_context, ima
     """
     Background logic for processing chat.
     """
-    from web_app.services import get_orchestrator, get_db, get_rag_manager, get_prompt_manager, get_pipeline, load_configuration, get_logger
-    from web_app.services import get_orchestrator, get_db, get_rag_manager, get_prompt_manager, get_pipeline, load_configuration, get_logger
+    from web_app.services import get_orchestrator, get_db, get_rag_manager, get_prompt_manager, get_logger
     
     logger = get_logger()
     db = get_db()
@@ -382,9 +421,13 @@ def _chat_inference_logic(query, session_id, hotel_id, doc_id, user_context, ima
             for item in results:
                 context_str += f"[Doc ID: {item.get('doc_id')}] Contenido: {item.get('text')}\n\n"
 
-            system_prompt = get_prompt_manager().get_prompt(user_context.get("role", "CLIENTE"))
+            role_prompt_key = str((user_context or {}).get("role") or "CLIENTE").upper()
+            prompt_manager = get_prompt_manager()
+            system_prompt = prompt_manager.get_prompt(role_prompt_key)
             if not system_prompt:
-                system_prompt = get_prompt_manager().get_prompt("v1", key="CLIENTE")
+                system_prompt = prompt_manager.get_prompt("CHAT_GENERAL")
+            if not system_prompt:
+                system_prompt = "Eres un asistente inteligente de documentos. Responde en espanol."
 
             instruction = f"Contexto encontrado:\n{context_str}\n\nUsuario: {query}"
             
@@ -433,7 +476,7 @@ except:
 
 def process_chat_async(query, session_id, hotel_id, doc_id, user_context):
     """Dispatch chat task"""
-    if os.environ.get("AUTOOCR_ENV") == "production" and _chat_task_celery:
+    if use_celery_backend() and _chat_task_celery:
         return _chat_task_celery.delay(query, session_id, hotel_id, doc_id, user_context)
     else:
         return _chat_task_huey(query, session_id, hotel_id, doc_id, user_context)
@@ -446,12 +489,25 @@ def process_chat_async(query, session_id, hotel_id, doc_id, user_context):
 def _email_check_logic():
     from web_app.services import load_configuration, get_logger, resolve_path
     from modules.email_importer import EmailImporter
+    from modules.outlook_importer import get_outlook_importer
     
     config = load_configuration()
     email_conf = config.get("email_importer", {})
+    outlook_conf = config.get("outlook_importer", {})
     
+    # Check if Outlook importer is enabled
+    if outlook_conf.get("enabled"):
+        logger = get_logger()
+        logger.info("Checking Outlook emails via Graph API...")
+        
+        outlook_importer = get_outlook_importer(outlook_conf)
+        if outlook_importer:
+            outlook_importer.check_now()
+            logger.info("Outlook email check completed")
+    
+    # Also check traditional IMAP if enabled
     if not email_conf.get("enabled"):
-        return "Email importer disabled"
+        return "Email importers disabled"
         
     post_conf = config.get("postbatch", {})
     input_folder = resolve_path(post_conf.get("input_folder", "input"))
@@ -473,7 +529,7 @@ except:
     _email_task_celery = None
 
 def trigger_email_check_task():
-    if os.environ.get("AUTOOCR_ENV") == "production" and _email_task_celery:
+    if use_celery_backend() and _email_task_celery:
         return _email_task_celery.delay()
     else:
         return _email_task_huey()
@@ -563,6 +619,36 @@ def _purge_ephemeral_data_logic():
 @huey.periodic_task(crontab(minute=15, hour=3))
 def purge_ephemeral_data_daily():
     return _purge_ephemeral_data_logic()
+
+
+# Email check every 15 minutes (for Outlook Graph API and IMAP)
+@huey.periodic_task(crontab(minute='*/15'))
+def check_emails_periodic():
+    """Check emails every 15 minutes."""
+    return _email_check_logic()
+
+
+# Due date alerts every morning at 8 AM
+@huey.periodic_task(crontab(minute=0, hour=8))
+def check_due_dates_daily():
+    """Check and send due date alerts every morning."""
+    from modules.logger_manager import get_logger
+    logger = get_logger(__name__)
+    from modules.payment_due_dates import send_due_date_alerts
+    from web_app.services import load_configuration
+    
+    config = load_configuration()
+    tenants = config.get("tenants", {})
+    
+    for tenant_id in tenants.keys():
+        try:
+            # Run async function
+            import asyncio
+            asyncio.run(send_due_date_alerts(tenant_id))
+        except Exception as e:
+            logger.error(f"Error sending due date alerts for tenant {tenant_id}: {e}")
+    
+    return "Due date alerts sent"
 
 
 # Celery equivalent (production / Docker). Huey periodic tasks do not run under Celery Beat.

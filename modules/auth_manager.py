@@ -131,12 +131,10 @@ class AuthManager:
         self.last_error = "invalid_credentials"
         user = self.get_user_by_username(username)
         if user and self.verify_password(user, password):
-            # SECURITY: Email verification check
-            # TODO: Re-enable email verification before production deployment
-            # Uncomment the following lines when ready:
-            # if not user.is_verified:
-            #     self.last_error = "email_not_verified"
-            #     return None
+            # Require verified email for users created via public registration.
+            if not user.is_verified:
+                self.last_error = "email_not_verified"
+                return None
             self.last_error = None
             return user
         return None
