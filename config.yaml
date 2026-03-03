@@ -96,29 +96,32 @@ app:
 features:
   enable_folders: false
   enable_versioning: false
-ocr_pipeline:
-  engines:
-  - name: paddleocr
-    enabled: true
-    gpu: true
-    use_gpu: true
-    lang: spa
-    layout: true
-    tables: true
-    model_variant: ppocrv4
-    model_profile: latin
-    model_storage_dir: models/paddle
-    autodownload_models: true
-  - name: easyocr
-    enabled: true
-    gpu: true
-    langs:
-    - spa
-    - eng
-  - name: paddlevl
-    enabled: true
-    use_gpu: true
-    model_id: PaddlePaddle/PaddleOCR-VL-1.5
+  ocr_pipeline:
+    engines:
+    - name: paddleocr
+      enabled: true
+      gpu: true
+      use_gpu: true
+      gpu_id: 0
+      lang: spa
+      layout: true
+      tables: true
+      model_variant: ppocrv4
+      model_profile: latin
+      model_storage_dir: models/paddle
+      autodownload_models: true
+    - name: easyocr
+      enabled: true
+      gpu: true
+      gpu_id: 1
+      langs:
+      - spa
+      - eng
+    - name: paddlevl
+      enabled: true
+      use_gpu: true
+      gpu_id: 0
+      model_id: PaddlePaddle/PaddleOCR-VL-1.5
   fusion:
     strategy: levenshtein
     min_confidence: 0.7
@@ -141,7 +144,10 @@ llm:
   enabled: true
   provider: lmstudio
   base_url: http://127.0.0.1:11434/v1
-  model: deepseek-r1-0528-qwen3-8b
+  model: qwen2.5-14b-instruct-q4_k_m
+  gpu_layers: -1
+  n_ctx: 8192
+  n_batch: 512
   timeout: 90
   routing:
     enabled: true
@@ -331,3 +337,11 @@ chat:
   alert_cooldown_seconds: 300
   llm_profile_with_context: document_chat
   llm_profile_no_context: general_chat
+
+# Telegram Bot Configuration
+telegram:
+  enabled: false
+  bot_token: ""  # Set TELEGRAM_BOT_TOKEN env var
+  webhook_url: ""  # e.g., https://yourdomain.com/api/telegram/webhook
+  admin_user_ids: []  # List of Telegram user IDs that are admins
+  welcome_message: "¡Bienvenido a AutoOCR! Usa /ayuda para ver comandos."

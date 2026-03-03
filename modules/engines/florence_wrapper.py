@@ -5,8 +5,65 @@ from transformers import AutoProcessor, AutoModelForCausalLM
 from typing import Dict, Any, List, Optional
 import os
 from modules.torch_compat import torch_cuda_usable
+from modules.color_extractor import ColorExtractor
 
 logger = logging.getLogger(__name__)
+
+# Furniture categories for classification
+FURNITURE_CATEGORIES = {
+    "seating": {
+        "es": "Asientos",
+        "en": "Seating",
+        "items": ["sofa", "couch", "chair", "armchair", "seat", "stool", "bench", "ottoman", "banquette", "sillón", "taburete", "banco"]
+    },
+    "tables": {
+        "es": "Mesas",
+        "en": "Tables",
+        "items": ["table", "desk", "coffee table", "dining table", "side table", "console", "mesa", "escritorio", "mesita"]
+    },
+    "storage": {
+        "es": "Almacenamiento",
+        "en": "Storage",
+        "items": ["shelf", "cabinet", "drawer", "bookcase", "wardrobe", "dresser", "commode", "estantería", "aparador", "armario", "cómoda"]
+    },
+    "lighting": {
+        "es": "Iluminación",
+        "en": "Lighting",
+        "items": ["lamp", "light", "chandelier", "sconce", "pendant", "lámpara", "aplique", "plafón", "colgante"]
+    },
+    "textiles": {
+        "es": "Textiles",
+        "en": "Textiles",
+        "items": ["carpet", "rug", "curtain", "pillow", "cushion", "blanket", "alfombra", "cortina", "cojín", "manta"]
+    },
+    "decor": {
+        "es": "Decoración",
+        "en": "Decor",
+        "items": ["vase", "mirror", "frame", "plant", "flower", "pot", "clock", "sculpture", "jarrón", "espejo", "marco", "planta", "reloj"]
+    },
+    "beds": {
+        "es": "Camas",
+        "en": "Beds",
+        "items": ["bed", "mattress", "cama", "colchón"]
+    },
+    "outdoor": {
+        "es": "Exterior",
+        "en": "Outdoor",
+        "items": ["planter", "bench", "table", "chair", "furniture", "maceta", "banco", "mueble exterior"]
+    }
+}
+
+# Material classification keywords
+MATERIAL_KEYWORDS = {
+    "wood": {"es": "Madera", "en": "Wood", "keywords": ["wood", "wooden", "madera", "oak", "pine", "walnut", "mahogany", "encina", "pino", "nogal"]},
+    "metal": {"es": "Metal", "en": "Metal", "keywords": ["metal", "steel", "iron", "aluminum", "brass", "chrome", "metal", "acero", "hierro", "aluminio", "latón"]},
+    "glass": {"es": "Vidrio", "en": "Glass", "keywords": ["glass", "glass", "vidrio", "cristal", "mirror"]},
+    "fabric": {"es": "Tela", "en": "Fabric", "keywords": ["fabric", "cloth", "textile", "velvet", "linen", "cotton", "tela", "algodón", "lino", "terciopelo"]},
+    "leather": {"es": "Cuero", "en": "Leather", "keywords": ["leather", "leather", "cuero", "piel"]},
+    "plastic": {"es": "Plástico", "en": "Plastic", "keywords": ["plastic", "resin", "polymer", "plástico", "resina"]},
+    "marble": {"es": "Mármol", "en": "Marble", "keywords": ["marble", "stone", "granite", "mármol", "piedra", "granito"]},
+    "concrete": {"es": "Hormigón", "en": "Concrete", "keywords": ["concrete", "cement", "hormigón", "cemento"]}
+}
 
 class FlorenceOCREngine:
     """
@@ -42,7 +99,8 @@ class FlorenceOCREngine:
             if not self.model:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_id, 
-                    trust_remote_code=True
+                    trust_remote_code=True,
+                    attn_implementation="eager"  # Force standard attention to avoid SDPA incompatibility
                 ).to(self.device).eval()
                 self.processor = AutoProcessor.from_pretrained(self.model_id, trust_remote_code=True)
             else:
@@ -111,12 +169,79 @@ class FlorenceOCREngine:
 
     def detect_furniture_and_materials(self, image_path: str) -> Dict[str, Any]:
         """Specialized task combining detection and description."""
-        # For now, we use OD and filter, or use a custom prompt if supported
-        # Florence-2 is good at captioning regions
+        # First get generic object detection
         od_results = self.detect_objects(image_path)
-        caption = self.caption_image(image_path)
+        # Get dense caption for better description
+        caption = self.caption_image(image_path, dense=True)
+        
+        # Extract furniture items and classify them
+        furniture_items = self._classify_furniture(od_results.get("<OD>", []))
+        
+        # Extract materials from caption
+        materials = self._extract_materials(caption)
+        
+        # Extract color palette
+        color_extractor = ColorExtractor()
+        palette = color_extractor.extract_palette(image_path, k=5)
         
         return {
-            "objects": od_results.get("<OD>", []),
+            "objects": furniture_items,
+            "materials": materials,
+            "palette": palette,
             "description": caption
         }
+    
+    def _classify_furniture(self, detections: List[Dict]) -> List[Dict[str, Any]]:
+        """Classify detected objects into furniture categories."""
+        classified = []
+        
+        for det in detections:
+            # Get label from detection
+            label = det.get("label", "").lower() if isinstance(det, dict) else ""
+            
+            if not label:
+                continue
+            
+            # Find matching category
+            category = self._find_category(label)
+            
+            if category:
+                classified.append({
+                    "label": label,
+                    "category": category["key"],
+                    "category_es": category["es"],
+                    "category_en": category["en"],
+                    "bbox": det.get("bbox", []),
+                    "score": det.get("score", 1.0)
+                })
+        
+        return classified
+    
+    def _find_category(self, label: str) -> Optional[Dict[str, Any]]:
+        """Find which furniture category a label belongs to."""
+        for cat_key, cat_data in FURNITURE_CATEGORIES.items():
+            for item in cat_data["items"]:
+                if item in label or label in item:
+                    return {
+                        "key": cat_key,
+                        "es": cat_data["es"],
+                        "en": cat_data["en"]
+                    }
+        return None
+    
+    def _extract_materials(self, text: str) -> List[Dict[str, Any]]:
+        """Extract materials mentioned in the caption."""
+        text_lower = text.lower() if text else ""
+        found_materials = []
+        
+        for mat_key, mat_data in MATERIAL_KEYWORDS.items():
+            for keyword in mat_data["keywords"]:
+                if keyword in text_lower:
+                    found_materials.append({
+                        "material": mat_key,
+                        "name_es": mat_data["es"],
+                        "name_en": mat_data["en"]
+                    })
+                    break  # Only add once per material
+        
+        return found_materials

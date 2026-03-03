@@ -600,12 +600,12 @@ def api_chat_post():
                 status_code = 429
                 return jsonify(queue_state), 429
             try:
-                from modules.tasks import process_chat_async
+                from modules.tasks import process_chat_async, use_celery_backend
 
                 task_res = process_chat_async(query, session_id, hotel_id, doc_id, user_context)
                 task_id = str(getattr(task_res, "id", "") or "")
                 if task_id:
-                    backend = "celery" if os.environ.get("AUTOOCR_ENV", "development") == "production" else "huey"
+                    backend = "celery" if use_celery_backend() else "huey"
                     db.register_chat_task(
                         task_id=task_id,
                         user_id=user_id,
@@ -968,9 +968,9 @@ def api_chat_status(task_id):
         return jsonify({"status": "failed", "error": task.get("error") or "Task failed"})
 
     backend = str(task.get("backend") or "").lower()
-    env = os.environ.get("AUTOOCR_ENV", "development")
+    from modules.tasks import use_celery_backend
 
-    if backend == "celery" or (not backend and env == "production"):
+    if backend == "celery" or (not backend and use_celery_backend()):
         from celery.result import AsyncResult
 
         res = AsyncResult(task_id)

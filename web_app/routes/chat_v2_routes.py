@@ -114,8 +114,9 @@ def chat_query():
         # 2. Build chat history
         history = _get_session_history(db, session_id, limit=6)
 
-        # 3. Build system prompt with context
-        system_prompt = _build_system_prompt(ctx_result.context_text)
+        # 3. Detect search type and build system prompt with context
+        search_type = _detect_search_type(query)
+        system_prompt = _build_system_prompt(ctx_result.context_text, prompt_type=search_type)
 
         # 4. Save user message
         _save_message(db, session_id, tenant_id, user, "user", query)
@@ -350,15 +351,26 @@ def get_message_sources(message_id: str):
 # Helpers
 # ============================================================================
 
-def _build_system_prompt(context: str) -> str:
-    """Build the system prompt with RAG context."""
+def _get_prompt_manager():
+    """Get or create the prompt manager singleton."""
+    from web_app.services import get_prompt_manager
+    return get_prompt_manager()
+
+
+def _build_system_prompt(context: str, prompt_type: str = "CHAT_GENERAL") -> str:
+    """Build the system prompt with RAG context.
+    
+    Args:
+        context: The RAG context retrieved from the knowledge base
+        prompt_type: Type of search prompt to use (CHAT_GENERAL, CHAT_SEARCH_CONTRACT, etc.)
+    """
+    # Get the appropriate prompt from PromptManager
+    pm = _get_prompt_manager()
+    base_prompt = pm.get_prompt(prompt_type, query="") or pm.get_prompt("CHAT_GENERAL")
+    
     if context:
         return (
-            "Eres un asistente inteligente de documentos. "
-            "Responde las preguntas basándote en el contexto proporcionado. "
-            "Si la información no está en el contexto, dilo claramente. "
-            "Cita las fuentes usando el formato [Fuente N]. "
-            "Responde en español.\n\n"
+            base_prompt + "\n\n"
             f"--- CONTEXTO ---\n{context}\n--- FIN CONTEXTO ---"
         )
     return (
@@ -367,6 +379,57 @@ def _build_system_prompt(context: str) -> str:
         "Responde basándote en tu conocimiento general. "
         "Responde en español."
     )
+
+
+def _detect_search_type(query: str) -> str:
+    """Detect the type of search based on the query.
+    
+    Returns the appropriate prompt key for the search type.
+    """
+    query_lower = query.lower()
+    
+    # Contract-related keywords
+    contract_keywords = ["contrato", "cláusula", "términos", "condiciones", "acuerdo", "partes", "obligaciones"]
+    if any(kw in query_lower for kw in contract_keywords):
+        return "CHAT_SEARCH_CONTRACT"
+    
+    # Invoice-related keywords
+    invoice_keywords = ["factura", "importe", "vencimiento", "proveedor", "pago", "recibo", "税"]
+    if any(kw in query_lower for kw in invoice_keywords):
+        return "CHAT_SEARCH_INVOICE"
+    
+    # Proposal-related keywords
+    proposal_keywords = ["propuesta", "oferta", "presupuesto", "cotización", "precio", "plazo"]
+    if any(kw in query_lower for kw in proposal_keywords):
+        return "CHAT_SEARCH_PROPOSAL"
+    
+    # Vendor-related keywords
+    vendor_keywords = ["proveedor", "contacto", "servicio", "histórico", "calificación"]
+    if any(kw in query_lower for kw in vendor_keywords):
+        return "CHAT_SEARCH_VENDOR"
+    
+    # Project-related keywords
+    project_keywords = ["proyecto", "presupuesto", "hito", "estado", "asignación", "tarea"]
+    if any(kw in query_lower for kw in project_keywords):
+        return "CHAT_SEARCH_PROJECT"
+    
+    # Summary keywords
+    summary_keywords = ["resumen", "resumir", "resumen ejecutivo", "síntesis"]
+    if any(kw in query_lower for kw in summary_keywords):
+        return "CHAT_SUMMARY"
+    
+    # Comparison keywords
+    comparison_keywords = ["comparar", "comparación", "diferencia", "vs", "versus", "mejor"]
+    if any(kw in query_lower for kw in comparison_keywords):
+        return "CHAT_COMPARISON"
+    
+    # Extraction keywords
+    extraction_keywords = ["extraer", "extraer datos", "listar", "tabla", "fechas", "importes"]
+    if any(kw in query_lower for kw in extraction_keywords):
+        return "CHAT_EXTRACTION"
+    
+    # Default to general chat
+    return "CHAT_GENERAL"
 
 
 def _get_session_history(db: Any, session_id: str, limit: int = 6) -> list:

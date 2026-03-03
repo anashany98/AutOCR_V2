@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class RAGManager:
     """Manages semantic and hybrid retrieval for chat context."""
 
-    def __init__(self, index_dir: str, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, index_dir: str, model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"):
         self.index_dir = Path(index_dir)
         self.index_path = self.index_dir / "text_index.faiss"
         self.meta_path = self.index_dir / "text_meta.pkl"
@@ -46,7 +46,7 @@ class RAGManager:
 
         if self.model is None:
             logger.info("Loading embedding model: %s", self.model_name)
-            self.model = SentenceTransformer(self.model_name)
+            self.model = SentenceTransformer(self.model_name, device="cuda:0")
 
         if self.index is None:
             if self.index_path.exists() and self.meta_path.exists():
@@ -65,8 +65,24 @@ class RAGManager:
         if self.model is None:
             return
         dim = self.model.get_sentence_embedding_dimension()
-        self.index = faiss.IndexFlatL2(dim)
+        quantizer = faiss.IndexFlatL2(dim)
+        nlist = 100  # ajustar a sqrt(num_documentos) cuando el índice crezca
+        self.index = faiss.IndexIVFFlat(quantizer, dim, nlist)
+        self.index.nprobe = 10  # chunks candidatos por búsqueda, balance velocidad/precisión
         self.metadata = []
+
+    def _train_index_if_needed(self, embeddings: np.ndarray):
+        """Entrena el índice IVFFlat si es necesario antes de añadir vectores."""
+        if hasattr(self.index, 'is_trained') and not self.index.is_trained:
+            if len(embeddings) >= 100:
+                self.index.train(embeddings.astype("float32"))
+                logger.info(f"Índice IVFFlat entrenado con {len(embeddings)} vectores")
+            else:
+                # fallback a IndexFlatL2 si hay menos de 100 documentos
+                logger.warning(f"Menor de 100 documentos ({len(embeddings)}), usando IndexFlatL2")
+                dim = self.model.get_sentence_embedding_dimension()
+                self.index = faiss.IndexFlatL2(dim)
+                self.metadata = []
 
     def save_index(self):
         """Persist FAISS index and metadata."""
@@ -193,6 +209,18 @@ class RAGManager:
 
         if not self.index:
             return
+
+        # Entrenar índice IVFFlat si es necesario
+        if hasattr(self.index, 'is_trained') and not self.index.is_trained:
+            if len(embeddings) >= 100:
+                self.index.train(np.array(embeddings).astype("float32"))
+                logger.info(f"Índice IVFFlat entrenado con {len(embeddings)} vectores")
+            else:
+                # fallback a IndexFlatL2 si hay menos de 100 documentos
+                logger.warning(f"Menor de 100 documentos ({len(embeddings)}), usando IndexFlatL2")
+                dim = self.model.get_sentence_embedding_dimension()
+                self.index = faiss.IndexFlatL2(dim)
+                self.metadata = []
 
         self.index.add(np.array(embeddings).astype("float32"))
         for chunk in chunks:

@@ -330,4 +330,10 @@ reportlab
 
 huey
 
+aiohttp
+msal
+
+flask-restx
+flasgger
+
 waitress

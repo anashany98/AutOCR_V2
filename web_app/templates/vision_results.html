@@ -84,15 +84,55 @@
                     <h6 class="text-info fw-bold mb-3">Descripción Detallada:</h6>
                     <p class="text-light opacity-75">{{ results.description }}</p>
 
-                    <h6 class="text-info fw-bold mt-4 mb-3">Objetos Detectados:</h6>
+                    <!-- Color Palette -->
+                    {% if results.palette %}
+                    <h6 class="text-info fw-bold mt-4 mb-3">Paleta de Colores:</h6>
+                    <div class="d-flex gap-2 mb-4">
+                        {% for color in results.palette %}
+                        <div class="text-center">
+                            <div class="rounded-circle shadow-sm" style="width: 40px; height: 40px; background-color: {{ color }}; border: 2px solid rgba(255,255,255,0.2);"></div>
+                            <small class="text-muted d-block mt-1">{{ color }}</small>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Materials -->
+                    {% if results.materials %}
+                    <h6 class="text-warning fw-bold mt-4 mb-3">Materiales Detectados:</h6>
                     <div class="d-flex flex-wrap gap-2 mb-4">
-                        {% for obj in results.objects %}
-                        <span
-                            class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-2 rounded-pill">
-                            <i class="fas fa-tag me-1 small"></i> {{ obj }}
+                        {% for mat in results.materials %}
+                        <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 px-3 py-2 rounded-pill">
+                            <i class="fas fa-cube me-1 small"></i> {{ mat.name_es }}
                         </span>
                         {% endfor %}
                     </div>
+                    {% endif %}
+
+                    <!-- Furniture Objects with Categories -->
+                    {% if results.objects %}
+                    <h6 class="text-info fw-bold mt-4 mb-3">Mobiliario Detectado:</h6>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-dark table-sm rounded-3 overflow-hidden">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th>Objeto</th>
+                                    <th>Confianza</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for obj in results.objects %}
+                                <tr>
+                                    <td><span class="badge bg-primary rounded-pill">{{ obj.category_es }}</span></td>
+                                    <td>{{ obj.label }}</td>
+                                    <td><small class="text-muted">{{ (obj.score * 100) | round(1) }}%</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
 
                     {% if results.ai_advice %}
                     <div class="alert alert-primary bg-opacity-10 border-primary border-opacity-25 mt-4">

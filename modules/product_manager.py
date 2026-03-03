@@ -14,7 +14,7 @@ except (ImportError, OSError):  # pragma: no cover - optional dependency
     SentenceTransformer = None  # type: ignore
 
 class ProductManager:
-    def __init__(self, db_manager: DBManager, vision_manager=None, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, db_manager: DBManager, vision_manager=None, model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"):
         self.db = db_manager
         self.logger = logging.getLogger("ProductManager")
         self.vision_manager = vision_manager

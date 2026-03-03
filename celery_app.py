@@ -19,8 +19,16 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_routes={
-        # Default routing (can be overridden by apply_async options)
+        # Canonical routes for async workload classes.
         "modules.tasks._process_document_task_celery": {"queue": "ocr_batch"},
+        "modules.tasks._rebuild_index_task_celery": {"queue": "ocr_batch"},
+        "modules.tasks._chat_task_celery": {"queue": "ocr_fast"},
+        "modules.tasks._email_task_celery": {"queue": "ocr_default"},
+        "modules.tasks.purge_ephemeral_data_daily_celery": {"queue": "ocr_default"},
+        # Legacy aliases kept for backward compatibility.
+        "modules.celery_app.process_document_task": {"queue": "ocr_batch"},
+        "modules.celery_app.process_batch_task": {"queue": "ocr_batch"},
+        "modules.celery_app.generate_embeddings_task": {"queue": "ocr_default"},
     },
     task_default_queue="ocr_default",
     task_acks_late=True,  # Ensure tasks are only acked after successful execution

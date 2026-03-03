@@ -70,10 +70,10 @@ services:
     container_name: autoocr_worker
     restart: always
     command: >
-      celery -A modules.celery_app worker
+      celery -A celery_app worker
       --loglevel=info
       --concurrency=2
-      --queues=ocr_fast,ocr_batch,default
+      --queues=ocr_fast,ocr_batch,ocr_default
       --prefetch-multiplier=1
     volumes:
       - .:/app
@@ -135,6 +135,7 @@ services:
     image: redis:7-alpine
     container_name: autoocr_redis
     restart: always
+    command: redis-server --maxmemory 4gb --maxmemory-policy allkeys-lru --save "" --appendonly no
     ports:
       - "6380:6379"
     volumes:

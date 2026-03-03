@@ -38,12 +38,34 @@ KEYWORDS = {
 }
 
 
+def get_model(model_path: Optional[str] = None):
+    """
+    Backward-compatible model loader.
+
+    Legacy tests patch this symbol directly. When no model path is provided
+    we keep a safe no-op and return ``None``.
+    """
+    if not model_path:
+        return None
+
+    p = Path(model_path)
+    if not p.exists():
+        return None
+
+    try:
+        with open(p, "rb") as f:
+            return pickle.load(f)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to load classifier model from %s: %s", p, exc)
+        return None
+
+
 class DocumentClassifier:
     """Perform keyword‑based determination or ML classification."""
 
     def __init__(self, keywords: Optional[dict] = None, model_path: Optional[str] = None) -> None:
         self.keywords = keywords or KEYWORDS
-        self.model = None
+        self.model = get_model(model_path)
         self.llm_client = None
         
         # Try to get LLM Client
@@ -53,15 +75,8 @@ class DocumentClassifier:
         except ImportError:
             pass
         
-        if model_path:
-            p = Path(model_path)
-            if p.exists():
-                try:
-                    with open(p, "rb") as f:
-                        self.model = pickle.load(f)
-                    logger.info(f"Loaded AI Classifier from {p}")
-                except Exception as e:
-                    logger.error(f"Failed to load AI Classifier: {e}")
+        if self.model is not None and model_path:
+            logger.info("Loaded AI Classifier from %s", model_path)
 
     def classify(self, text: str) -> Tuple[str, List[str]]:
         """

@@ -59,11 +59,6 @@ paddle = None  # type: ignore[assignment]
 easyocr = None  # type: ignore[assignment]
 torch = None  # type: ignore[assignment]
 
-try:
-    from pdf2image import convert_from_path  # type: ignore
-except ImportError:
-    convert_from_path = None
-
 
 def _lazy_import_paddleocr():
     global PaddleOCR
@@ -223,6 +218,83 @@ class OCRConfig:
     preprocessing: Dict[str, Any] = field(default_factory=dict)
 
 
+class _FlorenceOCRPlaceholder:
+    """Compatibility placeholder for tests that patch `FlorenceOCR`."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("Florence OCR backend is not available in this environment")
+
+
+# Backward compatibility symbol expected by legacy tests.
+FlorenceOCR = _FlorenceOCRPlaceholder
+
+
+def get_ocr_engine(engine: str = "auto", **_kwargs: Any):
+    """
+    Backward-compatible factory hook.
+
+    Legacy tests monkeypatch this symbol to inject a mock OCR engine with a
+    ``process(path)`` method. Default runtime returns ``None`` and uses the
+    modern extraction pipeline.
+    """
+    return None
+
+
+class PaddleOCREngine:
+    """Small compatibility wrapper expected by legacy tests."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        paddle_cls = PaddleOCR if callable(PaddleOCR) else _lazy_import_paddleocr()
+        self._engine = paddle_cls(**kwargs) if callable(paddle_cls) else None
+
+    def process(self, file_path: str) -> Dict[str, Any]:
+        if not self._engine or not hasattr(self._engine, "ocr"):
+            return {"text": "", "confidence": 0.0, "pages": 1}
+
+        result = self._engine.ocr(file_path, cls=True) or []
+        lines: List[str] = []
+        conf: List[float] = []
+        for page in result:
+            for row in page or []:
+                try:
+                    txt = row[1][0]
+                    score = float(row[1][1])
+                    lines.append(txt)
+                    conf.append(score)
+                except Exception:
+                    continue
+        return {
+            "text": "\n".join(lines).strip(),
+            "confidence": float(np.mean(conf)) if conf else 0.0,
+            "pages": len(result) or 1,
+        }
+
+
+class FlorenceOCREngine:
+    """Compatibility wrapper expected by legacy tests."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        backend = FlorenceOCR
+        if backend is _FlorenceOCRPlaceholder:
+            try:
+                from modules.engines.florence_wrapper import FlorenceOCREngine as real_backend
+                backend = real_backend
+            except Exception:
+                backend = FlorenceOCR
+        self._engine = backend(**kwargs) if callable(backend) else None
+
+    def process(self, file_path: str) -> Dict[str, Any]:
+        if not self._engine:
+            return {"text": "", "confidence": 0.0, "pages": 1}
+        try:
+            if hasattr(self._engine, "caption_image"):
+                text = self._engine.caption_image(file_path, dense=False)
+                return {"text": text or "", "confidence": 0.7, "pages": 1}
+        except Exception:
+            pass
+        return {"text": "", "confidence": 0.0, "pages": 1}
+
+
 class OCRManager:
     """
     Manage OCR extraction using PaddleOCR (GPU/CPU) with EasyOCR fallback.
@@ -233,11 +305,15 @@ class OCRManager:
         config: OCRConfig | None = None,
         logger: Optional[logging.Logger] = None,
         gpu_id: int = 0,
+        enable_cache: bool = False,
+        **_kwargs: Any,
     ) -> None:
         self.config = config or OCRConfig()
         self.logger = logger or logging.getLogger(__name__)
         self.enabled = self.config.enabled
         self.gpu_id = gpu_id
+        self.enable_cache = bool(enable_cache)
+        self._result_cache: Dict[str, Dict[str, Any]] = {}
 
         self.engine_configs: Dict[str, Dict[str, object]] = {
             key.lower(): value for key, value in (self.config.engine_configs or {}).items()
@@ -253,12 +329,24 @@ class OCRManager:
         self._paddle_enabled = bool(paddle_conf.get("enabled", True))
         self._easy_enabled = bool(easy_conf.get("enabled", True))
 
-        self._paddle_use_gpu = (
-            self._determine_paddle_gpu(bool(paddle_conf.get("gpu", True))) if self._paddle_enabled else False
-        )
-        self._easy_use_gpu = (
-            self._determine_easy_gpu(bool(easy_conf.get("gpu", True))) if self._easy_enabled else False
-        )
+        # Legacy compatibility: tests can monkeypatch `get_ocr_engine` to inject
+        # a lightweight mock engine with `.process(path)`.
+        self._legacy_engine = None
+        try:
+            self._legacy_engine = get_ocr_engine(self.primary_engine)
+        except Exception:
+            self._legacy_engine = None
+
+        if self._legacy_engine is not None:
+            self._paddle_use_gpu = False
+            self._easy_use_gpu = False
+        else:
+            self._paddle_use_gpu = (
+                self._determine_paddle_gpu(bool(paddle_conf.get("gpu", True))) if self._paddle_enabled else False
+            )
+            self._easy_use_gpu = (
+                self._determine_easy_gpu(bool(easy_conf.get("gpu", True))) if self._easy_enabled else False
+            )
         self.use_gpu = self._paddle_use_gpu or self._easy_use_gpu
 
         self._paddle_lang = map_code(str(paddle_conf.get("lang", self.languages[0] if self.languages else "spa")))
@@ -270,17 +358,25 @@ class OCRManager:
         self._paddle_model_storage = str(paddle_conf.get("model_storage_dir", os.path.join("models", "paddle")))
         self._paddle_auto_models = bool(paddle_conf.get("autodownload_models", True))
         self._paddle_model_dirs: Dict[str, str] = {}
-        self._prepare_paddle_models(paddle_conf)
+
+        if self._legacy_engine is None:
+            self._prepare_paddle_models(paddle_conf)
 
         self._paddle_ocr: Optional[PaddleOCR] = None
         self._easy_reader: Optional[object] = None
         self.extra_engines: Dict[str, OCREngine] = {}
-        
-        self._initialise_paddle()
-        self._initialise_easy()
-        self._initialise_extra_engines()
 
-        if not self._paddle_ocr and not self._easy_reader and not self.extra_engines:
+        if self._legacy_engine is None:
+            self._initialise_paddle()
+            self._initialise_easy()
+            self._initialise_extra_engines()
+
+        if (
+            self._legacy_engine is None
+            and not self._paddle_ocr
+            and not self._easy_reader
+            and not self.extra_engines
+        ):
             # Production robustness: do not crash the whole app if OCR backends are missing/broken.
             # The web UI and background workers can still run (chat/RAG/admin), while OCR endpoints
             # will fail gracefully with empty output and clear logs.
@@ -290,6 +386,42 @@ class OCRManager:
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
+
+    def process_document(self, file_path: Path | str) -> Dict[str, Any]:
+        """
+        Backward-compatible document processing API used by legacy tests.
+        """
+        path_obj = Path(file_path)
+        suffix = path_obj.suffix.lower()
+        supported = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif", ".tif", ".tiff"}
+        if suffix not in supported:
+            raise ValueError(f"Unsupported file type: {suffix or '<none>'}")
+        if not path_obj.exists():
+            raise FileNotFoundError(str(path_obj))
+
+        cache_key = str(path_obj)
+        if self.enable_cache and cache_key in self._result_cache:
+            return self._result_cache[cache_key]
+
+        if self._legacy_engine is not None and hasattr(self._legacy_engine, "process"):
+            result = self._legacy_engine.process(path_obj)
+            if not isinstance(result, dict):
+                result = {"text": str(result), "confidence": 0.0, "pages": 1}
+        else:
+            text, _language, confidence, _is_hw = self.extract_text(str(path_obj))
+            result = {
+                "text": text,
+                "confidence": confidence,
+                "pages": 1,
+            }
+
+        if self.enable_cache:
+            self._result_cache[cache_key] = result
+        return result
+
+    def process_batch(self, files: Iterable[Path | str]) -> List[Dict[str, Any]]:
+        """Backward-compatible batch API used by legacy tests."""
+        return [self.process_document(f) for f in files]
 
     def extract_text(self, file_path: str, min_confidence: Optional[float] = None) -> Tuple[str, Optional[str], float, bool]:
         """

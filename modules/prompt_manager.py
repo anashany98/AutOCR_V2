@@ -14,8 +14,12 @@ class PromptManager:
         self.prompts_dir = prompts_dir
         os.makedirs(self.prompts_dir, exist_ok=True)
         self.prompts = {}
-        self.current_version = "v1"
+        self.current_version = "v2"  # Use v2 with enhanced search prompts
         self._load_defaults()
+        
+        # Log warning about version change from v1 to v2
+        logger.info(f"PromptManager initialized with version '{self.current_version}'. "
+                   "If you were using v1, behavior may have changed.")
 
     def _load_defaults(self):
         """Initializes default prompts if files don't exist."""
@@ -31,6 +35,18 @@ class PromptManager:
                 "RAG_FINANCIAL": "Analiza los datos económicos del hotel para responder: {query}. Prioriza la precisión numérica.",
                 "VISION_DESIGN": "Analiza la imagen desde una perspectiva de diseño de interiores. Detecta estilos y materiales.",
                 "PRODUCT_SUGGESTION": "Basado en los elementos detectados, sugiere productos similares del catálogo."
+            },
+            "v2": {
+                "CHAT_GENERAL": "Eres un asistente inteligente de documentos. Responde las preguntas basándote en el contexto proporcionado. Si la información no está en el contexto, dilo claramente. Cita las fuentes usando el formato [Fuente N]. Responde en español.",
+                "CHAT_SEARCH_CONTRACT": "Eres un asistente especializado en búsqueda de contratos. Analiza los documentos para encontrar cláusulas específicas, fechas importantes, partes involucradas y condiciones. Responde de forma precisa y cita las fuentes [Fuente N].",
+                "CHAT_SEARCH_INVOICE": "Eres un asistente especializado en búsqueda de facturas. Analiza los documentos para encontrar importes, fechas de vencimiento, proveedores, conceptos y estados de pago. Proporciona los datos exactos con referencias a las fuentes.",
+                "CHAT_SEARCH_PROPOSAL": "Eres un asistente especializado en propuestas comerciales. Busca información sobre precios, productos/servicios ofertados, condiciones, plazos y estado de aprobación. Incluye siempre las referencias a las fuentes.",
+                "CHAT_SEARCH_VENDOR": "Eres un asistente especializado en búsqueda de proveedores. Encuentra información de contacto, servicios ofrecidos, histórico de pedidos y calificaciones. Proporciona datos de contacto completos.",
+                "CHAT_SEARCH_PROJECT": "Eres un asistente de gestión de proyectos. Busca información sobre estados, presupuestos, hitos, asignaciones y documentación asociada. Proporciona resúmenes ejecutivos y referencias.",
+                "CHAT_SUMMARY": "Eres un asistente de resumen. Proporciona un resumen conciso del contenido encontrado, destacando los puntos más importantes. Estructura la respuesta en secciones claras.",
+                "CHAT_COMPARISON": "Eres un asistente de comparación. Cuando el usuario pide comparar documentos, identifica las diferencias clave en precios, condiciones, fechas y términos. Usa tablas para mostrar comparaciones claras.",
+                "CHAT_EXTRACTION": "Eres un asistente de extracción de datos. Extrae información estructurada de los documentos: fechas, importes, nombres, códigos, referencias. Formatea como JSON o tabla según convenga.",
+                "CHAT_ANSWER": "Responde a la pregunta del usuario basándote ÚNICAMENTE en el contexto proporcionado. Si no tienes información suficiente, indica que no puedes responder con los datos disponibles. Cita las fuentes [Fuente N]."
             }
         }
         
@@ -53,8 +69,32 @@ class PromptManager:
             logger.error(f"Prompt version {version} not found.")
 
     def get_prompt(self, key: str, **kwargs) -> str:
+        """Get a prompt by key, with optional formatting."""
         prompt = self.prompts.get(key, "")
         if prompt and kwargs:
-            try: return prompt.format(**kwargs)
-            except: return prompt
+            try: 
+                return prompt.format(**kwargs)
+            except: 
+                return prompt
         return prompt
+    
+    def get_all_prompts(self) -> Dict[str, str]:
+        """Get all available prompts for the current version."""
+        return self.prompts.copy()
+    
+    def get_search_prompts(self) -> Dict[str, str]:
+        """Get only the search/chat prompts."""
+        search_keys = [k for k in self.prompts.keys() if k.startswith("CHAT_") or k.startswith("RAG_")]
+        return {k: self.prompts[k] for k in search_keys}
+    
+    def list_versions(self) -> list:
+        """List all available prompt versions."""
+        versions = []
+        try:
+            for f in os.listdir(self.prompts_dir):
+                if f.startswith("prompts_") and f.endswith(".json"):
+                    v = f.replace("prompts_", "").replace(".json", "")
+                    versions.append(v)
+        except:
+            pass
+        return sorted(versions)

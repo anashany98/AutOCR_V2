@@ -58,8 +58,8 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"   # API
-      - "9001:9001"   # Console
+      - "127.0.0.1:9000:9000"   # API (local admin only)
+      - "127.0.0.1:9001:9001"   # Console (local admin only)
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -175,7 +175,7 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
     depends_on:
       - redis
     networks:

@@ -57,7 +57,8 @@ def hotel_scoped(hotel_id_key='hotel_id'):
                 resolved_hotel_id = None
                 with db.get_connection() as conn:
                     cursor = db.get_cursor(conn)
-                    cursor.execute("SELECT hotel_id FROM documents WHERE id = %s", (val,))
+                    ph = getattr(db, "placeholder", "%s")
+                    cursor.execute(f"SELECT hotel_id FROM documents WHERE id = {ph}", (val,))
                     row = cursor.fetchone()
                     if row:
                         resolved_hotel_id = row[0] if isinstance(row, (tuple, list)) else row['hotel_id']
@@ -113,7 +114,8 @@ def owner_scoped(doc_id_key: str = "doc_id"):
             # Use parameterized query to prevent SQL injection
             with db.get_connection() as conn:
                 cursor = db.get_cursor(conn)
-                cursor.execute("SELECT owner_id FROM documents WHERE id = %s", (doc_id,))
+                ph = getattr(db, "placeholder", "%s")
+                cursor.execute(f"SELECT owner_id FROM documents WHERE id = {ph}", (doc_id,))
                 row = cursor.fetchone()
 
             # If the doc does not exist, let the handler return 404 (do not mask).

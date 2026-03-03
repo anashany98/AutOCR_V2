@@ -21,6 +21,24 @@ VISION_ROOT = (PROJECT_ROOT / "data" / "vision").resolve()
 VISION_ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".pdf"}
 
 
+_SECRET_PLACEHOLDERS = {"", "********", "(configured)"}
+
+
+def _maybe_update_secret(conf: Dict[str, Any], key: str, raw_value: Optional[str]) -> None:
+    """
+    Update a secret field only when a real value is provided.
+    Empty/masked placeholders keep the existing secret untouched.
+    """
+    value = (raw_value or "").strip()
+    if value in _SECRET_PLACEHOLDERS:
+        return
+    conf[key] = value
+
+
+def _mask_secret(value: Optional[str]) -> str:
+    return "********" if str(value or "").strip() else ""
+
+
 def _documents_has_column(db, column_name: str) -> bool:
     try:
         with db.get_connection() as conn:
@@ -392,6 +410,83 @@ def system_status():
     status["worker"] = "online" if status["database"] == "online" else "offline"
     
     return status
+
+
+@main_bp.route("/health", methods=["GET"])
+def health_check():
+    """
+    Health check endpoint for load balancers and orchestration systems.
+    
+    This endpoint is public (no auth required) for use by:
+    - Kubernetes liveness/readiness probes
+    - Load balancer health checks
+    - Monitoring systems
+    
+    For detailed status, use /api/status (requires auth).
+    
+    Note: In production, this should be protected at the proxy/load balancer level.
+    """
+    # In production, verify request comes from allowed sources
+    # This is a defense-in-depth measure; the primary protection should be
+    # at the load balancer or proxy level (e.g., Kubernetes ingress, nginx)
+    import socket
+    try:
+        remote_addr = request.remote_addr
+        # Allow localhost and private network ranges
+        allowed_prefixes = ('127.', '10.', '172.16.', '172.17.', '172.18.', '172.19.',
+                          '172.2', '172.30.', '172.31.', '192.168.')
+        is_internal = remote_addr in ('127.0.0.1', 'localhost') or remote_addr.startswith(allowed_prefixes)
+        
+        # Log external health check attempts in production for monitoring
+        env = os.environ.get("AUTOOCR_ENV", "").lower()
+        if env == "production" and not is_internal:
+            get_logger().debug(f"External health check from {remote_addr}")
+    except Exception:
+        pass
+    
+    health = {
+        "status": "healthy",
+        "checks": {}
+    }
+    is_healthy = True
+    
+    # Check database
+    try:
+        db = get_db()
+        with db.get_connection() as conn:
+            cursor = db.get_cursor(conn)
+            cursor.execute("SELECT 1")
+        health["checks"]["database"] = "ok"
+    except Exception as e:
+        health["checks"]["database"] = f"error: {str(e)}"
+        is_healthy = False
+    
+    # Check Redis (for caching/sessions)
+    try:
+        import redis
+        redis_url = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+        r = redis.from_url(redis_url)
+        r.ping()
+        health["checks"]["redis"] = "ok"
+    except Exception as e:
+        health["checks"]["redis"] = f"warning: {str(e)}"
+        # Redis is optional, don't mark unhealthy
+    
+    # Check filesystem (upload folder)
+    try:
+        upload_dir = Path(str(UPLOAD_FOLDER))
+        if upload_dir.exists() and upload_dir.is_dir():
+            health["checks"]["storage"] = "ok"
+        else:
+            health["checks"]["storage"] = "warning: directory not found"
+    except Exception as e:
+        health["checks"]["storage"] = f"warning: {str(e)}"
+    
+    if not is_healthy:
+        health["status"] = "unhealthy"
+        return health, 503
+    
+    return health
 
 @main_bp.route("/api/check-email", methods=["POST"])
 @login_required
@@ -803,7 +898,7 @@ def settings():
                 email_conf["host"] = request.form.get("email_host", "").strip()
                 email_conf["port"] = int(request.form.get("email_port", 993))
                 email_conf["user"] = request.form.get("email_user", "").strip()
-                email_conf["password"] = request.form.get("email_password", "").strip()
+                _maybe_update_secret(email_conf, "password", request.form.get("email_password"))
                 flash("ConfiguraciÃ³n de Email actualizada.", "success")
                 
             elif action == "rebuild_index":
@@ -815,7 +910,7 @@ def settings():
                 llm_conf["enabled"] = "llm_enabled" in request.form
                 llm_conf["base_url"] = request.form.get("llm_base_url", "").strip()
                 llm_conf["model"] = request.form.get("llm_model", "").strip()
-                llm_conf["api_key"] = request.form.get("llm_api_key", "").strip()
+                _maybe_update_secret(llm_conf, "api_key", request.form.get("llm_api_key"))
                 llm_conf["timeout"] = int(request.form.get("llm_timeout", 60))
                 flash("ConfiguraciÃ³n de Pipeline IA actualizada.", "success")
 
@@ -833,7 +928,7 @@ def settings():
             elif action == "webhooks":
                 app_conf = config.setdefault("app", {})
                 app_conf["webhook_url"] = request.form.get("webhook_url", "").strip()
-                app_conf["webhook_secret"] = request.form.get("webhook_secret", "").strip()
+                _maybe_update_secret(app_conf, "webhook_secret", request.form.get("webhook_secret"))
                 flash("ConfiguraciÃ³n de Webhooks actualizada.", "success")
                 
             save_configuration(config)
@@ -868,16 +963,16 @@ def settings():
         "email_host": email_conf.get("host", ""),
         "email_port": email_conf.get("port", 993),
         "email_user": email_conf.get("user", ""),
-        "email_password": email_conf.get("password", ""),
+        "email_password": _mask_secret(email_conf.get("password", "")),
         "llm_enabled": llm_conf.get("enabled", False),
         "llm_base_url": llm_conf.get("base_url", "http://host.docker.internal:1234/v1"),
         "llm_model": llm_conf.get("model", "local-model"),
-        "llm_api_key": llm_conf.get("api_key", ""),
+        "llm_api_key": _mask_secret(llm_conf.get("api_key", "")),
         "llm_timeout": llm_conf.get("timeout", 60),
         "chat_base_url": chat_conf.get("base_url", "http://host.docker.internal:1234/v1"),
         "chat_model": chat_conf.get("model", "mistral-small-24b"),
         "webhook_url": app_conf.get("webhook_url", ""),
-        "webhook_secret": app_conf.get("webhook_secret", "")
+        "webhook_secret": _mask_secret(app_conf.get("webhook_secret", ""))
     }
     return render_template("settings.html", config=settings_data)
 

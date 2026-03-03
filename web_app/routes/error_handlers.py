@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, jsonify, request, current_app
 from web_app.services import get_logger
 from flask_wtf.csrf import CSRFError
+from werkzeug.exceptions import HTTPException
 
 errors_bp = Blueprint('errors', __name__)
 
@@ -26,6 +27,10 @@ def handle_csrf_error(error):
 
 @errors_bp.app_errorhandler(Exception)
 def handle_unexpected_exception(error):
+    if isinstance(error, HTTPException):
+        if request.path.startswith('/api/'):
+            return jsonify({"error": error.description, "code": error.code}), error.code
+        return error
     get_logger().error(f"Unhandled Exception: {error}", exc_info=True)
     if request.path.startswith('/api/'):
         return jsonify({
